@@ -70,7 +70,7 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
             data-no-drag
             {...noDrag}
             className="min-w-0 flex-1 cursor-text truncate overflow-hidden text-sm font-semibold text-nowrap text-ellipsis text-fg"
-            title={`${session.title} (double-click to rename)`}
+            title={`${session.title} (clique duplo para renomear)`}
             onDoubleClick={() => setRenaming(true)}
           >
             {session.title}
@@ -89,64 +89,64 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
       {waiting ? (
         <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs font-medium text-warn-text">
           <span className="attention-pulse size-1.5 rounded-full bg-warn" aria-hidden="true" />
-          <span className="@max-[420px]:hidden">Waiting for you</span>
+          <span className="@max-[420px]:hidden">Esperando você</span>
         </span>
       ) : props.running ? (
         <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs text-muted" role="status">
           <Spinner size={11} className="text-accent-text" />
-          <span className="@max-[420px]:hidden">Working</span>
+          <span className="@max-[420px]:hidden">Trabalhando</span>
           {startedAt ? <span className="text-subtle tabular-nums">{formatDuration(now - startedAt)}</span> : null}
         </span>
       ) : thread?.readOnly ? (
         <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs text-subtle">
           <Lock size={12} />
-          <span className="@max-[420px]:hidden">Read-only</span>
+          <span className="@max-[420px]:hidden">Somente leitura</span>
         </span>
       ) : null}
       {props.running ? (
-        <Tip label="Stop the turn" shortcut={["Esc"]}>
-          <IconButton label="Stop the turn" onClick={() => void controller.stop(session.sessionId)}>
+        <Tip label="Parar a mensagem" shortcut={["Esc"]}>
+          <IconButton label="Parar a mensagem" onClick={() => void controller.stop(session.sessionId)}>
             <Square size={11} className="fill-current" />
           </IconButton>
         </Tip>
       ) : null}
       <HiddenCardsButton sessionId={session.sessionId} running={props.running} />
-      <Tip label={filesOpen ? "Hide files" : "Show files"} shortcut={[MOD, "Shift", "E"]}>
-        <IconButton label={filesOpen ? "Hide files" : "Show files"} active={filesOpen} onClick={() => controller.toggleFiles()}>
+      <Tip label={filesOpen ? "Ocultar arquivos" : "Mostrar arquivos"} shortcut={[MOD, "Shift", "E"]}>
+        <IconButton label={filesOpen ? "Ocultar arquivos" : "Mostrar arquivos"} active={filesOpen} onClick={() => controller.toggleFiles()}>
           <FolderTree size={15} />
         </IconButton>
       </Tip>
       <span className="@max-[360px]:hidden">
-        <Tip label="Open in VS Code">
-          <IconButton label="Open in VS Code" onClick={() => void controller.openFolder(session.cwd, "editor")}>
+        <Tip label="Abrir no VS Code">
+          <IconButton label="Abrir no VS Code" onClick={() => void controller.openFolder(session.cwd, "editor")}>
             <Code size={15} />
           </IconButton>
         </Tip>
       </span>
       <Menu>
-        <Tip label="More">
+        <Tip label="Mais">
           <MenuTrigger asChild>
-            <IconButton label="Thread actions">
+            <IconButton label="Ações da conversa">
               <Ellipsis size={16} />
             </IconButton>
           </MenuTrigger>
         </Tip>
         <MenuContent align="end">
           <MenuItem icon={<Pencil size={14} />} onSelect={() => setRenaming(true)}>
-            Rename
+            Renomear
           </MenuItem>
           <MenuItem icon={<Minimize2 size={14} />} onSelect={() => void controller.compact(session.sessionId)} disabled={thread?.readOnly}>
-            Compact context
+            Compactar contexto
           </MenuItem>
           <MenuItem icon={<FolderOpen size={14} />} onSelect={() => void controller.openFolder(session.cwd, "files")}>
             {revealLabel()}
           </MenuItem>
           <MenuItem icon={<Copy size={14} />} onSelect={() => void navigator.clipboard?.writeText(session.sessionId)}>
-            Copy session ID
+            Copiar ID da sessão
           </MenuItem>
           <MenuSeparator />
           <MenuItem icon={<Archive size={14} />} onSelect={() => void controller.archive(session.sessionId)}>
-            Archive thread
+            Arquivar conversa
           </MenuItem>
         </MenuContent>
       </Menu>
@@ -171,13 +171,13 @@ function ProjectChip(props: { cwd: string }) {
       </MenuTrigger>
       <MenuContent>
         <MenuItem icon={<SquarePen size={14} />} onSelect={() => controller.newThread(props.cwd)}>
-          New thread in {basename(props.cwd)}
+          Nova conversa em {basename(props.cwd)}
         </MenuItem>
         <MenuItem icon={<FolderOpen size={14} />} onSelect={() => void controller.openFolder(props.cwd, "files")}>
           {revealLabel()}
         </MenuItem>
         <MenuItem icon={<Code size={14} />} onSelect={() => void controller.openFolder(props.cwd, "editor")}>
-          Open in VS Code
+          Abrir no VS Code
         </MenuItem>
       </MenuContent>
     </Menu>
@@ -195,7 +195,7 @@ function TitleField(props: { initial: string; onDone: (title: string | null) => 
   return (
     <input
       autoFocus
-      aria-label="Thread title"
+      aria-label="Título da conversa"
       defaultValue={props.initial}
       onFocus={(e) => e.currentTarget.select()}
       onBlur={(e) => finish(e.currentTarget.value)}
@@ -215,7 +215,7 @@ function planShown(todo: ThreadState["fold"]["meta"]["todoList"] | null | undefi
   return Boolean(todo && todo.length > 0 && (running || todo.some((t) => t.status !== "completed")));
 }
 
-/** Shown while a dock card the user closed has something to show; brings every closed card in the thread back. */
+/** Exibido enquanto um cartão fechado pelo usuário tem algo a mostrar; traz de volta todos os cartões fechados da conversa. */
 function HiddenCardsButton(props: { sessionId: string; running: boolean }) {
   const controller = useController();
   const names = useApp((s) => {
@@ -226,20 +226,20 @@ function HiddenCardsButton(props: { sessionId: string; running: boolean }) {
     }
     const out: string[] = [];
     if (hidden.includes(`plan:${props.sessionId}`) && planShown(fold.meta.todoList, props.running)) {
-      out.push("plan");
+      out.push("o plano");
     }
     if (hidden.includes(`goal:${props.sessionId}`) && goalView(fold) !== null) {
-      out.push("goal");
+      out.push("a meta");
     }
     if (hidden.includes(`tasks:${props.sessionId}`) && backgroundTasks(fold).length > 0) {
-      out.push("background tasks");
+      out.push("as tarefas em segundo plano");
     }
     return out.join(", ");
   });
   if (!names) {
     return null;
   }
-  const label = `Show the ${names.replace(/, ([^,]*)$/, " and $1")}`;
+  const label = `Mostrar ${names.replace(/, ([^,]*)$/, " e $1")}`;
   return (
     <Tip label={label}>
       <IconButton label={label} onClick={() => controller.showThreadCards(props.sessionId)}>
@@ -292,7 +292,7 @@ function Dock(props: { session: SessionSummary; thread: ThreadState | null; runn
   );
 }
 
-/** Tool calls still running after being sent to the background, with one way to stop all of them. */
+/** Chamadas de ferramenta ainda executando após irem para o segundo plano, com um jeito de parar todas. */
 function BackgroundTasks(props: { sessionId: string }) {
   const controller = useController();
   const count = useApp((s) => {
@@ -308,12 +308,12 @@ function BackgroundTasks(props: { sessionId: string }) {
     <div role="status" className="flex items-center gap-2 rounded-xl bg-raised px-3 py-1.5 text-xs text-muted shadow-card">
       <Spinner size={11} className="shrink-0 text-accent-text" />
       <span className="min-w-0 flex-1 truncate">
-        {count === 1 ? "1 task is running in the background" : `${count} tasks are running in the background`}
+        {count === 1 ? "1 tarefa executando em segundo plano" : `${count} tarefas executando em segundo plano`}
       </span>
       <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" loading={busy} onClick={() => void controller.taskAction(props.sessionId, "stopAll")}>
-        <CircleStop size={12} /> Stop all
+        <CircleStop size={12} /> Parar todas
       </Button>
-      <CloseCard label="Hide background tasks" onClose={() => controller.setCardHidden(`tasks:${props.sessionId}`, true)} />
+      <CloseCard label="Ocultar tarefas em segundo plano" onClose={() => controller.setCardHidden(`tasks:${props.sessionId}`, true)} />
     </div>
   );
 }
@@ -329,10 +329,10 @@ function MissingThread() {
         <CaptionSpacer />
       </header>
       <div className="flex flex-1 flex-col items-center justify-center gap-3 pb-[12vh] text-center">
-        <p className="font-display text-2xl text-fg">This thread is not here anymore</p>
-        <p className="max-w-[40ch] text-sm text-muted">It may have been archived or removed with its project.</p>
+        <p className="font-display text-2xl text-fg">Esta conversa não está mais aqui</p>
+        <p className="max-w-[40ch] text-sm text-muted">Ela pode ter sido arquivada ou removida com seu projeto.</p>
         <button type="button" className="mt-2 text-sm font-medium text-accent-text hover:underline" onClick={() => controller.newThread()}>
-          Start a new thread
+          Começar uma nova conversa
         </button>
       </div>
     </div>
