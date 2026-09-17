@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { currentDaemon, setDaemon } from "./webClient.js";
 
-/** Trims a typed origin into something fetchable, or null when it is not a URL at all. */
+/** Reduz um endereço digitado a algo acessível, ou null quando não é um endereço. */
 function asOrigin(value: string): string | null {
   const text = value.trim().replace(/\/$/, "");
   if (!text) {
@@ -16,8 +16,8 @@ function asOrigin(value: string): string | null {
 }
 
 /**
- * Where a browser points itself at a daemon on another machine. The token is checked here before it
- * is stored, so a wrong one says so now rather than turning into an app that fails at every call.
+ * Onde o navegador aponta para um servidor em outra máquina. O token é conferido aqui antes de ser
+ * guardado, para que um token errado avise agora em vez de virar um app que falha a cada chamada.
  */
 export function Connect(props: { onDone: () => void }) {
   const existing = currentDaemon();
@@ -30,13 +30,13 @@ export function Connect(props: { onDone: () => void }) {
     event.preventDefault();
     const origin = asOrigin(base);
     if (origin === null) {
-      setError("That does not look like a URL. It should read like https://box.example:3127");
+      setError("Isso não parece um endereço. Deveria ser algo como https://box.example:3127");
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      // The same handshake the app makes on every load, so a daemon that refuses now would refuse later.
+      // A mesma apresentação que o app faz a cada carregamento: um servidor que recusar agora recusaria depois.
       const response = await fetch(`${origin}/api/auth`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -44,11 +44,11 @@ export function Connect(props: { onDone: () => void }) {
         credentials: "include",
       });
       if (response.status === 401) {
-        setError("That daemon did not accept the token.");
+        setError("O servidor não aceitou o token.");
         return;
       }
       if (!response.ok) {
-        setError(`That daemon answered with ${response.status}.`);
+        setError(`O servidor respondeu com ${response.status}.`);
         return;
       }
       setDaemon({ base: origin, token: token.trim() || null });
@@ -56,8 +56,8 @@ export function Connect(props: { onDone: () => void }) {
     } catch {
       setError(
         origin && origin.startsWith("http://") && window.location.protocol === "https:"
-          ? "A page served over HTTPS cannot reach a daemon over plain HTTP. Put the daemon behind TLS or a tunnel."
-          : "Could not reach that daemon. Check the address, and that it was started with --allow-origin for this page.",
+          ? "Uma página servida via HTTPS não alcança um servidor via HTTP simples. Coloque o servidor atrás de TLS ou de um túnel."
+          : "Não foi possível alcançar o servidor. Confira o endereço e se ele foi iniciado com --allow-origin para esta página.",
       );
     } finally {
       setBusy(false);
@@ -66,15 +66,15 @@ export function Connect(props: { onDone: () => void }) {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col justify-center px-6">
-      <h1 className="text-lg font-semibold text-fg">Connect to a daemon</h1>
+      <h1 className="text-lg font-semibold text-fg">Conectar a um servidor</h1>
       <p className="mt-1 text-xs text-pretty text-muted">
-        Leave the address empty to use the server that served this page. A daemon elsewhere has to be started with
+        Deixe o endereço vazio para usar o servidor que serviu esta página. Um servidor em outro lugar precisa ser iniciado com
         <code className="mx-1 rounded bg-sunken px-1 py-0.5 font-mono text-2xs">--allow-origin {window.location.origin}</code>
-        and, unless it is on this machine, reached over HTTPS.
+        e, salvo se estiver nesta máquina, acessado via HTTPS.
       </p>
       <form className="mt-5 flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <label className="flex flex-col gap-1">
-          <span className="text-sm text-fg">Address</span>
+          <span className="text-sm text-fg">Endereço</span>
           <input
             autoFocus
             value={base}
@@ -89,7 +89,7 @@ export function Connect(props: { onDone: () => void }) {
             type="password"
             value={token}
             onChange={(event) => setToken(event.target.value)}
-            placeholder="Only if the daemon was started with --token"
+            placeholder="Somente se o servidor foi iniciado com --token"
             className="h-9 rounded-lg bg-sunken px-3 text-sm text-fg shadow-[0_0_0_1px_var(--border-strong)] outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
           />
         </label>
@@ -99,7 +99,7 @@ export function Connect(props: { onDone: () => void }) {
           disabled={busy}
           className="mt-1 h-9 rounded-lg bg-accent text-sm font-medium text-white transition-opacity duration-100 disabled:opacity-60"
         >
-          {busy ? "Checking" : "Connect"}
+          {busy ? "Verificando" : "Conectar"}
         </button>
       </form>
     </main>
