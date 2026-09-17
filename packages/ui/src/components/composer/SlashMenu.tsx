@@ -3,7 +3,7 @@ import { useEffect, type ReactNode } from "react";
 import type { SlashAction, SlashCommand } from "../../model/slash.js";
 import { Spinner, cn } from "../ui/primitives.js";
 
-/** What the menu above the composer shows while a message starts with a slash. */
+/** O que o menu acima do composer mostra enquanto uma mensagem começa com barra. */
 export type SlashMenuState =
   | { kind: "list"; items: SlashCommand[]; loading: boolean; error: string | null }
   | { kind: "unknown"; name: string }
@@ -22,8 +22,8 @@ const ACTION_ICONS: Record<SlashAction, ReactNode> = {
   goal: <Target size={14} />,
 };
 
-/** Where a skill comes from, for the ones not built into Muse. */
-const SCOPE_LABELS: Record<string, string> = { user: "Personal", project: "Project", plugin: "Plugin" };
+/** De onde vem uma skill, para as que não são nativas do Muse. */
+const SCOPE_LABELS: Record<string, string> = { user: "Pessoal", project: "Projeto", plugin: "Plug-in" };
 
 export function slashOptionId(menuId: string, index: number): string {
   return `${menuId}-option-${index}`;
@@ -32,13 +32,13 @@ export function slashOptionId(menuId: string, index: number): string {
 const ROW = "flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm select-none";
 
 /**
- * The listbox the composer's textarea controls. Focus never leaves the textarea: rows act on mouse down,
- * and the arrow keys move the active row through `aria-activedescendant`.
+ * A listbox que a área de texto do composer controla. O foco nunca sai da área de texto: as linhas agem no
+ * clique do mouse, e as setas movem a linha ativa via `aria-activedescendant`.
  */
 export function SlashMenu(props: {
   id: string;
   state: SlashMenuState;
-  /** Above the composer at the foot of a thread; below it on the new-thread screen, where it sits near the top. */
+  /** Acima do composer no pé de uma conversa; abaixo dele na tela de nova conversa, onde fica perto do topo. */
   placement: "above" | "below";
   active: number;
   onActive: (index: number) => void;
@@ -57,7 +57,7 @@ export function SlashMenu(props: {
     <div
       id={props.id}
       role="listbox"
-      aria-label="Commands and skills"
+      aria-label="Comandos e skills"
       onMouseDown={(event) => event.preventDefault()}
       className={cn(
         "absolute inset-x-0 z-[var(--z-dropdown)] flex max-h-[min(380px,48vh)] flex-col overflow-hidden rounded-xl bg-raised text-fg shadow-pop",
@@ -74,7 +74,7 @@ export function SlashMenu(props: {
                 <div key={`${item.kind}:${item.name}`} role="presentation">
                   {heading ? (
                     <div role="presentation" className="px-2 pt-1.5 pb-1 text-xs font-medium text-subtle">
-                      {item.kind === "action" ? "Commands" : "Skills"}
+                      {item.kind === "action" ? "Comandos" : "Skills"}
                     </div>
                   ) : null}
                   <div
@@ -103,12 +103,12 @@ export function SlashMenu(props: {
         {state.kind === "list" && state.loading ? (
           <div role="presentation" className="flex items-center gap-2 px-2 py-2 text-xs text-muted">
             <Spinner size={12} />
-            Loading skills
+            Carregando skills
           </div>
         ) : null}
         {state.kind === "list" && !state.loading && state.error ? (
           <p role="presentation" className="px-2 py-1.5 text-xs text-muted [overflow-wrap:anywhere]">
-            Skills did not load: {state.error}
+            As skills não carregaram: {state.error}
           </p>
         ) : null}
         {state.kind === "unknown" ? (
@@ -123,28 +123,28 @@ export function SlashMenu(props: {
               <CornerDownLeft size={14} />
             </span>
             <span className="min-w-0 flex-1 truncate">
-              No command named <span className="font-medium">/{state.name}</span>
+              Nenhum comando chamado <span className="font-medium">/{state.name}</span>
             </span>
-            <span className="shrink-0 text-xs text-muted">Send as a prompt</span>
+            <span className="shrink-0 text-xs text-muted">Enviar como prompt</span>
           </div>
         ) : null}
         {state.kind === "loading" ? (
           <div id={slashOptionId(props.id, 0)} role="option" aria-selected aria-disabled className={cn(ROW, "text-muted")}>
             <Spinner size={12} />
-            Loading skills
+            Carregando skills
           </div>
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-3 border-t border-line px-3 py-1.5 text-2xs text-subtle">
         {state.kind === "list" ? (
           <>
-            <span>Enter to run</span>
-            <span>Tab to fill in</span>
+            <span>Enter para executar</span>
+            <span>Tab para completar</span>
           </>
         ) : state.kind === "unknown" ? (
-          <span>Enter to send as a prompt</span>
+          <span>Enter para enviar como prompt</span>
         ) : null}
-        <span>Esc to close</span>
+        <span>Esc para fechar</span>
       </div>
     </div>
   );
