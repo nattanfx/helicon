@@ -57,7 +57,7 @@ import { StatusGlyph } from "../ui/StatusGlyph.js";
 
 const PROJECT_PREVIEW = 6;
 const STATUS_PREVIEW = 30;
-/** The strip under the last project: dropping there sends a project to the bottom. */
+/** A faixa sob o último projeto: soltar ali manda um projeto para o fim. */
 const END_DROP = "end";
 const REORDER_SLOP = 6;
 
@@ -82,7 +82,7 @@ export function Sidebar() {
   const overlay = useTitlebarOverlay();
   return (
     <aside
-      aria-label="Sidebar"
+      aria-label="Barra lateral"
       className="@container relative flex h-full shrink-0 flex-col border-r border-line bg-sidebar"
       style={{ width }}
     >
@@ -96,8 +96,8 @@ export function Sidebar() {
 }
 
 /**
- * The macOS traffic lights float in this slot, 20px from the left and 20px from the top.
- * It also drags the window.
+ * Os semáforos do macOS flutuam neste espaço, 20px da esquerda e 20px do topo.
+ * Ele também arrasta a janela.
  */
 function TrafficLightsSlot() {
   const drag = useOverlayDragProps("self");
@@ -114,20 +114,20 @@ function SidebarTop() {
         <Logo size={20} />
         <span className="text-[14px] font-semibold tracking-[-0.01em] text-fg">Helicon</span>
         <span className="flex-1" />
-        <Tip label="Hide sidebar" shortcut={[MOD, "B"]}>
-          <IconButton label="Hide sidebar" onClick={() => controller.toggleSidebar()}>
+        <Tip label="Ocultar barra lateral" shortcut={[MOD, "B"]}>
+          <IconButton label="Ocultar barra lateral" onClick={() => controller.toggleSidebar()}>
             <PanelLeftClose size={16} />
           </IconButton>
         </Tip>
       </div>
       <NavRow
         icon={<SquarePen size={15} />}
-        label="New thread"
+        label="Nova conversa"
         keys={[MOD, "Shift", "O"]}
         active={routeKind === "new"}
         onClick={() => controller.newThread()}
       />
-      <NavRow icon={<Search size={15} />} label="Search" keys={[MOD, "K"]} onClick={() => controller.setPaletteOpen(true)} />
+      <NavRow icon={<Search size={15} />} label="Buscar" keys={[MOD, "K"]} onClick={() => controller.setPaletteOpen(true)} />
     </div>
   );
 }
@@ -145,7 +145,7 @@ function NavRow(props: { icon: ReactNode; label: string; keys: string[]; active?
     >
       <span className="flex size-4 shrink-0 items-center justify-center">{props.icon}</span>
       <span className="min-w-0 flex-1 truncate text-left">{props.label}</span>
-      {/* The hint only takes room once the sidebar is wide enough to keep the label on one line. */}
+      {/* A dica só ocupa espaço quando a barra é larga o bastante para manter o rótulo numa linha. */}
       <span className="hidden shrink-0 @min-[16rem]:block">
         <Shortcut keys={props.keys} className="opacity-0 transition-opacity duration-150 group-hover/nav:opacity-100" />
       </span>
@@ -185,15 +185,15 @@ function ThreadList() {
   const { entries, activeId } = useSidebarEntries();
 
   const projectGroups = useMemo(() => groupByProject(projects, entries), [projects, entries]);
-  // Dragging a project header moves it: the drop lands it above the row under the cursor, or last.
+  // Arrastar um cabeçalho de projeto o move: ao soltar, ele cai acima da linha sob o cursor, ou por último.
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const endDrag = () => {
     setDragging(null);
     setOver(null);
   };
-  // The dragged project comes with the drop rather than from `dragging`: the pointer handlers were made on
-  // pointer-down, before the drag began, so the `dragging` they could see is still null.
+  // O projeto arrastado vem com o soltar, não de `dragging`: os manipuladores de ponteiro foram criados no
+  // apertar do botão, antes do arrasto começar, então o `dragging` que eles enxergam ainda é null.
   const drop = (cwd: string, beforeCwd: string | null) => {
     void controller.reorderProjects(cwd, beforeCwd);
     endDrag();
@@ -204,17 +204,17 @@ function ThreadList() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-7 items-center justify-between pr-2 pl-3.5">
-        <h2 className="text-xs font-medium text-subtle">{groupBy === "project" ? "Projects" : "By status"}</h2>
+        <h2 className="text-xs font-medium text-subtle">{groupBy === "project" ? "Projetos" : "Por status"}</h2>
         <div className="flex items-center gap-0.5">
           <GroupByMenu />
-          <Tip label="Add project">
-            <IconButton size="xs" label="Add project" onClick={() => controller.setAddProjectOpen(true)}>
+          <Tip label="Adicionar projeto">
+            <IconButton size="xs" label="Adicionar projeto" onClick={() => controller.setAddProjectOpen(true)}>
               <FolderPlus size={14} />
             </IconButton>
           </Tip>
         </div>
       </div>
-      <nav aria-label="Threads" className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-6">
+      <nav aria-label="Conversas" className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-6">
         {!loaded ? (
           <SidebarSkeleton />
         ) : projects.length === 0 ? (
@@ -369,19 +369,19 @@ const ProjectSection = memo(function ProjectSection(props: {
             <FolderOpen size={15} className="shrink-0 text-subtle" />
           )}
           <span className="truncate text-sm font-medium text-fg">{project.displayName}</span>
-          {project.pinned ? <Pin size={11} className="shrink-0 text-subtle" aria-label="Pinned" /> : null}
+          {project.pinned ? <Pin size={11} className="shrink-0 text-subtle" aria-label="Fixado" /> : null}
           {props.collapsed && props.group.attention > 0 ? (
-            <span className="mr-1 ml-auto size-1.5 shrink-0 rounded-full bg-warn" aria-label={`${props.group.attention} need you`} />
+            <span className="mr-1 ml-auto size-1.5 shrink-0 rounded-full bg-warn" aria-label={`${props.group.attention} precisam de você`} />
           ) : props.collapsed && props.group.running > 0 ? (
-            <Spinner size={10} className="mr-1 ml-auto text-accent-text" label="Working" />
+            <Spinner size={10} className="mr-1 ml-auto text-accent-text" label="Trabalhando" />
           ) : null}
         </button>
         <div
           data-no-reorder
           className="flex shrink-0 items-center opacity-0 transition-opacity duration-100 group-hover/project:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100"
         >
-          <Tip label={`New thread in ${project.displayName}`}>
-            <IconButton size="xs" label={`New thread in ${project.displayName}`} onClick={() => controller.newThread(project.cwd)}>
+          <Tip label={`Nova conversa em ${project.displayName}`}>
+            <IconButton size="xs" label={`Nova conversa em ${project.displayName}`} onClick={() => controller.newThread(project.cwd)}>
               <SquarePen size={13} />
             </IconButton>
           </Tip>
@@ -400,7 +400,7 @@ const ProjectSection = memo(function ProjectSection(props: {
                 onClick={() => controller.newThread(project.cwd)}
                 className="flex h-7 w-full items-center rounded-lg pl-[30px] text-left text-xs text-subtle hover:bg-hover hover:text-fg"
               >
-                Start the first thread
+                Começar a primeira conversa
               </button>
             </li>
           ) : null}
@@ -411,7 +411,7 @@ const ProjectSection = memo(function ProjectSection(props: {
                 onClick={() => setExpanded((v) => !v)}
                 className="flex h-7 w-full items-center rounded-lg pl-[30px] text-left text-xs text-subtle hover:bg-hover hover:text-fg"
               >
-                {expanded ? "Show fewer" : `Show ${entries.length - visible.length} more`}
+                {expanded ? "Mostrar menos" : `Mostrar mais ${entries.length - visible.length}`}
               </button>
             </li>
           ) : null}
@@ -450,7 +450,7 @@ function StatusSection(props: { label: string; entries: SidebarEntry[]; activeId
               onClick={() => setExpanded(true)}
               className="flex h-7 w-full items-center rounded-lg pl-[30px] text-left text-xs text-subtle hover:bg-hover hover:text-fg"
             >
-              Show {props.entries.length - limit} more
+              Mostrar mais {props.entries.length - limit}
             </button>
           </li>
         ) : null}
@@ -463,8 +463,8 @@ const SHELF_PAGE = 10;
 const SHELF_MORE = 25;
 
 /**
- * Settled threads, collapsed under a "Settled" divider as in T3 Code. While collapsed it still
- * shows the thread that is open, so the sidebar never loses the current selection.
+ * Conversas resolvidas, recolhidas sob um divisor "Resolvidas" como no T3 Code. Mesmo recolhido, ainda
+ * mostra a conversa aberta, para a barra nunca perder a seleção atual.
  */
 function SettledShelf(props: { shelfKey: string; entries: SidebarEntry[]; activeId: string | null; now: number; showProject?: boolean }) {
   const controller = useController();
@@ -479,7 +479,7 @@ function SettledShelf(props: { shelfKey: string; entries: SidebarEntry[]; active
         onClick={() => controller.toggleShelf(props.shelfKey)}
         className="group/shelf flex h-7 w-full items-center gap-2 rounded-lg pr-2 pl-[30px] text-left text-xs text-subtle transition-colors duration-100 hover:text-fg"
       >
-        <span>Settled</span>
+        <span>Resolvidas</span>
         <span className="tabular-nums">{props.entries.length}</span>
         <span aria-hidden="true" className="h-px flex-1 bg-line" />
         <ChevronRight size={12} className={cn("shrink-0 transition-transform duration-150 ease-out", open && "rotate-90")} />
@@ -504,14 +504,14 @@ function SettledShelf(props: { shelfKey: string; entries: SidebarEntry[]; active
           onClick={() => setLimit((current) => current + SHELF_MORE)}
           className="flex h-7 w-full items-center rounded-lg pl-[30px] text-left text-xs text-subtle hover:bg-hover hover:text-fg"
         >
-          Show {Math.min(SHELF_MORE, props.entries.length - limit)} more
+          Mostrar mais {Math.min(SHELF_MORE, props.entries.length - limit)}
         </button>
       ) : null}
     </div>
   );
 }
 
-/** "Working 1m" counted from the turn's start and ticking each second, like T3 Code's timer. */
+/** "Trabalhando há 1m" contado do início da mensagem e atualizando a cada segundo, como o cronômetro do T3 Code. */
 function WorkingFor(props: { session: SessionSummary }) {
   const foldStart = useApp((s) => {
     const fold = s.threads[props.session.sessionId]?.fold;
@@ -522,13 +522,13 @@ function WorkingFor(props: { session: SessionSummary }) {
   const now = useNow(1000);
   return (
     <span className="text-accent-text">
-      Working
+      Trabalhando
       {start ? <span className="ml-1">{formatElapsed(now - start)}</span> : null}
     </span>
   );
 }
 
-/** The right-hand slot of a row: what the thread needs, a running timer, or how long ago it moved. */
+/** O espaço à direita de uma linha: do que a conversa precisa, um cronômetro rodando, ou há quanto tempo ela se moveu. */
 function RowStatus(props: { entry: SidebarEntry; now: number; settled?: boolean }) {
   const { session, status } = props.entry;
   if (props.settled) {
@@ -538,16 +538,16 @@ function RowStatus(props: { entry: SidebarEntry; now: number; settled?: boolean 
     case "running":
       return <WorkingFor session={session} />;
     case "approval":
-      return <span className="font-medium text-warn-text">Approval</span>;
+      return <span className="font-medium text-warn-text">Aprovação</span>;
     case "input":
-      return <span className="font-medium text-status-input">Input</span>;
+      return <span className="font-medium text-status-input">Pergunta</span>;
     case "failed":
-      return <span className="font-medium text-danger-text">Failed</span>;
+      return <span className="font-medium text-danger-text">Falhou</span>;
     case "unread":
       return (
         <span className="flex items-center gap-1 font-medium text-ok-text">
           <Check size={11} strokeWidth={2.5} aria-hidden="true" />
-          Done
+          Concluída
         </span>
       );
     default:
@@ -555,10 +555,10 @@ function RowStatus(props: { entry: SidebarEntry; now: number; settled?: boolean 
   }
 }
 
-/** The second line of an active card: the project in the status view, an open goal, and the branch once known. */
+/** A segunda linha de um cartão ativo: o projeto na visão por estado, uma meta aberta e o branch quando conhecido. */
 function RowMeta(props: { session: SessionSummary; showProject?: boolean }) {
   const branch = useApp((s) => s.threads[props.session.sessionId]?.fold.meta.branch ?? null);
-  // An opened thread's own goal is the freshest; otherwise, what the server last saw.
+  // A meta da própria conversa aberta é a mais fresca; senão, o que o servidor viu por último.
   const goal = useApp((s) => {
     const fold = s.threads[props.session.sessionId]?.fold;
     return fold?.meta.goalSeen ? fold.meta.goal : (props.session.live?.goal ?? null);
@@ -577,10 +577,10 @@ function RowMeta(props: { session: SessionSummary; showProject?: boolean }) {
             "flex shrink-0 items-center gap-1 tabular-nums",
             tone === "active" ? "text-accent-text" : tone === "attention" ? "text-warn-text" : "text-subtle",
           )}
-          title={`Goal: ${goal.objective}`}
+          title={`Meta: ${goal.objective}`}
         >
           <Target size={11} className="shrink-0" aria-hidden="true" />
-          <span className="sr-only">Goal </span>
+          <span className="sr-only">Meta </span>
           {Math.round(Math.max(0, Math.min(100, goal.percentComplete)))}%
         </span>
       ) : null}
@@ -648,7 +648,7 @@ export const ThreadRow = memo(
           {renaming ? null : (
             <>
               <span
-                // pr-1.5 on top of the row's pr-1 mirrors the status glyph's 10px inset on the left.
+                // pr-1.5 sobre o pr-1 da linha espelha o recuo de 10px do glifo de estado à esquerda.
                 className="shrink-0 pr-1.5 text-2xs tabular-nums group-focus-within/row:hidden group-hover/row:hidden group-has-[[data-state=open]]/row:hidden"
                 aria-hidden="true"
               >
@@ -656,14 +656,14 @@ export const ThreadRow = memo(
               </span>
               <div className="relative z-10 hidden items-center group-focus-within/row:flex group-hover/row:flex group-has-[[data-state=open]]/row:flex">
                 {props.settled ? (
-                  <Tip label="Un-settle">
-                    <IconButton size="xs" label="Un-settle thread" onClick={() => void controller.setSettled(session.sessionId, false)}>
+                  <Tip label="Reabrir">
+                    <IconButton size="xs" label="Reabrir conversa" onClick={() => void controller.setSettled(session.sessionId, false)}>
                       <Undo2 size={13} />
                     </IconButton>
                   </Tip>
                 ) : isLive(status) ? null : (
-                  <Tip label="Settle">
-                    <IconButton size="xs" label="Settle thread" onClick={() => void controller.setSettled(session.sessionId, true)}>
+                  <Tip label="Resolver">
+                    <IconButton size="xs" label="Resolver conversa" onClick={() => void controller.setSettled(session.sessionId, true)}>
                       <Check size={14} />
                     </IconButton>
                   </Tip>
@@ -697,7 +697,7 @@ function RenameField(props: { initial: string; onDone: (title: string | null) =>
     <input
       autoFocus
       defaultValue={props.initial}
-      aria-label="Thread title"
+      aria-label="Título da conversa"
       onFocus={(e) => e.currentTarget.select()}
       onBlur={(e) => finish(e.currentTarget.value)}
       onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
@@ -717,23 +717,23 @@ function ThreadMenu(props: { session: SessionSummary; onRename: () => void }) {
   return (
     <Menu>
       <MenuTrigger asChild>
-        <IconButton size="xs" label="Thread actions">
+        <IconButton size="xs" label="Ações da conversa">
           <Ellipsis size={14} />
         </IconButton>
       </MenuTrigger>
       <MenuContent align="end">
         <MenuItem icon={<Pencil size={14} />} onSelect={props.onRename}>
-          Rename
+          Renomear
         </MenuItem>
         <MenuItem icon={<Copy size={14} />} onSelect={() => void navigator.clipboard?.writeText(props.session.sessionId)}>
-          Copy session ID
+          Copiar ID da sessão
         </MenuItem>
         <MenuItem icon={<FolderOpen size={14} />} onSelect={() => void controller.openFolder(props.session.cwd, "files")}>
           {revealLabel()}
         </MenuItem>
         <MenuSeparator />
         <MenuItem icon={<Archive size={14} />} onSelect={() => void controller.archive(props.session.sessionId)}>
-          Archive thread
+          Arquivar conversa
         </MenuItem>
       </MenuContent>
     </Menu>
@@ -742,9 +742,9 @@ function ThreadMenu(props: { session: SessionSummary; onRename: () => void }) {
 
 export function revealLabel(): string {
   if (isMac) {
-    return "Reveal in Finder";
+    return "Revelar no Finder";
   }
-  return typeof navigator !== "undefined" && /Win/.test(navigator.platform) ? "Open in File Explorer" : "Open folder";
+  return typeof navigator !== "undefined" && /Win/.test(navigator.platform) ? "Abrir no Explorador de Arquivos" : "Abrir pasta";
 }
 
 function ProjectMenu(props: { project: ProjectView }) {
@@ -753,36 +753,36 @@ function ProjectMenu(props: { project: ProjectView }) {
   return (
     <Menu>
       <MenuTrigger asChild>
-        <IconButton size="xs" label={`${project.displayName} actions`}>
+        <IconButton size="xs" label={`${project.displayName}: ações`}>
           <Ellipsis size={14} />
         </IconButton>
       </MenuTrigger>
       <MenuContent align="end">
         <MenuItem icon={<SquarePen size={14} />} onSelect={() => controller.newThread(project.cwd)}>
-          New thread
+          Nova conversa
         </MenuItem>
         <MenuItem
           icon={project.pinned ? <PinOff size={14} /> : <Pin size={14} />}
           onSelect={() => void controller.togglePin(project.cwd)}
         >
-          {project.pinned ? "Unpin" : "Pin to top"}
+          {project.pinned ? "Desafixar" : "Fixar no topo"}
         </MenuItem>
         <MenuSeparator />
         <MenuItem icon={<FolderOpen size={14} />} onSelect={() => void controller.openFolder(project.cwd, "files")}>
           {revealLabel()}
         </MenuItem>
         <MenuItem icon={<Code size={14} />} onSelect={() => void controller.openFolder(project.cwd, "editor")}>
-          Open in VS Code
+          Abrir no VS Code
         </MenuItem>
         <MenuItem icon={<Copy size={14} />} onSelect={() => void navigator.clipboard?.writeText(project.cwd)}>
-          Copy path
+          Copiar caminho
         </MenuItem>
         <MenuItem icon={<RefreshCw size={14} />} onSelect={() => void controller.refreshProject(project.cwd)}>
-          Refresh threads
+          Atualizar conversas
         </MenuItem>
         <MenuSeparator />
         <MenuItem icon={<X size={14} />} tone="danger" onSelect={() => void controller.hideProject(project.cwd)}>
-          Remove from sidebar
+          Remover da barra lateral
         </MenuItem>
       </MenuContent>
     </Menu>
@@ -794,17 +794,17 @@ function GroupByMenu() {
   const groupBy = useApp((s) => s.prefs.groupBy);
   return (
     <Menu>
-      <Tip label="Group threads">
+      <Tip label="Agrupar conversas">
         <MenuTrigger asChild>
-          <IconButton size="xs" label="Group threads">
+          <IconButton size="xs" label="Agrupar conversas">
             <ListFilter size={14} />
           </IconButton>
         </MenuTrigger>
       </Tip>
       <MenuContent align="end">
         <MenuRadioGroup value={groupBy} onValueChange={(v) => controller.setGroupBy(v === "status" ? "status" : "project")}>
-          <MenuOption value="project" icon={<Folder size={14} />} label="By project" description="Each project with its threads" />
-          <MenuOption value="status" icon={<Layers size={14} />} label="By status" description="Needs you, working, ready for review" />
+          <MenuOption value="project" icon={<Folder size={14} />} label="Por projeto" description="Cada projeto com suas conversas" />
+          <MenuOption value="status" icon={<Layers size={14} />} label="Por status" description="Precisam de você, trabalhando, prontas para revisão" />
         </MenuRadioGroup>
       </MenuContent>
     </Menu>
@@ -819,12 +819,12 @@ function SidebarFooter() {
   const hostError = useApp((s) => s.hostError);
   const status =
     connection === "lost"
-      ? { dot: "bg-warn", text: "Reconnecting to Helicon" }
+      ? { dot: "bg-warn", text: "Reconectando ao Helicon" }
       : hostError
-        ? { dot: "bg-danger", text: "Muse needs attention" }
+        ? { dot: "bg-danger", text: "Muse precisa de atenção" }
         : env?.platform === "win32" && env.runtime !== "native"
-          ? { dot: "bg-ok", text: `Muse in WSL (${env.defaultDistro ?? "Ubuntu"})` }
-          : { dot: "bg-ok", text: "Muse ready" };
+          ? { dot: "bg-ok", text: `Muse no WSL (${env.defaultDistro ?? "Ubuntu"})` }
+          : { dot: "bg-ok", text: "Muse pronto" };
   const detail = hostError ?? (env?.musePath ? `${env.musePath}  |  Helicon ${env.version}` : `Helicon ${env?.version ?? ""}`);
   return (
     <div className="flex h-11 shrink-0 items-center gap-0.5 border-t border-line px-2">
@@ -834,19 +834,19 @@ function SidebarFooter() {
           <span className="truncate">{status.text}</span>
         </div>
       </Tip>
-      <Tip label="Refresh threads from Muse" side="top">
-        <IconButton label="Refresh threads from Muse" onClick={() => void controller.discoverAll()} disabled={discovering}>
+      <Tip label="Atualizar conversas a partir do Muse" side="top">
+        <IconButton label="Atualizar conversas a partir do Muse" onClick={() => void controller.discoverAll()} disabled={discovering}>
           <RefreshCw size={14} className={cn(discovering && "animate-spin")} />
         </IconButton>
       </Tip>
       <PlanPill />
-      <Tip label="Usage and cost" side="top">
-        <IconButton label="Usage and cost" onClick={() => controller.navigate({ kind: "usage" })}>
+      <Tip label="Uso e custo" side="top">
+        <IconButton label="Uso e custo" onClick={() => controller.navigate({ kind: "usage" })}>
           <ChartColumn size={14} />
         </IconButton>
       </Tip>
-      <Tip label="Settings" side="top">
-        <IconButton label="Settings" onClick={() => controller.navigate({ kind: "settings" })}>
+      <Tip label="Configurações" side="top">
+        <IconButton label="Configurações" onClick={() => controller.navigate({ kind: "settings" })}>
           <Settings size={14} />
         </IconButton>
       </Tip>
@@ -860,27 +860,27 @@ export function updateSummary(updates: UpdateState, autoUpdate: boolean, paused:
   const version = updates.update?.version ?? "";
   switch (updates.status) {
     case "checking":
-      return "Checking for updates";
+      return "Verificando atualizações";
     case "available":
-      return paused ? `Version ${version} is available. Updates are paused.` : `Version ${version} is available`;
+      return paused ? `A versão ${version} está disponível. Atualizações pausadas.` : `A versão ${version} está disponível`;
     case "downloading":
-      return `Downloading version ${version}${updates.progress !== null ? `, ${Math.round(updates.progress * 100)}%` : ""}`;
+      return `Baixando a versão ${version}${updates.progress !== null ? `, ${Math.round(updates.progress * 100)}%` : ""}`;
     case "ready":
-      return autoUpdate && !paused ? `Version ${version} installs when you close Helicon` : `Version ${version} is ready to install`;
+      return autoUpdate && !paused ? `A versão ${version} instala quando você fechar o Helicon` : `A versão ${version} está pronta para instalar`;
     case "installing":
-      return "Installing the update";
+      return "Instalando a atualização";
     case "error":
-      return "Could not check for updates";
+      return "Não foi possível verificar atualizações";
     case "upToDate": {
       const ago = updates.checkedAt ? relativeTime(new Date(updates.checkedAt).toISOString(), now) : "";
-      return paused ? "Up to date. Updates are paused." : ago && ago !== "now" ? `Up to date, checked ${ago} ago` : "Up to date";
+      return paused ? "Em dia. Atualizações pausadas." : ago && ago !== "now" ? `Em dia, verificado há ${ago}` : "Em dia";
     }
     default:
-      return paused ? "Updates are paused" : autoUpdate ? "Helicon updates itself" : "Automatic updates are off";
+      return paused ? "Atualizações pausadas" : autoUpdate ? "O Helicon se atualiza sozinho" : "Atualizações automáticas desligadas";
   }
 }
 
-/** Desktop app updates. The footer icon carries a dot while a new version waits. */
+/** Atualizações do app desktop. O ícone do rodapé mostra um ponto enquanto uma nova versão espera. */
 function UpdatesMenu() {
   const controller = useController();
   const updates = useApp((s) => s.updates);
@@ -896,9 +896,9 @@ function UpdatesMenu() {
   const busy = status === "checking" || status === "downloading" || status === "installing";
   return (
     <Menu>
-      <Tip label={status === "ready" ? `Helicon ${version} is ready to install` : waiting ? `Helicon ${version} is available` : "Updates"} side="top">
+      <Tip label={status === "ready" ? `Helicon ${version} está pronto para instalar` : waiting ? `Helicon ${version} está disponível` : "Atualizações"} side="top">
         <MenuTrigger asChild>
-          <IconButton label="Updates" className="relative">
+          <IconButton label="Atualizações" className="relative">
             <Download size={15} />
             {waiting ? (
               <span
@@ -923,27 +923,27 @@ function UpdatesMenu() {
         <MenuSeparator />
         {status === "ready" ? (
           <MenuItem icon={<RotateCw size={14} />} onSelect={() => controller.restartToUpdate()}>
-            Restart to update
+            Reiniciar para atualizar
           </MenuItem>
         ) : null}
         {status === "available" ? (
           <MenuItem icon={<ArrowDownToLine size={14} />} onSelect={() => controller.downloadUpdate()}>
-            Download version {version}
+            Baixar a versão {version}
           </MenuItem>
         ) : null}
         <MenuItem icon={<RefreshCw size={14} />} disabled={busy} onSelect={() => controller.checkForUpdates()}>
-          Check for updates
+          Verificar atualizações
         </MenuItem>
         <MenuSeparator />
         <MenuCheck
           checked={autoUpdate}
           onChange={(on) => controller.setAutoUpdate(on)}
-          description="Download new versions in the background and install them when Helicon closes"
+          description="Baixar novas versões em segundo plano e instalá-las quando o Helicon fechar"
         >
-          Automatic updates
+          Atualizações automáticas
         </MenuCheck>
         <MenuItem icon={paused ? <Play size={14} /> : <Pause size={14} />} onSelect={() => controller.setUpdatesPaused(!paused)}>
-          {paused ? "Resume updates" : "Pause updates"}
+          {paused ? "Retomar atualizações" : "Pausar atualizações"}
         </MenuItem>
       </MenuContent>
     </Menu>
@@ -966,19 +966,19 @@ function ThemeMenu() {
   const icon = theme === "light" ? <Sun size={15} /> : theme === "dark" ? <Moon size={15} /> : <Monitor size={15} />;
   return (
     <Menu>
-      <Tip label="Theme" side="top">
+      <Tip label="Tema" side="top">
         <MenuTrigger asChild>
-          <IconButton label="Theme">{icon}</IconButton>
+          <IconButton label="Tema">{icon}</IconButton>
         </MenuTrigger>
       </Tip>
       <MenuContent side="top" align="end" className="min-w-[160px]">
         <MenuRadioGroup value={theme} onValueChange={(v) => controller.setTheme(v === "light" || v === "dark" ? v : "system")}>
-          <MenuOption value="system" icon={<Monitor size={14} />} label="System" />
-          <MenuOption value="light" icon={<Sun size={14} />} label="Light" />
-          <MenuOption value="dark" icon={<Moon size={14} />} label="Dark" />
+          <MenuOption value="system" icon={<Monitor size={14} />} label="Sistema" />
+          <MenuOption value="light" icon={<Sun size={14} />} label="Claro" />
+          <MenuOption value="dark" icon={<Moon size={14} />} label="Escuro" />
         </MenuRadioGroup>
         <MenuSeparator />
-        <p className="px-2.5 pt-1 pb-1.5 text-2xs font-medium text-subtle">Code</p>
+        <p className="px-2.5 pt-1 pb-1.5 text-2xs font-medium text-subtle">Código</p>
         <MenuRadioGroup
           value={codeTheme}
           onValueChange={(v) => controller.setCodeTheme(CODE_THEMES.includes(v as CodeTheme) ? (v as CodeTheme) : "helicon")}
@@ -1021,7 +1021,7 @@ function ResizeHandle() {
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label="Redimensionar barra lateral"
       tabIndex={0}
       onPointerDown={onPointerDown}
       onDoubleClick={() => controller.setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
@@ -1053,20 +1053,20 @@ function SidebarEmpty() {
   const discovering = useApp((s) => s.discovering);
   return (
     <div className="px-2 pt-3 text-sm">
-      <p className="font-medium text-fg">No projects yet</p>
+      <p className="font-medium text-fg">Nenhum projeto ainda</p>
       <p className="mt-1 text-xs leading-relaxed text-muted">
-        Add a folder to start a thread. Threads you ran from the Muse terminal show up here on their own.
+        Adicione uma pasta para começar uma conversa. Conversas que você rodou no terminal do Muse aparecem aqui sozinhas.
       </p>
       <button
         type="button"
         onClick={() => controller.setAddProjectOpen(true)}
         className="mt-3 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-accent-text hover:bg-hover"
       >
-        <FolderPlus size={14} /> Add project
+        <FolderPlus size={14} /> Adicionar projeto
       </button>
       {discovering ? (
         <p className="mt-3 flex items-center gap-2 text-xs text-subtle">
-          <Spinner size={10} /> Looking for Muse threads
+          <Spinner size={10} /> Procurando conversas do Muse
         </p>
       ) : null}
     </div>
