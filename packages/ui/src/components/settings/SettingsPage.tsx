@@ -11,7 +11,7 @@ import { CODE_THEME_LABELS, updateSummary } from "../sidebar/Sidebar.js";
 import { Modal } from "../ui/overlays.js";
 import { Button, IconButton, MOD, cn } from "../ui/primitives.js";
 
-/** A row's control: one choice out of a few. Scrolls sideways when the row is too narrow to wrap. */
+/** O controle de uma linha: uma escolha entre poucas. Rola de lado quando a linha é estreita demais. */
 function Pick<T extends string | null>(props: {
   value: T;
   options: readonly { value: T; label: string; hint?: string }[];
@@ -63,7 +63,7 @@ function Section(props: { title: string; children: ReactNode }) {
 function Row(props: { label: string; description?: string; children?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-t border-line px-4 py-3 first:border-t-0">
-      {/* A floor on the label, or a wide row of choices squeezes it to one word per line instead of wrapping. */}
+      {/* Um piso no rótulo, ou uma fileira larga de opções o espreme a uma palavra por linha em vez de quebrar. */}
       <div className="min-w-[13rem] flex-1 basis-64">
         <p className="text-sm text-fg">{props.label}</p>
         {props.description ? <p className="mt-0.5 text-xs text-pretty text-muted">{props.description}</p> : null}
@@ -73,7 +73,7 @@ function Row(props: { label: string; description?: string; children?: ReactNode 
   );
 }
 
-/** A fact about the install rather than a setting: shown so the answer is here and not in a tooltip. */
+/** Um fato sobre a instalação, não uma configuração: mostrado para que a resposta esteja aqui, não num balão. */
 function Fact(props: { label: string; value: string }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line px-4 py-2.5 first:border-t-0">
@@ -84,17 +84,17 @@ function Fact(props: { label: string; value: string }) {
 }
 
 const THEMES: readonly { value: ThemePref; label: string }[] = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+  { value: "system", label: "Sistema" },
+  { value: "light", label: "Claro" },
+  { value: "dark", label: "Escuro" },
 ];
 
 const GROUPS: readonly { value: GroupBy; label: string }[] = [
-  { value: "project", label: "Project" },
+  { value: "project", label: "Projeto" },
   { value: "status", label: "Status" },
 ];
 
-/** Everything Helicon lets you set, in one place: the menus around the app are shortcuts into this. */
+/** Tudo que o Helicon permite configurar, num lugar só: os menus do app são atalhos para cá. */
 export function SettingsPage() {
   const controller = useController();
   const prefs = useApp((s) => s.prefs);
@@ -112,20 +112,20 @@ export function SettingsPage() {
     <div className="@container flex h-full min-w-0 flex-col overflow-x-hidden overflow-y-auto">
       <header {...drag} className="mx-auto flex w-full max-w-[720px] shrink-0 items-center gap-3 px-4 pt-8 pb-1 @min-[520px]:px-6">
         <Button size="sm" variant="ghost" onClick={() => controller.navigate({ kind: "home" })}>
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={14} /> Voltar
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold text-fg">Settings</h1>
-          <p className="text-xs text-muted">Kept on this device. Nothing here changes a thread that is already running.</p>
+          <h1 className="text-lg font-semibold text-fg">Configurações</h1>
+          <p className="text-xs text-muted">Guardado neste aparelho. Nada aqui muda uma conversa que já está rodando.</p>
         </div>
       </header>
 
       <div className="mx-auto w-full min-w-0 max-w-[720px] px-4 pb-16 @min-[520px]:px-6">
-        <Section title="Appearance">
-          <Row label="Theme" description="Light, dark, or whatever this device is set to.">
+        <Section title="Aparência">
+          <Row label="Tema" description="Claro, escuro ou o que este aparelho estiver usando.">
             <Pick value={prefs.theme} options={THEMES} onChange={(value) => controller.setTheme(value)} />
           </Row>
-          <Row label="Code" description="Colours for code and diffs, independent of the app's own theme.">
+          <Row label="Código" description="Cores para código e diferenças, independentes do tema do app.">
             <Pick
               value={prefs.codeTheme}
               options={CODE_THEMES.map((name) => ({ value: name as CodeTheme, label: CODE_THEME_LABELS[name] }))}
@@ -134,57 +134,57 @@ export function SettingsPage() {
           </Row>
           <Row
             label="Zoom"
-            description={`How big the whole interface is. ${MOD} plus, ${MOD} minus and ${MOD} 0 adjust it anywhere; the percentage resets it.`}
+            description={`O tamanho da interface inteira. ${MOD} mais, ${MOD} menos e ${MOD} 0 ajustam em qualquer lugar; a porcentagem redefine.`}
           >
             <div className="flex items-center gap-1">
-              <IconButton label="Zoom out" size="xs" onClick={() => controller.zoomOut()} disabled={prefs.zoom <= ZOOM_MIN}>
+              <IconButton label="Reduzir" size="xs" onClick={() => controller.zoomOut()} disabled={prefs.zoom <= ZOOM_MIN}>
                 <Minus size={14} />
               </IconButton>
               <button
                 type="button"
-                title="Reset zoom to 100%"
+                title="Redefinir zoom para 100%"
                 onClick={() => controller.resetZoom()}
                 className="h-6 min-w-11 rounded-md px-1.5 text-xs text-muted tabular-nums transition-colors duration-100 hover:bg-hover hover:text-fg"
               >
                 {Math.round(prefs.zoom * 100)}%
               </button>
-              <IconButton label="Zoom in" size="xs" onClick={() => controller.zoomIn()} disabled={prefs.zoom >= ZOOM_MAX}>
+              <IconButton label="Ampliar" size="xs" onClick={() => controller.zoomIn()} disabled={prefs.zoom >= ZOOM_MAX}>
                 <Plus size={14} />
               </IconButton>
             </div>
           </Row>
         </Section>
 
-        <Section title="New threads">
-          <Row label="Model" description="What a new thread starts on. Changing it here leaves running threads alone.">
+        <Section title="Novas conversas">
+          <Row label="Modelo" description="Com o que uma nova conversa começa. Mudar aqui não afeta conversas em andamento.">
             {models.length === 0 ? (
-              <p className="text-xs text-subtle">No models loaded</p>
+              <p className="text-xs text-subtle">Nenhum modelo carregado</p>
             ) : (
               <Pick
                 value={prefs.defaultModelId}
                 options={models.map((model) => ({
                   value: model.modelId,
-                  // The contributor variants share a display name, so without this the list offers the same
-                  // word twice and there is no way to tell which button is which.
-                  label: model.contributor ? `${modelDisplayName(model.modelId)} · Contributor` : modelDisplayName(model.modelId),
-                  hint: model.contributor ? "Contributor tier: prompts and outputs may be used for product improvement." : undefined,
+                  // As variantes de contribuidor compartilham um nome de exibição, então sem isto a lista
+                  // ofereceria a mesma palavra duas vezes e não haveria como dizer qual botão é qual.
+                  label: model.contributor ? `${modelDisplayName(model.modelId)} · Contribuidor` : modelDisplayName(model.modelId),
+                  hint: model.contributor ? "Nível contribuidor: pedidos e respostas podem ser usados para melhoria do produto." : undefined,
                 }))}
                 onChange={(value) => void controller.setModel(value as string)}
               />
             )}
           </Row>
-          <Row label="Permissions" description="What Muse may do before it asks you.">
+          <Row label="Permissões" description="O que o Muse pode fazer antes de perguntar.">
             <Pick
               value={prefs.defaultMode}
               options={MODES.map((mode) => ({ value: mode.value as ApprovalMode, label: mode.label, hint: mode.description }))}
               onChange={(value) => void controller.setMode(value as ApprovalMode)}
             />
           </Row>
-          <Row label="Reasoning effort" description="How long the model thinks before answering. Auto lets Muse choose per turn.">
+          <Row label="Esforço de raciocínio" description="Quanto tempo o modelo pensa antes de responder. Automático deixa o Muse escolher por mensagem.">
             <Pick<ReasoningEffort | null>
               value={prefs.effort}
               options={[
-                { value: null, label: "Auto", hint: "Muse picks the effort for each turn" },
+                { value: null, label: "Automático", hint: "O Muse escolhe o esforço de cada mensagem" },
                 ...LEVELS.map((level) => ({ value: level.value, label: level.label, hint: level.description })),
               ]}
               onChange={(value) => controller.setEffort(value)}
@@ -192,102 +192,102 @@ export function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Threads list">
-          <Row label="Group by" description="How the sidebar arranges threads.">
+        <Section title="Lista de conversas">
+          <Row label="Agrupar por" description="Como a barra lateral organiza as conversas.">
             <Pick value={prefs.groupBy} options={GROUPS} onChange={(value) => controller.setGroupBy(value)} />
           </Row>
         </Section>
 
-        <Section title="Approvals">
+        <Section title="Aprovações">
           <Row
-            label="Answer approvals for me"
+            label="Responder aprovações por mim"
             description={
               bypassAll
-                ? "Every request is allowed once, in every thread, without showing you the command. Off when Helicon closes."
-                : "Muse asks whenever it cannot resolve a command, whatever its permission mode. This answers those for you, until Helicon closes."
+                ? "Cada pedido é permitido uma vez, em todas as conversas, sem mostrar o comando. Desliga quando o Helicon fecha."
+                : "O Muse pergunta sempre que não consegue resolver um comando, seja qual for o modo de permissão. Isto responde por você, até o Helicon fechar."
             }
           >
             <Toggle
               checked={bypassAll}
-              label="Answer approvals for me"
+              label="Responder aprovações por mim"
               onChange={(on) => (on ? setConfirmBypass(true) : controller.setBypassAll(false))}
             />
           </Row>
           {armedThreads > 0 ? (
-            <Row label={`${armedThreads} thread${armedThreads === 1 ? "" : "s"} answering on their own`} description="Armed from an approval card.">
+            <Row label={`${armedThreads} conversa${armedThreads === 1 ? "" : "s"} respondendo sozinha${armedThreads === 1 ? "" : "s"}`} description="Ativado a partir de um cartão de aprovação.">
               <Button size="sm" variant="secondary" onClick={() => controller.clearThreadBypass()}>
-                Ask again in all threads
+                Perguntar de novo em todas as conversas
               </Button>
             </Row>
           ) : null}
         </Section>
 
-        <Section title="Notifications">
+        <Section title="Notificações">
           <Row
-            label="Tell me when a thread needs me"
-            description="A system notification when a thread asks for approval, asks a question, finishes, fails, or its goal stops moving. Only while this window is in the background."
+            label="Me avisar quando uma conversa precisar de mim"
+            description="Uma notificação do sistema quando uma conversa pedir aprovação, fizer uma pergunta, terminar, falhar ou sua meta parar de andar. Só enquanto esta janela estiver em segundo plano."
           >
             <Toggle
               checked={prefs.notifications}
-              label="Notifications"
-              // Switching on has to ask, and a browser only grants permission from a real press.
+              label="Notificações"
+              // Ligar precisa pedir, e um navegador só concede permissão a partir de um clique de verdade.
               onChange={(on) => (on ? void controller.askToNotify() : controller.setPrefs({ notifications: false }))}
             />
           </Row>
         </Section>
 
         {updates ? (
-          <Section title="Updates">
+          <Section title="Atualizações">
             <Row label={`Helicon ${updates.currentVersion ?? ""}`} description={updateSummary(updates, prefs.autoUpdate, prefs.updatesPaused, now)}>
               <div className="flex flex-wrap items-center gap-2">
                 {updates.status === "ready" ? (
                   <Button size="sm" variant="primary" onClick={() => controller.restartToUpdate()}>
-                    <RotateCw size={13} /> Restart to update
+                    <RotateCw size={13} /> Reiniciar para atualizar
                   </Button>
                 ) : null}
                 {updates.status === "available" ? (
                   <Button size="sm" variant="secondary" onClick={() => controller.downloadUpdate()}>
-                    <ArrowDownToLine size={13} /> Download
+                    <ArrowDownToLine size={13} /> Baixar
                   </Button>
                 ) : null}
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => controller.checkForUpdates()}>
-                  <RefreshCw size={13} className={cn(updates.status === "checking" && "animate-spin")} /> Check now
+                  <RefreshCw size={13} className={cn(updates.status === "checking" && "animate-spin")} /> Verificar agora
                 </Button>
               </div>
             </Row>
-            {updates.error ? <Row label="Last error" description={updates.error} /> : null}
-            <Row label="Automatic updates" description="Download new versions in the background and install them when Helicon closes.">
-              <Toggle checked={prefs.autoUpdate} label="Automatic updates" onChange={(on) => controller.setAutoUpdate(on)} />
+            {updates.error ? <Row label="Último erro" description={updates.error} /> : null}
+            <Row label="Atualizações automáticas" description="Baixar novas versões em segundo plano e instalá-las quando o Helicon fechar.">
+              <Toggle checked={prefs.autoUpdate} label="Atualizações automáticas" onChange={(on) => controller.setAutoUpdate(on)} />
             </Row>
-            <Row label="Pause updates" description="No checking, downloading or installing until you resume.">
-              <Toggle checked={prefs.updatesPaused} label="Pause updates" onChange={(on) => controller.setUpdatesPaused(on)} />
+            <Row label="Pausar atualizações" description="Sem verificar, baixar ou instalar até você retomar.">
+              <Toggle checked={prefs.updatesPaused} label="Pausar atualizações" onChange={(on) => controller.setUpdatesPaused(on)} />
             </Row>
           </Section>
         ) : null}
 
-        <Section title="Environment">
-          <Fact label="Helicon" value={env?.version ?? "Unknown"} />
-          <Fact label="Platform" value={env?.platform ?? "Unknown"} />
+        <Section title="Ambiente">
+          <Fact label="Helicon" value={env?.version ?? "Desconhecido"} />
+          <Fact label="Plataforma" value={env?.platform ?? "Desconhecido"} />
           {env?.platform === "win32" ? (
             <Fact
-              label="Muse runs"
-              value={env.runtime === "native" ? "Natively on Windows" : `In WSL${env.wslAvailable && env.defaultDistro ? ` (${env.defaultDistro})` : ""}`}
+              label="O Muse roda"
+              value={env.runtime === "native" ? "Nativo no Windows" : `No WSL${env.wslAvailable && env.defaultDistro ? ` (${env.defaultDistro})` : ""}`}
             />
           ) : null}
-          <Fact label="Muse" value={env?.musePath ?? (env?.museFound ? "Found" : "Not found")} />
-          <Fact label="Sessions" value={env?.persistent ? "Kept on disk" : "In memory only"} />
+          <Fact label="Muse" value={env?.musePath ?? (env?.museFound ? "Encontrado" : "Não encontrado")} />
+          <Fact label="Sessões" value={env?.persistent ? "Guardadas em disco" : "Só em memória"} />
         </Section>
       </div>
 
       <Modal
         open={confirmBypass}
         onOpenChange={setConfirmBypass}
-        title="Answer approvals for you?"
-        description="Every approval Muse raises, in any thread, is allowed once without showing you the command first. Muse asks about the commands it could not resolve, so these are the ones nothing else has checked. This lasts until you close Helicon."
+        title="Responder aprovações por você?"
+        description="Toda aprovação que o Muse pedir, em qualquer conversa, é permitida uma vez sem mostrar o comando antes. O Muse pergunta sobre os comandos que não conseguiu resolver, então são estes que nada mais conferiu. Isto dura até você fechar o Helicon."
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmBypass(false)}>
-            Keep asking
+            Continuar perguntando
           </Button>
           <Button
             variant="danger"
@@ -296,7 +296,7 @@ export function SettingsPage() {
               controller.setBypassAll(true);
             }}
           >
-            Answer them for me
+            Responda por mim
           </Button>
         </div>
       </Modal>
