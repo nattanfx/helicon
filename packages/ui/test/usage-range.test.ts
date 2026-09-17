@@ -2,13 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { calendarDaysUtc, fillUsageDays, rangeLabel } from "../src/model/usage-range.js";
 
-describe("usage range", () => {
-  it("names a one-day window as 24 hours", () => {
-    assert.equal(rangeLabel(1), "24 hours");
-    assert.equal(rangeLabel(7), "7 days");
+describe("período de uso", () => {
+  it("nomeia uma janela de um dia como 24 horas", () => {
+    assert.equal(rangeLabel(1), "24 horas");
+    assert.equal(rangeLabel(7), "7 dias");
   });
 
-  it("lists every UTC day in the window, so 7d and 90d are different lengths", () => {
+  it("lista cada dia UTC na janela, então 7d e 90d têm tamanhos diferentes", () => {
     const until = new Date("2026-09-15T18:00:00.000Z");
     const week = calendarDaysUtc("2026-09-09T18:00:00.000Z", until);
     const quarter = calendarDaysUtc("2026-06-18T18:00:00.000Z", until);
@@ -18,7 +18,7 @@ describe("usage range", () => {
     assert.ok(quarter.length >= 89 && quarter.length <= 91);
   });
 
-  it("keeps days with no calls so the chart still spans the selected range", () => {
+  it("mantém dias sem chamadas para o gráfico ainda cobrir o período escolhido", () => {
     const until = new Date("2026-09-15T12:00:00.000Z");
     const filled = fillUsageDays(
       [{ day: "2026-09-14", cost: 3.68 }],
