@@ -18,10 +18,10 @@ type View =
 const INPUT = "h-11 min-w-0 flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-subtle";
 
 /**
- * Add a project: pick a source, then type or browse to a folder.
- * via T3 Code's add-project picker (github.com/pingdotgg/t3code), MIT (c) 2026 T3 Tools Inc.
- * Adapted: the box always holds a full path and the text after its last separator filters that
- * folder's subfolders; Enter adds the typed path unless a row is highlighted, which Enter opens.
+ * Adicionar um projeto: escolha uma fonte, depois digite ou navegue até uma pasta.
+ * via o seletor de adicionar projeto do T3 Code (github.com/pingdotgg/t3code), MIT (c) 2026 T3 Tools Inc.
+ * Adaptado: a caixa sempre guarda um caminho completo e o texto após seu último separador filtra as
+ * subpastas daquela pasta; Enter adiciona o caminho digitado a não ser que uma linha esteja destacada, e Enter a abre.
  */
 export function AddProjectDialog() {
   const controller = useController();
@@ -30,7 +30,7 @@ export function AddProjectDialog() {
     <Modal
       open={open}
       onOpenChange={(next) => controller.setAddProjectOpen(next)}
-      title="Add a project"
+      title="Adicionar um projeto"
       hideTitle
       bare
       className="top-[12vh] w-[min(640px,calc(100vw-32px))] overflow-hidden"
@@ -43,7 +43,7 @@ export function AddProjectDialog() {
 function ProjectPicker() {
   const projects = useApp((s) => s.projects);
   const [view, setView] = useState<View>({ kind: "sources" });
-  // Browsing starts next to the most recent project; the very first project starts at home.
+  // A navegação começa ao lado do projeto mais recente; o primeiríssimo projeto começa em casa.
   const [base] = useState(() => (projects[0] ? parentFolder(projects[0].cwd) : null) ?? "~/");
   const clone = (url: string) => setView({ kind: "destination", url, name: repoName(url) });
   if (view.kind === "sources") {
@@ -73,14 +73,14 @@ function GitHubMark() {
 }
 
 const SOURCES: { id: "local" | Provider; label: string; description: string; icon: ReactNode }[] = [
-  { id: "local", label: "Local folder", description: "Browse a folder on disk", icon: <FolderPlus size={17} /> },
-  { id: "git", label: "Git URL", description: "Clone from a remote URL", icon: <Link size={17} /> },
-  { id: "github", label: "GitHub repository", description: "Clone GitHub owner/repo", icon: <GitHubMark /> },
+  { id: "local", label: "Pasta local", description: "Navegar uma pasta no disco", icon: <FolderPlus size={17} /> },
+  { id: "git", label: "URL Git", description: "Clonar de uma URL remota", icon: <Link size={17} /> },
+  { id: "github", label: "Repositório GitHub", description: "Clonar owner/repo do GitHub", icon: <GitHubMark /> },
 ];
 
 /**
- * The first step takes a folder path or a Git URL directly: a full path switches straight to
- * browsing, a URL or `owner/repo` offers to clone, and the source rows cover the rest.
+ * O primeiro passo aceita um caminho de pasta ou uma URL Git direto: um caminho completo vai direto para a
+ * navegação, uma URL ou `owner/repo` oferece clonar, e as linhas de fonte cobrem o resto.
  */
 function Sources(props: { onPick: (id: "local" | Provider) => void; onPath: (path: string) => void; onClone: (url: string) => void }) {
   const windows = useApp((s) => s.env?.platform === "win32");
@@ -89,7 +89,7 @@ function Sources(props: { onPick: (id: "local" | Provider) => void; onPath: (pat
   const listId = useId();
   const url = value.trim() ? cloneUrl(value) : null;
   const rows: { id: "local" | Provider | "clone"; label: string; description: string; icon: ReactNode }[] = url
-    ? [{ id: "clone", label: `Clone ${url}`, description: "Next, pick where to clone it", icon: <Link size={17} /> }]
+    ? [{ id: "clone", label: `Clonar ${url}`, description: "Depois, escolha onde cloná-lo", icon: <Link size={17} /> }]
     : SOURCES;
   const active = Math.min(highlight, rows.length - 1);
   const pick = (id: (typeof rows)[number]["id"]) => {
@@ -124,8 +124,8 @@ function Sources(props: { onPick: (id: "local" | Provider) => void; onPath: (pat
           value={value}
           spellCheck={false}
           autoComplete="off"
-          placeholder={windows ? "Type a folder path like D:\\Projects, or paste a Git URL" : "Type a folder path like ~/code, or paste a Git URL"}
-          aria-label="Folder path or Git URL"
+          placeholder={windows ? "Digite um caminho de pasta como D:\\Projects, ou cole uma URL Git" : "Digite um caminho de pasta como ~/code, ou cole uma URL Git"}
+          aria-label="Caminho de pasta ou URL Git"
           role="combobox"
           aria-expanded
           aria-controls={listId}
@@ -144,8 +144,8 @@ function Sources(props: { onPick: (id: "local" | Provider) => void; onPath: (pat
         />
       </Header>
       <div className="p-1.5">
-        <p className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-subtle">{url ? "Repository" : "Sources"}</p>
-        <ul id={listId} role="listbox" aria-label={url ? "Repository" : "Sources"}>
+        <p className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-subtle">{url ? "Repositório" : "Fontes"}</p>
+        <ul id={listId} role="listbox" aria-label={url ? "Repositório" : "Fontes"}>
           {rows.map((row, index) => (
             <li
               key={row.id}
@@ -166,15 +166,15 @@ function Sources(props: { onPick: (id: "local" | Provider) => void; onPath: (pat
         </ul>
         {value.trim() && !url ? (
           <p className="px-2.5 py-2 text-xs text-muted">
-            {windows ? "Start with a drive like D:\\ or with ~/ to browse folders." : "Start with / or ~/ to browse folders."}
+            {windows ? "Comece com um drive como D:\\ ou com ~/ para navegar pastas." : "Comece com / ou ~/ para navegar pastas."}
           </p>
         ) : null}
       </div>
       <Footer
         hints={[
-          { keys: ["↑", "↓"], label: "Navigate" },
-          { keys: ["Enter"], label: "Select" },
-          { keys: ["Esc"], label: "Close" },
+          { keys: ["↑", "↓"], label: "Navegar" },
+          { keys: ["Enter"], label: "Selecionar" },
+          { keys: ["Esc"], label: "Fechar" },
         ]}
       />
     </>
@@ -194,13 +194,13 @@ function RemoteInput(props: { provider: Provider; onBack: () => void; onContinue
   };
   return (
     <>
-      <Header onBack={props.onBack} action={<ActionButton label="Continue" keys={["Enter"]} disabled={!url} onClick={submit} />}>
+      <Header onBack={props.onBack} action={<ActionButton label="Continuar" keys={["Enter"]} disabled={!url} onClick={submit} />}>
         <input
           autoFocus
           value={value}
           spellCheck={false}
           autoComplete="off"
-          aria-label={github ? "GitHub repository" : "Git URL"}
+          aria-label={github ? "Repositório GitHub" : "URL Git"}
           placeholder={github ? "owner/repo" : "https://github.com/owner/repo.git"}
           onChange={(event) => setValue(event.currentTarget.value)}
           onKeyDown={(event) => {
@@ -217,21 +217,21 @@ function RemoteInput(props: { provider: Provider; onBack: () => void; onContinue
       </Header>
       <div className="px-4 py-5 text-sm">
         {tried && !url ? (
-          <p className="text-danger-text">{github ? "Type the repository as owner/repo." : "That does not look like a Git URL or owner/repo."}</p>
+          <p className="text-danger-text">{github ? "Digite o repositório como owner/repo." : "Isto não parece uma URL Git nem owner/repo."}</p>
         ) : (
           <p className="text-muted">
             {github
-              ? "Type the repository as owner/repo. Private repositories use your Git credentials."
-              : "Paste an HTTPS or SSH URL, or GitHub owner/repo. Next, pick where to clone it."}
+              ? "Digite o repositório como owner/repo. Repositórios privados usam suas credenciais Git."
+              : "Cole uma URL HTTPS ou SSH, ou owner/repo do GitHub. Depois, escolha onde cloná-lo."}
           </p>
         )}
         {url ? <p className="mt-1.5 truncate font-mono text-xs text-subtle">{url}</p> : null}
       </div>
       <Footer
         hints={[
-          { keys: ["Enter"], label: "Continue" },
-          { keys: ["Backspace"], label: "Back" },
-          { keys: ["Esc"], label: "Close" },
+          { keys: ["Enter"], label: "Continuar" },
+          { keys: ["Backspace"], label: "Voltar" },
+          { keys: ["Esc"], label: "Fechar" },
         ]}
       />
     </>
@@ -240,7 +240,7 @@ function RemoteInput(props: { provider: Provider; onBack: () => void; onContinue
 
 type Row = { kind: "up"; path: string } | { kind: "folder"; name: string };
 
-/** Lists one folder, remembering every folder already listed while the picker is open. */
+/** Lista uma pasta, lembrando cada pasta já listada enquanto o seletor está aberto. */
 function useListing(directory: string): { data: DirectoryListing | null; error: string | null; loading: boolean } {
   const controller = useController();
   const cache = useRef(new Map<string, DirectoryListing>());
@@ -303,7 +303,7 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
     return data.parent && !leaf ? [{ kind: "up", path: withTrailingSeparator(data.parent, data.separator) }, ...folders] : folders;
   }, [data, leaf]);
 
-  // What Enter acts on: the listed folder itself, or the child the filter names, existing or not.
+  // Em que o Enter age: a própria pasta listada, ou a filha que o filtro nomeia, exista ou não.
   const target = useMemo(() => {
     if (!data) {
       return null;
@@ -317,7 +317,7 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
 
   const existing = !props.clone && target ? (projects.find((p) => sameFolder(p.cwd, target.path)) ?? null) : null;
 
-  // Typing carries on where it left off when the first step hands over a path.
+  // A digitação continua de onde parou quando o primeiro passo entrega um caminho.
   useEffect(() => {
     const element = inputRef.current;
     if (element) {
@@ -376,7 +376,7 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
         submit();
       }
     } else if (event.key === "Tab" && !event.shiftKey) {
-      // Tab completes into the highlighted folder, or the first one the filter matches.
+      // Tab completa para dentro da pasta destacada, ou a primeira que o filtro casa.
       const row = highlight >= 0 ? rows[highlight] : leaf ? rows.find((r) => r.kind === "folder") : undefined;
       if (row) {
         event.preventDefault();
@@ -388,29 +388,29 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
     }
   };
 
-  const action = props.clone ? "Clone" : existing ? "Open" : target && !target.exists ? "Create & Add" : "Add";
+  const action = props.clone ? "Clonar" : existing ? "Abrir" : target && !target.exists ? "Criar e adicionar" : "Adicionar";
   const highlighted = highlight >= 0;
-  const reveal = windows ? "Open in File Explorer" : platform === "darwin" ? "Open in Finder" : "Open in Files";
+  const reveal = windows ? "Abrir no Explorador de Arquivos" : platform === "darwin" ? "Abrir no Finder" : "Abrir em Arquivos";
 
   let note: ReactNode = null;
   if (!browsing) {
-    note = windows ? "Type a full path, like D:\\Projects or ~/code." : "Type a full path, like ~/code or /srv/app.";
+    note = windows ? "Digite um caminho completo, como D:\\Projects ou ~/code." : "Digite um caminho completo, como ~/code ou /srv/app.";
   } else if (listing.error) {
     note = <span className="text-danger-text">{listing.error}</span>;
   } else if (listing.loading) {
     note = (
       <span className="flex items-center gap-2">
-        <Spinner size={12} /> Loading folders
+        <Spinner size={12} /> Carregando pastas
       </span>
     );
   } else if (data && !data.exists) {
-    note = props.clone ? "This folder does not exist yet. Cloning creates it." : "This folder does not exist yet. Press Enter to create it and add it.";
+    note = props.clone ? "Esta pasta ainda não existe. Clonar a cria." : "Esta pasta ainda não existe. Pressione Enter para criá-la e adicioná-la.";
   } else if (data && rows.length === 0) {
     note = leaf
       ? props.clone
-        ? `Cloning creates ${leaf} here.`
-        : `No folder starts with “${leaf}”. Press Enter to create it.`
-      : "No folders here.";
+        ? `Clonar cria ${leaf} aqui.`
+        : `Nenhuma pasta começa com “${leaf}”. Pressione Enter para criá-la.`
+      : "Sem pastas aqui.";
   }
 
   return (
@@ -425,7 +425,7 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
           value={input}
           spellCheck={false}
           autoComplete="off"
-          aria-label={props.clone ? "Folder to clone into" : "Folder path"}
+          aria-label={props.clone ? "Pasta onde clonar" : "Caminho da pasta"}
           role="combobox"
           aria-expanded
           aria-controls={listId}
@@ -441,8 +441,8 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
         />
       </Header>
       <div className="h-[min(22rem,55vh)] overflow-y-auto p-1.5">
-        <p className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-subtle">{props.clone ? "Clone into" : "Folders"}</p>
-        <ul ref={listRef} id={listId} role="listbox" aria-label="Folders">
+        <p className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-subtle">{props.clone ? "Clonar em" : "Pastas"}</p>
+        <ul ref={listRef} id={listId} role="listbox" aria-label="Pastas">
           {rows.map((row, index) => (
             <li
               key={row.kind === "up" ? ".." : row.name}
@@ -475,10 +475,10 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
       </div>
       <Footer
         hints={[
-          { keys: ["↑", "↓"], label: "Navigate" },
-          { keys: ["Enter"], label: highlighted ? "Open folder" : action },
-          { keys: ["Backspace"], label: "Back" },
-          { keys: ["Esc"], label: "Close" },
+          { keys: ["↑", "↓"], label: "Navegar" },
+          { keys: ["Enter"], label: highlighted ? "Abrir pasta" : action },
+          { keys: ["Backspace"], label: "Voltar" },
+          { keys: ["Esc"], label: "Fechar" },
         ]}
         right={
           data?.exists ? (
@@ -499,7 +499,7 @@ function FolderBrowser(props: { initial: string; clone: string | null; onBack: (
 function Header(props: { onBack?: () => void; icon?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex h-14 items-center gap-2 border-b border-line pr-3 pl-2">
-      {/* The leading slot is the same width in every step, so the input never jumps between them. */}
+      {/* O espaço inicial tem a mesma largura em todo passo, então o campo nunca pula entre eles. */}
       {props.icon && !props.onBack ? (
         <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center text-subtle">
           {props.icon}
@@ -507,7 +507,7 @@ function Header(props: { onBack?: () => void; icon?: ReactNode; action?: ReactNo
       ) : props.onBack ? (
         <button
           type="button"
-          aria-label="Back"
+          aria-label="Voltar"
           onClick={props.onBack}
           className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-hover hover:text-fg"
         >
