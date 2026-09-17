@@ -1,7 +1,7 @@
 import type { ProjectView, SessionSummary } from "../types.js";
 import type { ThreadFold } from "./fold.js";
 
-/** What a thread needs from the user right now, most urgent first. */
+/** O que uma conversa precisa do usuário agora, do mais urgente para o menos. */
 export type ThreadStatus = "approval" | "input" | "running" | "failed" | "unread" | "idle";
 
 export const STATUS_PRIORITY: Record<ThreadStatus, number> = {
@@ -14,21 +14,21 @@ export const STATUS_PRIORITY: Record<ThreadStatus, number> = {
 };
 
 export const STATUS_LABEL: Record<ThreadStatus, string> = {
-  approval: "Needs approval",
-  input: "Needs your answer",
-  running: "Working",
-  failed: "Failed",
-  unread: "Done, not seen yet",
-  idle: "Idle",
+  approval: "Precisa de aprovação",
+  input: "Precisa da sua resposta",
+  running: "Trabalhando",
+  failed: "Falhou",
+  unread: "Pronto, ainda não visto",
+  idle: "Inativa",
 };
 
 export interface StatusContext {
   fold?: ThreadFold | null;
-  /** When the user last looked at this thread (ISO). */
+  /** Quando o usuário olhou esta conversa pela última vez (ISO). */
   lastSeen?: string | null;
-  /** Activity before this instant counts as seen; set on first run so old history is not "unread". */
+  /** Atividade antes deste instante conta como vista; definido na primeira execução para o histórico antigo não ficar "não lido". */
   baseline: string;
-  /** The thread is open on screen. */
+  /** A conversa está aberta na tela. */
   active: boolean;
 }
 
@@ -68,14 +68,14 @@ export interface SidebarEntry {
   status: ThreadStatus;
 }
 
-/** Settled threads leave the active list, unless they are busy again before the server has caught up. */
+/** Conversas resolvidas saem da lista ativa, a não ser que voltem a ficar ocupadas antes de o servidor acompanhar. */
 export function isSettled(entry: SidebarEntry): boolean {
   return entry.session.settled && !isLive(entry.status);
 }
 
 /**
- * Active threads keep a stable order, newest first by when they started or were brought back.
- * Activity never reshuffles them, as in T3 Code; settling and auto-settle keep the list short.
+ * Conversas ativas mantêm uma ordem estável, as mais novas primeiro pelo início ou pelo retorno.
+ * A atividade nunca as reordena, como no T3 Code; a resolução e a resolução automática mantêm a lista curta.
  */
 function activeOrder(a: SidebarEntry, b: SidebarEntry): number {
   const keyA = later(a.session.unsettledAt, a.session.createdAt);
@@ -83,7 +83,7 @@ function activeOrder(a: SidebarEntry, b: SidebarEntry): number {
   return keyA < keyB ? 1 : keyA > keyB ? -1 : 0;
 }
 
-/** Settled threads, most recently settled first. */
+/** Conversas resolvidas, as resolvidas mais recentemente primeiro. */
 function settledOrder(a: SidebarEntry, b: SidebarEntry): number {
   const keyA = a.session.settledAt ?? a.session.activityAt;
   const keyB = b.session.settledAt ?? b.session.activityAt;
@@ -92,7 +92,7 @@ function settledOrder(a: SidebarEntry, b: SidebarEntry): number {
 
 export interface ProjectGroup {
   project: ProjectView;
-  /** Active threads, in their stable order. */
+  /** Conversas ativas, em sua ordem estável. */
   entries: SidebarEntry[];
   settled: SidebarEntry[];
   attention: number;
@@ -128,13 +128,13 @@ export interface StatusGroup {
 }
 
 const STATUS_GROUPS: { id: StatusGroupId; label: string; statuses: ThreadStatus[] }[] = [
-  { id: "attention", label: "Needs you", statuses: ["approval", "input"] },
-  { id: "running", label: "Working", statuses: ["running"] },
-  { id: "review", label: "Ready for review", statuses: ["failed", "unread"] },
-  { id: "idle", label: "Idle", statuses: ["idle"] },
+  { id: "attention", label: "Precisam de você", statuses: ["approval", "input"] },
+  { id: "running", label: "Trabalhando", statuses: ["running"] },
+  { id: "review", label: "Prontas para revisar", statuses: ["failed", "unread"] },
+  { id: "idle", label: "Inativas", statuses: ["idle"] },
 ];
 
-/** Active threads by what they need; settled ones are left for `settledEntries`. */
+/** Conversas ativas pelo que precisam; as resolvidas ficam para `settledEntries`. */
 export function groupByStatus(entries: SidebarEntry[]): StatusGroup[] {
   const active = entries.filter((e) => !isSettled(e));
   return STATUS_GROUPS.map((group) => ({
