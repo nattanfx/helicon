@@ -1,13 +1,13 @@
 import type { ThreadFold } from "./fold.js";
 
 /**
- * A thread's goal, the way Muse keeps working toward an objective across turns. Muse reports the goal
- * block live (`session/goalChanged`: objective, status, percent, current and next work); its goal tools
- * return the full record, with when it started, its token count and budget. Helicon adds what neither
- * says outright: how long it has run, and how many turns and tokens its work took.
+ * A meta de uma conversa, o jeito de o Muse seguir perseguindo um objetivo entre mensagens. O Muse informa o bloco
+ * de meta ao vivo (`session/goalChanged`: objetivo, status, porcentagem, trabalho atual e seguinte); suas ferramentas
+ * de meta devolvem o registro completo, com quando começou, sua contagem de tokens e orçamento. O Helicon soma o que
+ * nenhum dos dois diz direto: há quanto tempo executa, e quantas mensagens e tokens seu trabalho levou.
  */
 
-/** Muse's full goal record, from the output of its goal tools. */
+/** O registro completo de meta do Muse, da saída de suas ferramentas de meta. */
 export interface GoalRecord {
   goalId: string | null;
   objective: string;
@@ -18,27 +18,27 @@ export interface GoalRecord {
   createdAt: number | null;
   updatedAt: number | null;
   lastProgressAt: number | null;
-  /** Muse's own count, updated when a goal tool runs. */
+  /** A contagem do próprio Muse, atualizada quando uma ferramenta de meta executa. */
   tokensUsed: number | null;
   tokenBudget: number | null;
 }
 
-/** The model's goal tools; each returns the whole record as `{"goal": {...}}`. */
+/** As ferramentas de meta do modelo; cada uma devolve o registro inteiro como `{"goal": {...}}`. */
 export const GOAL_TOOLS: ReadonlySet<string> = new Set(["create_goal", "update_goal", "report_progress", "get_goal"]);
 
 export type GoalTone = "active" | "paused" | "done" | "attention" | "ended";
 
 const STATUS: Record<string, { label: string; tone: GoalTone }> = {
-  active: { label: "In progress", tone: "active" },
-  paused: { label: "Paused", tone: "paused" },
-  complete: { label: "Done", tone: "done" },
-  blocked: { label: "Blocked", tone: "attention" },
-  budget_limited: { label: "Out of budget", tone: "attention" },
-  usage_limited: { label: "Usage limit reached", tone: "attention" },
-  cleared: { label: "Cleared", tone: "ended" },
-  cancelled: { label: "Cancelled", tone: "ended" },
-  superseded: { label: "Replaced", tone: "ended" },
-  abandoned: { label: "Abandoned", tone: "ended" },
+  active: { label: "Em andamento", tone: "active" },
+  paused: { label: "Pausada", tone: "paused" },
+  complete: { label: "Concluída", tone: "done" },
+  blocked: { label: "Bloqueada", tone: "attention" },
+  budget_limited: { label: "Sem orçamento", tone: "attention" },
+  usage_limited: { label: "Limite de uso atingido", tone: "attention" },
+  cleared: { label: "Apagada", tone: "ended" },
+  cancelled: { label: "Cancelada", tone: "ended" },
+  superseded: { label: "Substituída", tone: "ended" },
+  abandoned: { label: "Abandonada", tone: "ended" },
 };
 
 export interface GoalView {
@@ -46,24 +46,24 @@ export interface GoalView {
   status: string;
   label: string;
   tone: GoalTone;
-  /** Clamped to 0 to 100; Muse passes larger values through. */
+  /** Limitada de 0 a 100; o Muse deixa passar valores maiores. */
   percent: number;
   currentWork: string | null;
   nextWork: string | null;
   startedAt: number | null;
-  /** When the clock stopped, for a goal no longer in progress. */
+  /** Quando o relógio parou, para uma meta que não está mais em andamento. */
   endedAt: number | null;
-  /** Time it spent paused or blocked before it last resumed, which is not running time. */
+  /** Tempo que passou pausada ou bloqueada antes de retomar pela última vez, que não é tempo executando. */
   pausedMs: number;
   lastProgressAt: number | null;
-  /** Turns that did work toward the goal. */
+  /** Mensagens que trabalharam pela meta. */
   turns: number;
-  /** Those same turns by id, so the goal can be priced over exactly the work its token count covers. */
+  /** Essas mesmas mensagens por id, para a meta ser precificada exatamente sobre o trabalho que sua contagem de tokens cobre. */
   turnIds: string[];
-  /** Input plus output tokens of those turns' model calls. */
+  /** Tokens de entrada mais saída das chamadas ao modelo dessas mensagens. */
   tokens: number;
   tokenBudget: number | null;
-  /** Muse's own token count for the goal, as of its last goal tool call. */
+  /** A contagem de tokens do próprio Muse para a meta, na sua última chamada de ferramenta de meta. */
   tokensUsed: number | null;
 }
 
@@ -75,7 +75,7 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-/** Parses a goal tool's output. Null when it is not a goal record, as with a failed or cut-off call. */
+/** Interpreta a saída de uma ferramenta de meta. Nulo quando não é um registro de meta, como numa chamada falha ou cortada. */
 export function parseGoalRecord(output: string | undefined): GoalRecord | null {
   if (!output) {
     return null;
@@ -110,7 +110,7 @@ export function parseGoalRecord(output: string | undefined): GoalRecord | null {
   };
 }
 
-/** The newest goal record in the thread, with the turn whose tool call returned it. */
+/** O registro de meta mais novo na conversa, com a mensagem cuja chamada de ferramenta o devolveu. */
 export function latestGoalRecord(fold: ThreadFold): { record: GoalRecord; turnId: string | null } | null {
   for (let index = fold.order.length - 1; index >= 0; index -= 1) {
     const item = fold.items[fold.order[index] as string];
@@ -130,10 +130,10 @@ export function statusLabel(status: string): { label: string; tone: GoalTone } {
     return known;
   }
   const words = status.replace(/[_-]+/g, " ").trim();
-  return { label: words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : "Unknown", tone: "paused" };
+  return { label: words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : "Desconhecida", tone: "paused" };
 }
 
-/** Turns with work recorded while the goal ran: from `start` to `end`, outside its pauses, plus the turn that set it. */
+/** Mensagens com trabalho registrado enquanto a meta executou: de `start` a `end`, fora de suas pausas, mais a mensagem que a definiu. */
 function goalTurns(fold: ThreadFold, start: number, end: number | null, setIn: string | null): Set<string> {
   const turns = new Set<string>();
   if (setIn) {
@@ -149,7 +149,7 @@ function goalTurns(fold: ThreadFold, start: number, end: number | null, setIn: s
       turns.add(item.turnId);
     }
   }
-  // A live turn may not have a recorded item yet.
+  // Uma mensagem ao vivo pode ainda não ter um item registrado.
   for (const info of Object.values(fold.turns)) {
     if (info.startedAt !== undefined && inside(info.startedAt)) {
       turns.add(info.turnId);
@@ -159,13 +159,13 @@ function goalTurns(fold: ThreadFold, start: number, end: number | null, setIn: s
 }
 
 /**
- * Everything the goal panel shows, or null when the thread has no goal. The live block wins for status
- * and progress; the record, when it describes the same objective, supplies times, budget and Muse's count.
+ * Tudo que o painel de meta mostra, ou nulo quando a conversa não tem meta. O bloco ao vivo vence para status
+ * e progresso; o registro, quando descreve o mesmo objetivo, fornece tempos, orçamento e a contagem do Muse.
  */
 export function goalView(fold: ThreadFold): GoalView | null {
   const block = fold.meta.goal;
   const latest = latestGoalRecord(fold);
-  // A goal Muse cleared stays cleared, even though an older tool record still describes it.
+  // Uma meta que o Muse apagou fica apagada, mesmo que um registro de ferramenta mais antigo ainda a descreva.
   if (!block && (fold.meta.goalSeen || !latest)) {
     return null;
   }
@@ -174,7 +174,7 @@ export function goalView(fold: ThreadFold): GoalView | null {
   const status = block?.status ?? record?.status ?? "active";
   const { label, tone } = statusLabel(status);
   const startedAt = record?.createdAt ?? fold.meta.goalSince;
-  // The clock stops when the status last changed: seen live, or the record's own update when it describes this status.
+  // O relógio para quando o status mudou pela última vez: visto ao vivo, ou a atualização do próprio registro quando descreve este status.
   const endedAt = tone === "active" ? null : (fold.meta.goalStatusAt ?? (record && record.status === status ? record.updatedAt : null));
   const turns = startedAt === null ? new Set<string>() : goalTurns(fold, startedAt, endedAt, record ? latest?.turnId ?? null : null);
   let tokens = 0;
@@ -204,7 +204,7 @@ export function goalView(fold: ThreadFold): GoalView | null {
   };
 }
 
-/** What `/goal <objective>` sends: Muse's terminal UI sets goals itself, a served session asks the model. */
+/** O que `/goal <objetivo>` envia: a UI de terminal do Muse define metas sozinha, uma sessão servida pede ao modelo. */
 export function goalPrompt(objective: string): string {
   return `Create a goal with your create_goal tool. Objective: ${objective.trim()}\nThen work toward it until it is complete.`;
 }
