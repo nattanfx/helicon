@@ -41,7 +41,7 @@ function duration(ms: number): string {
   return ms > 0 ? formatDuration(ms) || "0s" : "0s";
 }
 
-/** The composer's context ring. Opens the context window and session usage panel. */
+/** O anel de contexto do composer. Abre o painel da janela de contexto e do uso da sessão. */
 export function ContextMeter(props: { sessionId: string }) {
   const usage = useApp((s) => {
     const fold = s.threads[props.sessionId]?.fold;
@@ -57,11 +57,11 @@ export function ContextMeter(props: { sessionId: string }) {
   const circumference = 2 * Math.PI * radius;
   return (
     <Popover.Root>
-      <Tip label={`${formatTokens(usage.usedTokens)} of ${formatTokens(usage.windowTokens)} tokens in context`}>
+      <Tip label={`${formatTokens(usage.usedTokens)} de ${formatTokens(usage.windowTokens)} tokens no contexto`}>
         <Popover.Trigger asChild>
           <button
             type="button"
-            aria-label={`Context window ${percent} used`}
+            aria-label={`Janela de contexto ${percent} usada`}
             className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-1.5 text-2xs text-subtle tabular-nums transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="-rotate-90">
@@ -97,7 +97,7 @@ export function ContextMeter(props: { sessionId: string }) {
   );
 }
 
-/** Mounted only while the popover is open, so a streaming thread does not recompute it. */
+/** Montado só enquanto o popover está aberto, para uma conversa em streaming não recalcular. */
 function ContextPanel(props: { sessionId: string }) {
   const controller = useController();
   const fold = useApp((s) => s.threads[props.sessionId]?.fold ?? null);
@@ -118,7 +118,7 @@ function ContextPanel(props: { sessionId: string }) {
           onClick={() => setExpanded((open) => !open)}
           className="-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-100 hover:bg-hover"
         >
-          <span className="text-sm text-muted">Context window</span>
+          <span className="text-sm text-muted">Janela de contexto</span>
           <span className="flex-1" />
           <span className="text-xs text-muted tabular-nums">
             {formatTokens(breakdown.used)} / {formatTokens(breakdown.window)} ({share(breakdown.used, breakdown.window)})
@@ -138,7 +138,7 @@ function ContextPanel(props: { sessionId: string }) {
             onClick={() => void controller.compact(props.sessionId)}
             className="shrink-0 font-medium text-accent-text underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-40"
           >
-            Compact session
+            Compactar sessão
           </button>
         </div>
       </section>
@@ -158,14 +158,14 @@ function SegmentBar(props: { breakdown: ContextBreakdown }) {
   return (
     <div
       role="img"
-      aria-label={`${share(used, window)} of the context window used`}
+      aria-label={`${share(used, window)} da janela de contexto usada`}
       className="mt-2 flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-active"
     >
       {slices.map((slice) => (
         <span
           key={slice.key}
           className={cn("h-full shrink-0 first:rounded-l-full", SLICE_COLOR[slice.key])}
-          // A sliver stays visible even for a category far under one percent.
+          // Uma fatia mínima continua visível mesmo para uma categoria bem abaixo de um por cento.
           style={{ width: `${Math.max((slice.tokens / whole) * 100, 0.6)}%` }}
         />
       ))}
@@ -185,12 +185,12 @@ function Breakdown(props: { breakdown: ContextBreakdown; usage: SessionUsage }) 
           <Row key={slice.key} swatch={SLICE_COLOR[slice.key]} label={slice.label} value={`≈${formatTokens(slice.tokens)}`} share={share(slice.tokens, breakdown.window)} />
         ))}
         {breakdown.free !== null ? (
-          <Row swatch="bg-active" label="Free space" value={formatTokens(breakdown.free)} share={share(breakdown.free, breakdown.window)} />
+          <Row swatch="bg-active" label="Espaço livre" value={formatTokens(breakdown.free)} share={share(breakdown.free, breakdown.window)} />
         ) : null}
       </ul>
       {usage.tools.length > 0 ? (
         <Group
-          label="Tool results this session"
+          label="Resultados de ferramentas nesta sessão"
           total={`≈${formatTokens(toolTokens)}`}
           count={`${toolCalls}`}
           rows={usage.tools.map((tool) => ({ key: tool.tool, label: tool.tool, value: `≈${formatTokens(tool.tokens)}`, aside: `${tool.calls}×` }))}
@@ -198,14 +198,14 @@ function Breakdown(props: { breakdown: ContextBreakdown; usage: SessionUsage }) 
       ) : null}
       {usage.subagents.length > 0 ? (
         <Group
-          label="Subagents"
+          label="Subagentes"
           total={formatTokens(subagentTokens)}
           count={`${usage.subagents.length}`}
           rows={usage.subagents.map((agent) => ({ key: agent.itemId, label: agent.label, value: formatTokens(agent.tokens) }))}
         />
       ) : null}
       <p className="mt-2.5 text-2xs leading-4 text-subtle">
-        Muse reports the total. The split marked ≈ is estimated from this thread&apos;s text.
+        O Muse informa o total. A divisão marcada com ≈ é estimada a partir do texto desta conversa.
       </p>
     </div>
   );
@@ -256,12 +256,12 @@ function Group(props: { label: string; total: string; count: string; rows: { key
 
 function Pressure(props: { pressure: string }) {
   if (props.pressure === "blocked") {
-    return <span className="font-medium text-danger-text">Full. Compact the session to continue.</span>;
+    return <span className="font-medium text-danger-text">Cheia. Compacte a sessão para continuar.</span>;
   }
   if (props.pressure === "warning") {
-    return <span className="font-medium text-warn-text">Filling up</span>;
+    return <span className="font-medium text-warn-text">Enchendo</span>;
   }
-  return <span className="text-muted">Plenty of room</span>;
+  return <span className="text-muted">Muito espaço</span>;
 }
 
 function Divider() {
@@ -282,33 +282,33 @@ function ThisSession(props: { usage: SessionUsage }) {
   const { usage } = props;
   const cost =
     usage.cost === null ? (
-      <Tip label="Muse's catalog lists no price for the models used here">
+      <Tip label="O catálogo do Muse não lista preço para os modelos usados aqui">
         <span className="cursor-default text-fg" tabIndex={0}>
-          Not listed
+          Sem preço
         </span>
       </Tip>
     ) : (
-      <span className="text-fg tabular-nums" title={usage.costComplete ? "Estimated from catalog prices" : "Some calls used a model without a price"}>
+      <span className="text-fg tabular-nums" title={usage.costComplete ? "Estimado a partir dos preços do catálogo" : "Algumas chamadas usaram um modelo sem preço"}>
         {usage.costComplete ? "≈" : "≥"}
         {money(usage.cost, usage.currency)}
       </span>
     );
   return (
     <section className="px-3.5 py-3">
-      <Heading>This session</Heading>
+      <Heading>Esta sessão</Heading>
       <div className="mt-1.5 grid grid-cols-3 gap-2 text-xs">
         <span className="flex min-w-0 gap-1.5">
-          <span className="text-muted">Cost</span>
+          <span className="text-muted">Custo</span>
           {cost}
         </span>
         <span className="flex min-w-0 gap-1.5 tabular-nums">
-          <span className="text-muted">Lines</span>
+          <span className="text-muted">Linhas</span>
           <span className="text-ok-text">+{usage.lines.added}</span>
           <span className="text-danger-text">−{usage.lines.removed}</span>
         </span>
         <span className="flex min-w-0 gap-1.5">
-          <span className="text-muted">Cache hit</span>
-          <span className="text-fg tabular-nums">{usage.cacheHit === null ? "none yet" : `${Math.round(usage.cacheHit * 100)}%`}</span>
+          <span className="text-muted">Acerto de cache</span>
+          <span className="text-fg tabular-nums">{usage.cacheHit === null ? "nenhum ainda" : `${Math.round(usage.cacheHit * 100)}%`}</span>
         </span>
       </div>
     </section>
@@ -317,16 +317,16 @@ function ThisSession(props: { usage: SessionUsage }) {
 
 function Tokens(props: { usage: SessionUsage }) {
   const { usage } = props;
-  const modelLabel = usage.models.length === 1 ? modelDisplayName(usage.models[0]?.modelId) : usage.models.length > 1 ? `${usage.models.length} models` : null;
+  const modelLabel = usage.models.length === 1 ? modelDisplayName(usage.models[0]?.modelId) : usage.models.length > 1 ? `${usage.models.length} modelos` : null;
   return (
     <section className="px-3.5 py-3">
       <Heading aside={modelLabel}>Tokens</Heading>
       <dl className="mt-1 divide-y divide-line text-xs">
-        <Line label="Input" hint="Prompt tokens, each counted once" value={formatTokens(usage.promptTokens)} />
-        <Line label="Output" value={formatTokens(usage.outputTokens)} />
-        {usage.reasoningTokens > 0 ? <Line label="Reasoning" hint="Part of the output" value={formatTokens(usage.reasoningTokens)} /> : null}
-        <Line label="Cache read" value={formatTokens(usage.cacheReadTokens || usage.cachedTokens)} />
-        <Line label="Cache write" value={formatTokens(usage.cacheWriteTokens)} />
+        <Line label="Entrada" hint="Tokens de prompt, cada um contado uma vez" value={formatTokens(usage.promptTokens)} />
+        <Line label="Saída" value={formatTokens(usage.outputTokens)} />
+        {usage.reasoningTokens > 0 ? <Line label="Raciocínio" hint="Parte da saída" value={formatTokens(usage.reasoningTokens)} /> : null}
+        <Line label="Leitura de cache" value={formatTokens(usage.cacheReadTokens || usage.cachedTokens)} />
+        <Line label="Escrita de cache" value={formatTokens(usage.cacheWriteTokens)} />
         <Line label="Total" value={formatTokens(usage.totalTokens)} strong />
       </dl>
       {usage.models.length > 1 ? (
@@ -334,7 +334,7 @@ function Tokens(props: { usage: SessionUsage }) {
           {usage.models.map((model) => (
             <li key={model.modelId} className="flex items-center gap-2 text-muted">
               <span className="min-w-0 flex-1 truncate">{modelDisplayName(model.modelId)}</span>
-              <span className="tabular-nums">{model.calls} calls</span>
+              <span className="tabular-nums">{model.calls} chamadas</span>
               <span className="w-14 text-right tabular-nums">{formatTokens(model.promptTokens + model.outputTokens)}</span>
               <span className="w-14 text-right tabular-nums">{model.cost === null ? "" : money(model.cost, usage.currency)}</span>
             </li>
@@ -362,21 +362,21 @@ function Activity(props: { usage: SessionUsage }) {
   const { usage } = props;
   return (
     <section className="px-3.5 pt-3 pb-3.5">
-      <Heading>Activity</Heading>
+      <Heading>Atividade</Heading>
       <dl className="mt-1.5 grid grid-cols-2 gap-x-5 gap-y-1 text-xs">
-        <Pair label="Turns" value={`${usage.turns}`} />
-        <Pair label="Model calls" value={`${usage.calls}`} />
-        <Pair label="Time working" value={duration(usage.workedMs)} />
-        <Pair label="Model time" value={duration(usage.modelMs)} />
-        {usage.firstTokenMs !== null ? <Pair label="First token" value={duration(usage.firstTokenMs)} /> : null}
-        {usage.lines.files > 0 ? <Pair label="Files changed" value={`${usage.lines.files}`} /> : null}
+        <Pair label="Mensagens" value={`${usage.turns}`} />
+        <Pair label="Chamadas ao modelo" value={`${usage.calls}`} />
+        <Pair label="Tempo trabalhando" value={duration(usage.workedMs)} />
+        <Pair label="Tempo de modelo" value={duration(usage.modelMs)} />
+        {usage.firstTokenMs !== null ? <Pair label="Primeiro token" value={duration(usage.firstTokenMs)} /> : null}
+        {usage.lines.files > 0 ? <Pair label="Arquivos alterados" value={`${usage.lines.files}`} /> : null}
       </dl>
       {usage.compactions.length > 0 ? (
         <ul className="mt-2 flex flex-col gap-1 text-xs">
           {usage.compactions.map((record) => (
             <li key={record.itemId} className="flex items-center gap-2 text-muted">
               <span className="min-w-0 flex-1 truncate">
-                {record.trigger === "auto" ? "Automatic compaction" : "Compaction"}
+                {record.trigger === "auto" ? "Compactação automática" : "Compactação"}
                 {record.outcome && record.outcome !== "compacted" ? ` (${record.outcome})` : ""}
               </span>
               {record.before !== null && record.after !== null ? (
