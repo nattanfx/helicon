@@ -19,7 +19,7 @@ function lowerFirst(text: string): string {
 
 const PANEL = "enter-up overflow-hidden rounded-2xl bg-raised shadow-[0_0_0_1px_var(--warn-line),0_2px_8px_-4px_oklch(0_0_0/0.18)]";
 
-/** Refusals carry a cross, a plain yes a tick, and a yes that writes a rule the heavier badge. */
+/** Recusas levam um X, um sim simples um tique, e um sim que grava regra o selo mais pesado. */
 function choiceIcon(choice: ApprovalChoice) {
   if (choice.decision !== "approved") {
     return <X size={13} />;
@@ -27,7 +27,7 @@ function choiceIcon(choice: ApprovalChoice) {
   return choice.rulePreview ? <CircleCheck size={13} /> : <Check size={13} />;
 }
 
-/** The refusal among the offered choices, whatever the host calls it. */
+/** A recusa entre as opções oferecidas, seja qual for o nome que o host lhe dá. */
 function refusalOf(choices: readonly ApprovalChoice[]): ApprovalChoice | undefined {
   return choices.find((choice) => choice.decision !== "approved");
 }
@@ -61,7 +61,7 @@ export function ApprovalPanel(props: { request: ApprovalRequest; primary: boolea
       if (isTyping(event.target) || event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
-      // A and R are the ones worth reaching for; the digits still pick any choice, including the rule ones.
+      // A e R são os atalhos que valem a pena; os dígitos escolhem qualquer opção, incluindo as de regra.
       const key = event.key.toLowerCase();
       if (key === "a" || key === "r") {
         const wanted = key === "a" ? primaryChoice : refusalOf(choices);
@@ -84,18 +84,18 @@ export function ApprovalPanel(props: { request: ApprovalRequest; primary: boolea
 
   const stageCount = request.subject?.stages?.length ?? 0;
   return (
-    <section aria-label="Approval needed" className={PANEL}>
+    <section aria-label="Aprovação necessária" className={PANEL}>
       <div className="flex items-start gap-3 px-4 pt-3.5">
         <span className="mt-px flex size-7 shrink-0 items-center justify-center rounded-lg bg-warn-soft text-warn-text">
           <ShieldAlert size={15} />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-fg">Muse wants to {lowerFirst(description.title)}</h3>
+          <h3 className="text-sm font-semibold text-fg">O Muse quer {lowerFirst(description.title)}</h3>
           <p className="mt-0.5 text-xs text-muted">
-            {request.protectedWrite ? "This touches a protected path. " : ""}
-            {request.judgeEscalated ? "A safety check flagged it for you to review. " : ""}
-            {stageCount > 1 ? `Part of a ${stageCount}-step command. ` : ""}
-            Nothing runs until you decide.
+            {request.protectedWrite ? "Isso toca um caminho protegido. " : ""}
+            {request.judgeEscalated ? "Uma verificação de segurança marcou para você revisar. " : ""}
+            {stageCount > 1 ? `Parte de um comando de ${stageCount} etapas. ` : ""}
+            Nada executa até você decidir.
           </p>
         </div>
       </div>
@@ -114,7 +114,7 @@ export function ApprovalPanel(props: { request: ApprovalRequest; primary: boolea
           }}
         >
           <label className="text-xs font-medium text-muted" htmlFor={`fb-${request.approvalId}`}>
-            Tell Muse what to do instead (optional)
+            Diga ao Muse o que fazer em vez disso (opcional)
           </label>
           <textarea
             id={`fb-${request.approvalId}`}
@@ -126,7 +126,7 @@ export function ApprovalPanel(props: { request: ApprovalRequest; primary: boolea
           />
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setFeedbackChoice(null)}>
-              Back
+              Voltar
             </Button>
             <Button size="sm" variant="primary" type="submit" loading={busy}>
               {feedbackChoice.label}
@@ -150,32 +150,32 @@ export function ApprovalPanel(props: { request: ApprovalRequest; primary: boolea
               </Button>
             );
             return choice.rulePreview ? (
-              <Tip key={choice.choiceId} label={`Adds the rule ${choice.rulePreview}`}>
+              <Tip key={choice.choiceId} label={`Adiciona a regra ${choice.rulePreview}`}>
                 {button}
               </Tip>
             ) : (
               button
             );
           })}
-          {choices.length === 0 ? <p className="text-xs text-muted">No choices were offered. Decide in the Muse terminal.</p> : null}
+          {choices.length === 0 ? <p className="text-xs text-muted">Nenhuma opção foi oferecida. Decida no terminal do Muse.</p> : null}
           {!armed && primaryChoice ? (
-            <Tip label="Allow this and everything else this thread asks, until you close Helicon">
+            <Tip label="Permitir isto e tudo o mais que esta conversa pedir, até você fechar o Helicon">
               <button
                 type="button"
                 onClick={() => controller.setThreadBypass(request.sessionId, true)}
                 className="rounded-lg px-2 py-1 text-2xs text-subtle transition-colors duration-100 hover:bg-hover hover:text-fg"
               >
-                Stop asking in this thread
+                Parar de perguntar nesta conversa
               </button>
             </Tip>
           ) : null}
           {props.primary && choices.length > 1 ? (
             <span className="ml-auto hidden items-center gap-1.5 text-2xs text-subtle sm:inline-flex">
               <Shortcut keys={["A"]} />
-              allow
+              permitir
               <Shortcut keys={["R"]} />
-              reject
-              {choices.length > 2 ? <span className="text-subtle">· 1 to {Math.min(choices.length, 9)}</span> : null}
+              rejeitar
+              {choices.length > 2 ? <span className="text-subtle">· 1 a {Math.min(choices.length, 9)}</span> : null}
             </span>
           ) : null}
         </div>
@@ -206,8 +206,8 @@ function answerFor(question: UserInputQuestion, picks: Picks, custom: Custom): U
 }
 
 /**
- * Muse's questions, one at a time. Single-choice answers advance on their own; the last one
- * sends. A "something else" row takes a free-text answer.
+ * Perguntas do Muse, uma de cada vez. Respostas de escolha única avançam sozinhas; a última
+ * envia. Uma linha "outra coisa" aceita resposta em texto livre.
  * via Beautiful UI ApprovalCard (beautifului.dev), MIT (c) 2026 Shane Levine.
  * Adapted: real MSP questions and answers, Helicon tokens, crossfade instead of a measured slide.
  */
@@ -301,13 +301,13 @@ export function QuestionPanel(props: { request: UserInputRequest; keyboard: bool
   const multiple = question.selection.mode === "multiple";
   const answered = isAnswered(question, picks, custom);
   return (
-    <section aria-label="Muse has a question" className={PANEL}>
+    <section aria-label="O Muse tem uma pergunta" className={PANEL}>
       <div className="flex items-start gap-3 px-4 pt-3.5">
         <span className="mt-px flex size-7 shrink-0 items-center justify-center rounded-lg bg-warn-soft text-warn-text">
           <MessageCircleQuestion size={15} />
         </span>
         <div key={question.id} className="enter-up min-w-0 flex-1">
-          <p className="text-2xs font-medium text-subtle">{question.header || "Muse has a question"}</p>
+          <p className="text-2xs font-medium text-subtle">{question.header || "O Muse tem uma pergunta"}</p>
           <h3 id={`q-${request.userInputId}-${question.id}`} className="mt-0.5 text-md leading-snug font-medium text-pretty text-fg">
             {question.question}
           </h3>
@@ -368,8 +368,8 @@ export function QuestionPanel(props: { request: UserInputRequest; keyboard: bool
             value={custom[question.id] ?? ""}
             maxLength={500}
             disabled={busy}
-            aria-label={question.options.length > 0 ? "Answer something else" : "Your answer"}
-            placeholder={question.options.length > 0 ? "Something else" : "Type your answer"}
+            aria-label={question.options.length > 0 ? "Responder outra coisa" : "Sua resposta"}
+            placeholder={question.options.length > 0 ? "Outra coisa" : "Digite sua resposta"}
             onChange={(event) => {
               const value = event.currentTarget.value;
               setCustom((previous) => ({ ...previous, [question.id]: value }));
@@ -387,27 +387,27 @@ export function QuestionPanel(props: { request: UserInputRequest; keyboard: bool
           />
         </label>
         {multiple && question.selection.maxSelections ? (
-          <p className="px-2 pt-1 text-xs text-subtle">Choose up to {question.selection.maxSelections}</p>
+          <p className="px-2 pt-1 text-xs text-subtle">Escolha até {question.selection.maxSelections}</p>
         ) : null}
       </div>
       <div className="mt-2.5 flex items-center gap-2 border-t border-line px-3 py-2.5">
         {questions.length > 1 ? (
           <div className="flex items-center gap-0.5 text-subtle">
-            <IconButton size="xs" label="Previous question" disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>
+            <IconButton size="xs" label="Pergunta anterior" disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>
               <ChevronUp size={14} />
             </IconButton>
             <RollingDigits className="text-xs font-medium" value={`${index + 1} / ${questions.length}`} />
-            <IconButton size="xs" label="Next question" disabled={last} onClick={() => setIndex((i) => Math.min(questions.length - 1, i + 1))}>
+            <IconButton size="xs" label="Próxima pergunta" disabled={last} onClick={() => setIndex((i) => Math.min(questions.length - 1, i + 1))}>
               <ChevronDown size={14} />
             </IconButton>
           </div>
         ) : null}
         <span className="flex-1" />
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => void controller.skipQuestion(request)}>
-          Skip
+          Pular
         </Button>
         <Button size="sm" variant="primary" loading={busy} disabled={!answered} onClick={() => advance(picks, custom)}>
-          {last ? "Send answer" : "Continue"}
+          {last ? "Enviar resposta" : "Continuar"}
         </Button>
       </div>
     </section>
@@ -417,20 +417,20 @@ export function QuestionPanel(props: { request: UserInputRequest; keyboard: bool
 function TodoMark(props: { status: string }) {
   switch (props.status) {
     case "completed":
-      return <CircleCheck size={15} className="shrink-0 text-ok" aria-label="Done" />;
+      return <CircleCheck size={15} className="shrink-0 text-ok" aria-label="Feita" />;
     case "inProgress":
-      return <Spinner size={13} className="m-px text-accent-text" label="In progress" />;
+      return <Spinner size={13} className="m-px text-accent-text" label="Em andamento" />;
     case "cancelled":
-      return <CircleX size={15} className="shrink-0 text-subtle" aria-label="Cancelled" />;
+      return <CircleX size={15} className="shrink-0 text-subtle" aria-label="Cancelada" />;
     default:
-      return <Circle size={15} className="shrink-0 text-[var(--border-strong)]" aria-label="To do" />;
+      return <Circle size={15} className="shrink-0 text-[var(--border-strong)]" aria-label="A fazer" />;
   }
 }
 
-/** Closes a dock card until the user brings it back from the thread's top bar. */
+/** Fecha um cartão até o usuário trazê-lo de volta pela barra superior da conversa. */
 export function CloseCard(props: { label: string; onClose: () => void }) {
   return (
-    <Tip label={`${props.label}. Bring it back from the top bar.`}>
+    <Tip label={`${props.label}. Traga de volta pela barra superior.`}>
       <IconButton size="sm" label={props.label} onClick={props.onClose} className="ml-1 shrink-0">
         <X size={13} />
       </IconButton>
@@ -440,7 +440,7 @@ export function CloseCard(props: { label: string; onClose: () => void }) {
 
 export function PlanPanel(props: { sessionId: string; items: TodoItem[] }) {
   const controller = useController();
-  // Kept in prefs, not here: this panel unmounts whenever the user looks at another thread.
+  // Guardado nas preferências, não aqui: este painel desmonta sempre que o usuário olha outra conversa.
   const cardKey = `plan:${props.sessionId}`;
   const open = useApp((s) => !s.prefs.collapsedCards.includes(cardKey));
   const hidden = useApp((s) => s.prefs.hiddenCards.includes(cardKey));
@@ -450,7 +450,7 @@ export function PlanPanel(props: { sessionId: string; items: TodoItem[] }) {
     return null;
   }
   return (
-    <section aria-label="Plan" className="enter-up overflow-hidden rounded-2xl bg-raised shadow-card">
+    <section aria-label="Plano" className="enter-up overflow-hidden rounded-2xl bg-raised shadow-card">
       <div className="flex items-center pr-1.5 transition-colors hover:bg-hover">
         <button
           type="button"
@@ -459,15 +459,15 @@ export function PlanPanel(props: { sessionId: string; items: TodoItem[] }) {
           className="flex h-10 min-w-0 flex-1 items-center gap-2.5 pl-3.5 text-left"
         >
           <ListTodo size={15} className="shrink-0 text-subtle" />
-          <span className="text-sm font-medium text-fg">Plan</span>
+          <span className="text-sm font-medium text-fg">Plano</span>
           <span className="shrink-0 text-xs text-subtle tabular-nums">
-            <RollingDigits value={String(done)} /> of {props.items.length} done
+            <RollingDigits value={String(done)} /> de {props.items.length} feitas
           </span>
           {!open && active ? <span className="min-w-0 truncate text-xs text-muted">{active.activeForm ?? active.text}</span> : null}
           <span className="flex-1" />
           <ChevronDown size={14} className={cn("shrink-0 text-subtle transition-transform duration-200", !open && "-rotate-90")} />
         </button>
-        <CloseCard label="Hide the plan" onClose={() => controller.setCardHidden(cardKey, true)} />
+        <CloseCard label="Ocultar o plano" onClose={() => controller.setCardHidden(cardKey, true)} />
       </div>
       {open ? (
         <ol className="flex max-h-52 flex-col gap-1.5 overflow-y-auto px-3.5 pb-3">
@@ -501,10 +501,10 @@ export function QueuedList(props: { sessionId: string; items: LocalEcho[] }) {
       {props.items.map((echo) => (
         <div key={echo.localId} className="enter-up flex items-center gap-2.5 rounded-xl bg-sunken py-1.5 pr-1.5 pl-3 shadow-[0_0_0_1px_var(--border)]">
           <Clock size={14} className="shrink-0 text-subtle" />
-          <span className="shrink-0 text-xs font-medium text-subtle">Queued</span>
+          <span className="shrink-0 text-xs font-medium text-subtle">Na fila</span>
           <span className="min-w-0 flex-1 truncate text-sm text-muted">{echo.text}</span>
-          <Tip label="Remove from the queue">
-            <IconButton size="xs" label="Remove from the queue" onClick={() => void controller.unqueue(props.sessionId, echo)}>
+          <Tip label="Remover da fila">
+            <IconButton size="xs" label="Remover da fila" onClick={() => void controller.unqueue(props.sessionId, echo)}>
               <X size={13} />
             </IconButton>
           </Tip>
@@ -519,13 +519,13 @@ export function ReadOnlyNotice(props: { reason: string | null; onRetry: () => vo
     <div className="flex items-start gap-3 rounded-2xl bg-sunken px-4 py-3 shadow-[0_0_0_1px_var(--border)]">
       <Lock size={15} className="mt-0.5 shrink-0 text-subtle" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-fg">Open in another Muse session</p>
+        <p className="text-sm font-medium text-fg">Aberta em outra sessão do Muse</p>
         <p className="mt-0.5 text-xs text-muted">
-          Another host, usually the Muse terminal, holds this thread. Close it there, then take over here.
+          Outro programa, geralmente o terminal do Muse, está com esta conversa. Feche lá e assuma aqui.
         </p>
       </div>
       <Button size="sm" onClick={props.onRetry} loading={props.busy}>
-        Take over
+        Assumir
       </Button>
     </div>
   );
