@@ -9,7 +9,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["webview-data-url"] }
-tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 # A webview does not reliably have the browser's Notification API, so the OS notifier comes from here.
 tauri-plugin-notification = "2"
