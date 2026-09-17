@@ -8,10 +8,10 @@ export const USAGE_RANGES = [
 ] as const;
 
 export function rangeLabel(days: number): string {
-  return days === 1 ? "24 hours" : `${days} days`;
+  return days === 1 ? "24 horas" : `${days} dias`;
 }
 
-/** UTC calendar days from `since` through today (inclusive), matching the server's rolling window. */
+/** Dias corridos em UTC de `since` até hoje (inclusive), acompanhando a janela móvel do servidor. */
 export function calendarDaysUtc(sinceIso: string, until = new Date()): string[] {
   const start = sinceIso.slice(0, 10);
   const end = until.toISOString().slice(0, 10);
