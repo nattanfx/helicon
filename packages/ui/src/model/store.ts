@@ -74,6 +74,8 @@ export interface Prefs {
    * until the user brings it back from the thread's top bar.
    */
   hiddenCards: string[];
+  /** Failed-turn notices the user closed, as `<sessionId>:<turnId>`, so a reloaded thread keeps them closed. */
+  dismissedTurnErrors: string[];
   /** Raise a system notification when a thread needs attention while the window does not have it. */
   notifications: boolean;
   /** When the user last viewed each thread (ISO). */
@@ -130,6 +132,7 @@ export function defaultPrefs(now = new Date().toISOString()): Prefs {
     openShelves: [],
     collapsedCards: [],
     hiddenCards: [],
+    dismissedTurnErrors: [],
     // Off until asked for: nobody should be interrupted by something they never turned on.
     notifications: false,
     lastSeen: {},
@@ -287,6 +290,7 @@ export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
     openShelves: pick("openShelves", (v) => Array.isArray(v) && v.every((x) => typeof x === "string")),
     collapsedCards: pick("collapsedCards", (v) => Array.isArray(v) && v.every((x) => typeof x === "string")),
     hiddenCards: pick("hiddenCards", (v) => Array.isArray(v) && v.every((x) => typeof x === "string")),
+    dismissedTurnErrors: pick("dismissedTurnErrors", (v) => Array.isArray(v) && v.every((x) => typeof x === "string")),
     notifications: pick("notifications", (v) => typeof v === "boolean"),
     lastSeen: pick("lastSeen", (v) => typeof v === "object" && v !== null && !Array.isArray(v)),
     baseline: pick("baseline", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v))),

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.4
+
+### Fixed
+
+- **A failed turn's red banner no longer sticks around** ([#22](https://github.com/HarjjotSinghh/helicon/issues/22)). The banner has a close button, and a closed or retried banner stays closed when the thread reloads; before, reopening the thread or restarting the app brought it back. Once the conversation moves past a failed turn, the failure shows as a small "Failed · reason" note in the history instead of a full banner with no way to act on it.
+
 ## 0.12.3
 
 ### Changed

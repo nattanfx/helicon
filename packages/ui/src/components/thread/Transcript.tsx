@@ -1,4 +1,4 @@
-import { ArrowDown, ChevronRight, CircleAlert, RotateCcw, Square, SquarePen, SquareTerminal } from "lucide-react";
+import { ArrowDown, ChevronRight, CircleAlert, RotateCcw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useApp, useController, useNow } from "../../app/context.js";
@@ -24,7 +24,7 @@ import { fileTarget } from "../../model/files.js";
 import { SentAttachments, refetchAttachments, toOutgoing, toPreview } from "../composer/attachments.js";
 import { CopyButton } from "../ui/Markdown.js";
 import { Tip } from "../ui/overlays.js";
-import { Button, Shimmer, Spinner, cn } from "../ui/primitives.js";
+import { Button, IconButton, Shimmer, Spinner, cn } from "../ui/primitives.js";
 import { Collapse, PixelLoader } from "../ui/sourced.js";
 import {
   AgentText,
@@ -220,7 +220,8 @@ const TurnBlock = memo(
   }) {
     const { turn } = props;
     const info = turn.info;
-    const failed = info?.terminal === "failed" && !info.dismissed;
+    const closed = useApp((s) => (turn.turnId ? s.prefs.dismissedTurnErrors.includes(`${props.sessionId}:${turn.turnId}`) : false));
+    const failed = info?.terminal === "failed" && !info.dismissed && !closed;
     const cancelled = info?.terminal === "cancelled";
     const hasWork = turn.entries.length > 0;
     // Items outside any turn are the user's own `!` commands: shown as they are, never folded into a work log.
@@ -253,7 +254,17 @@ const TurnBlock = memo(
             <TurnFooter turn={turn} speed={props.speed} cost={props.cost} />
           </div>
         ) : null}
-        {failed ? (
+        {failed && !props.isLast ? (
+          // A failure the thread has since moved past stays in the record, but quietly.
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-subtle">
+            <CircleAlert size={12} className="shrink-0 text-danger" />
+            <span className="shrink-0">Failed</span>
+            <span aria-hidden="true">·</span>
+            <span className="min-w-0 truncate" title={info?.error?.message ?? undefined}>
+              {info?.error?.message ?? "The turn failed."}
+            </span>
+          </p>
+        ) : failed ? (
           <TurnError
             message={info?.error?.message ?? "The turn failed."}
             retryable={info?.error?.retryable ?? true}
@@ -748,6 +759,11 @@ function TurnError(props: {
           </Button>
         </Tip>
       ) : null}
+      <Tip label="Dismiss">
+        <IconButton size="sm" label="Dismiss this error" className="-mt-0.5 -mr-1 shrink-0" onClick={() => controller.dismissTurnError(props.sessionId, props.turnId)}>
+          <X size={13} />
+        </IconButton>
+      </Tip>
     </div>
   );
 }

@@ -43,21 +43,25 @@ async function githubHeaders(): Promise<Record<string, string>> {
 
 /** One GitHub fetch per request. Cached for a minute so a new tag shows up without a redeploy. */
 export const latestRelease = cache(async (): Promise<LatestRelease | null> => {
-  const res = await fetch(`https://api.github.com/repos/${repoPath}/releases/latest`, {
-    headers: await githubHeaders(),
-    next: { revalidate: 60 },
-  });
-  if (!res.ok) return null;
-  const body = (await res.json()) as GithubRelease;
-  const tag = body.tag_name ?? "";
-  const version = tag.replace(/^v/, "");
-  if (!version) return null;
-  return {
-    version,
-    tag,
-    notesUrl: body.html_url || RELEASES_URL,
-    assets: body.assets ?? [],
-  };
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repoPath}/releases/latest`, {
+      headers: await githubHeaders(),
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as GithubRelease;
+    const tag = body.tag_name ?? "";
+    const version = tag.replace(/^v/, "");
+    if (!version) return null;
+    return {
+      version,
+      tag,
+      notesUrl: body.html_url || RELEASES_URL,
+      assets: body.assets ?? [],
+    };
+  } catch {
+    return null;
+  }
 });
 
 export async function latestInstaller(kind: InstallerKind): Promise<ReleaseAsset | null> {

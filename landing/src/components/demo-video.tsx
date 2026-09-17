@@ -93,7 +93,8 @@ export function DemoVideo({
             if (userTouched.current || !videoRef.current) return;
             videoRef.current.muted = true;
             setMuted(true);
-            void videoRef.current.play();
+            // Scrolling away pauses the video before play() settles, which rejects it with AbortError; that is expected.
+            videoRef.current.play().catch(() => undefined);
           }, 2500);
         } else {
           window.clearTimeout(timer);
@@ -120,7 +121,14 @@ export function DemoVideo({
       trackEvent("demo_play", { source: "user" });
       node.muted = false;
       setMuted(false);
-      void node.play();
+      node.play().catch((error: unknown) => {
+        // A browser that refuses sound without its own gesture rule still plays the video muted.
+        if (error instanceof DOMException && error.name === "NotAllowedError") {
+          node.muted = true;
+          setMuted(true);
+          node.play().catch(() => undefined);
+        }
+      });
     } else {
       node.pause();
     }

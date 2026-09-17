@@ -925,9 +925,18 @@ export class HeliconController {
   }
 
   /** Clears a failed turn's notice, for when the user has acted on it and it is only taking up room. */
+  /**
+   * Closes a failed turn's notice. Kept in prefs as well as the fold: the fold is rebuilt from Muse's history
+   * whenever the thread reloads, and the notice would come back with it.
+   */
   dismissTurnError(sessionId: string, turnId: string | null): void {
     if (!turnId) {
       return;
+    }
+    const key = `${sessionId}:${turnId}`;
+    const dismissed = this.state.prefs.dismissedTurnErrors;
+    if (!dismissed.includes(key)) {
+      this.setPrefs({ dismissedTurnErrors: [...dismissed, key].slice(-300) });
     }
     this.patchFold(sessionId, (f) => {
       const info = f.turns[turnId];

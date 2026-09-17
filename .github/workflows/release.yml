@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Rebuilds and republishes an existing tag: `gh workflow run release.yml --ref vX.Y.Z`. It runs the workflow file as
+  # it is at that tag, so it works for tags made after this line was added.
+  workflow_dispatch:
 
 jobs:
   desktop-windows:
@@ -34,6 +37,8 @@ jobs:
           releaseDraft: false
           # A full release, so the updater's releases/latest/download/latest.json always points at it.
           prerelease: false
+          # GitHub sometimes refuses a large asset upload ("Error saving asset"); retrying saves a manual job rerun.
+          retryAttempts: 3
           args: --target x86_64-pc-windows-msvc
 
   desktop-macos:
@@ -72,5 +77,7 @@ jobs:
           releaseDraft: false
           # A full release, so the updater's releases/latest/download/latest.json always points at it.
           prerelease: false
+          # GitHub sometimes refuses a large asset upload ("Error saving asset"); retrying saves a manual job rerun.
+          retryAttempts: 3
           # One universal binary for Apple Silicon and Intel; the macOS bundles come from tauri.macos.conf.json.
           args: --target universal-apple-darwin

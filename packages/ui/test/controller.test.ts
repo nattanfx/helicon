@@ -892,6 +892,10 @@ describe("HeliconController", () => {
     const info = controller.store.get().threads["s1"]?.fold.turns["t7"];
     assert.equal(info?.error, undefined);
     assert.equal(info?.dismissed, true);
+    // Remembered outside the fold too, which a reload rebuilds from history with the error back in it.
+    assert.deepEqual(controller.store.get().prefs.dismissedTurnErrors, ["s1:t7"]);
+    controller.dismissTurnError("s1", "t7");
+    assert.deepEqual(controller.store.get().prefs.dismissedTurnErrors, ["s1:t7"]);
     stop();
   });
 
