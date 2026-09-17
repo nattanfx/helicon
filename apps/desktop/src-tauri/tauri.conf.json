@@ -35,8 +35,4 @@
     "createUpdaterArtifacts": false
   },
   "plugins": {
-           "updater": {
-             "pubkey": "",
-             "endpoints": []
-  }
 }
