@@ -20,14 +20,15 @@ const TEXT: Record<PlanTone, string> = {
 
 function usePlan(): PlanView | null {
   const usage = useApp((s) => s.planUsage);
-  // A minute is fine for a countdown measured in hours, and it keeps an idle sidebar still.
+  // Um minuto basta para uma contagem regressiva medida em horas, e mantém parada uma barra ociosa.
   const now = useNow(60_000, usage !== null);
   return useMemo(() => planView(usage, now), [usage, now]);
 }
 
 /**
- * What the Muse Code plan has left, as Muse itself last reported it: the rolling window and the weekly cap. This is
- * the real allowance, unlike the usage page's cost, which prices the same work at API rates.
+ * Quanto resta do plano do Muse Code, como o próprio Muse informou por último: a janela móvel e o teto
+ * semanal. Esta é a franquia real, diferente do custo da página de uso, que precifica o mesmo trabalho em
+ * tarifa de API.
  */
 export function PlanMeter() {
   const controller = useController();
@@ -38,21 +39,21 @@ export function PlanMeter() {
   }, [controller]);
   if (!view) {
     return (
-      <section aria-label="Plan usage" className="rounded-2xl bg-raised px-4 py-3.5 shadow-card">
+      <section aria-label="Uso do plano" className="rounded-2xl bg-raised px-4 py-3.5 shadow-card">
         <div className="flex items-center gap-2 text-sm font-medium text-fg">
-          <Gauge size={15} className="text-subtle" /> Plan usage
+          <Gauge size={15} className="text-subtle" /> Uso do plano
         </div>
         <p className="mt-1 text-xs text-pretty text-muted">
-          Muse reports your plan's allowance with each model call. Send a prompt in any thread and it shows up here.
+          O Muse informa a franquia do seu plano a cada chamada ao modelo. Mande um pedido em qualquer conversa e aparece aqui.
         </p>
       </section>
     );
   }
   return (
-    <section aria-label="Plan usage" className="rounded-2xl bg-raised px-4 py-3.5 shadow-card">
+    <section aria-label="Uso do plano" className="rounded-2xl bg-raised px-4 py-3.5 shadow-card">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Gauge size={15} className="shrink-0 text-subtle" />
-        <h2 className="text-sm font-medium text-fg">Plan usage</h2>
+        <h2 className="text-sm font-medium text-fg">Uso do plano</h2>
         {view.tier ? <span className="rounded-md bg-active px-1.5 py-px text-2xs font-medium text-muted">{view.tier}</span> : null}
         <span className="flex-1" />
         <span className="text-2xs text-subtle">{updatedLabel(view, now)}</span>
@@ -63,11 +64,11 @@ export function PlanMeter() {
             <div className="flex items-baseline gap-2 text-xs">
               <span className="text-muted">{row.label}</span>
               <span className="flex-1" />
-              <span className={cn("font-medium tabular-nums", TEXT[row.tone])}>{row.percent}% used</span>
+              <span className={cn("font-medium tabular-nums", TEXT[row.tone])}>{row.percent}% usados</span>
             </div>
             <div
               role="progressbar"
-              aria-label={`${row.label} used`}
+              aria-label={`${row.label} usados`}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={row.percent}
@@ -85,13 +86,13 @@ export function PlanMeter() {
 
 function updatedLabel(view: PlanView, now: number): string {
   const age = relativeTime(new Date(view.observedAtMs).toISOString(), now);
-  if (age === "now") {
-    return "Updated just now";
+  if (age === "agora") {
+    return "Atualizado agora";
   }
-  return `${view.stale ? "Last reported" : "Updated"} ${age} ago`;
+  return `${view.stale ? "Último informe" : "Atualizado"} há ${age}`;
 }
 
-/** The rolling window's percentage, small enough for the sidebar footer; it opens the usage page. */
+/** A porcentagem da janela móvel, pequena para o rodapé da barra; abre a página de uso. */
 export function PlanPill() {
   const controller = useController();
   const view = usePlan();
@@ -99,12 +100,12 @@ export function PlanPill() {
   if (!view || !first) {
     return null;
   }
-  const label = view.rows.map((row) => `${row.label}: ${row.percent}% used, ${row.resets.toLowerCase()}`).join(". ");
+  const label = view.rows.map((row) => `${row.label}: ${row.percent}% usados, ${row.resets.toLowerCase()}`).join(". ");
   return (
     <Tip label={label} side="top">
       <button
         type="button"
-        aria-label={`Plan usage. ${label}`}
+        aria-label={`Uso do plano. ${label}`}
         onClick={() => controller.navigate({ kind: "usage" })}
         className={cn(
           "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-2xs font-medium tabular-nums transition-colors duration-100 hover:bg-hover",
