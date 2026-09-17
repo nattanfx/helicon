@@ -1,6 +1,6 @@
 /*
- * Components adapted from open-source registries. Each keeps a note naming its source so it
- * can be re-fetched; all three sources are MIT licensed.
+ * Componentes adaptados de registros open-source. Cada um mantém uma nota nomeando sua fonte para
+ * poder ser baixado de novo; as três fontes têm licença MIT.
  *
  *   Collapse, PixelLoader, RollingDigits  via Beautiful UI (beautifului.dev), MIT (c) 2026 Shane Levine
  *   SwapIcon                              via beUI ActionSwapIcon (beui.dev), MIT (c) 2026 Saurabh Chauhan
@@ -12,9 +12,9 @@ import { cn } from "./primitives.js";
 const EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];
 
 /**
- * Height-animated disclosure body using the 0fr to 1fr grid-rows trick, so nothing is
- * measured. Children mount on first open and stay mounted so closing can animate.
- * via Beautiful UI ThinkingState / ToolChips expand grammar. Adapted: lazy mount, inert when closed.
+ * Corpo expansível com altura animada usando o truque de grid-rows de 0fr para 1fr, sem medir
+ * nada. Os filhos montam na primeira abertura e ficam montados para o fechamento poder animar.
+ * via Beautiful UI ThinkingState / ToolChips expand grammar. Adaptado: montagem preguiçosa, inerte quando fechado.
  */
 export function Collapse(props: { open: boolean; children: ReactNode; className?: string }) {
   const [mounted, setMounted] = useState(props.open);
@@ -43,8 +43,8 @@ const DRIVE_DELAYS = Array.from({ length: 9 }, (_, i) => {
 });
 
 /**
- * A 3x3 pixel grid with a chevron wavefront driving right: the live "Muse is working" mark.
- * via Beautiful UI LoadingState ("Drive"). Adapted: currentColor, CSS-only, reduced motion dims.
+ * Uma grade de pixels 3x3 com uma frente de onda em chevron avançando para a direita: a marca viva de "Muse trabalhando".
+ * via Beautiful UI LoadingState ("Drive"). Adaptado: currentColor, só CSS, movimento reduzido esmaece.
  */
 export function PixelLoader(props: { className?: string }) {
   return (
@@ -59,8 +59,8 @@ export function PixelLoader(props: { className?: string }) {
 const ROLL_MS = 360;
 
 /**
- * Odometer digits: each changed character rolls up (or down when the number falls).
- * via Beautiful UI ApprovalCard RollingDigits. Adapted: typed, timings to the motion scale.
+ * Dígitos de odômetro: cada caractere alterado rola para cima (ou para baixo quando o número cai).
+ * via Beautiful UI ApprovalCard RollingDigits. Adaptado: tipado, tempos na escala de movimento.
  */
 export function RollingDigits(props: { value: string; className?: string }) {
   const previous = useRef(props.value);
@@ -138,8 +138,8 @@ export function RollingDigits(props: { value: string; className?: string }) {
 }
 
 /**
- * Cross-swaps two icons through a short blur so the eye reads one morphing glyph, not two.
- * via beUI ActionSwapIcon ("blur"). Adapted: single variant, project easing, 180ms.
+ * Troca dois ícones com um desfoque curto para o olho ler um glifo se transformando, não dois.
+ * via beUI ActionSwapIcon ("blur"). Adaptado: variante única, easing do projeto, 180ms.
  */
 export function SwapIcon(props: { value: string; children: ReactNode; className?: string }) {
   const reduce = useReducedMotion();
