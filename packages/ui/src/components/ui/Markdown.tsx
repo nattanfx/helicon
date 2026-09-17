@@ -32,7 +32,7 @@ export function CopyButton(props: { text: string; label?: string; className?: st
   return (
     <button
       type="button"
-      aria-label={copied ? "Copied" : (props.label ?? "Copy")}
+      aria-label={copied ? "Copiado" : (props.label ?? "Copiar")}
       onClick={() => copy(props.text)}
       className={cn(
         "inline-flex size-6 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg",
@@ -48,7 +48,7 @@ export function CopyButton(props: { text: string; label?: string; className?: st
 
 const HIGHLIGHTABLE = /^(js|jsx|ts|tsx|javascript|typescript|json|jsonc|css|scss|html|xml|java|c|cpp|cs|go|rust|rs|swift|kotlin|php|py|python|rb|ruby|sh|bash|zsh|shell|ps1|powershell|sql|yaml|yml|toml|lua|dart)$/i;
 
-/** What a file extension implies about its language, for colouring a diff the same way a code block is coloured. */
+/** O que uma extensão de arquivo implica sobre sua linguagem, para colorir um diff do mesmo jeito que um bloco de código é colorido. */
 const EXTENSION_LANGUAGE: Record<string, string> = {
   ts: "ts",
   tsx: "tsx",
@@ -90,14 +90,14 @@ const EXTENSION_LANGUAGE: Record<string, string> = {
   dart: "dart",
 };
 
-/** The language a path implies, or null when nothing here can colour it. */
+/** A linguagem que um caminho implica, ou nulo quando nada aqui pode colori-la. */
 export function languageFromPath(path: string | null | undefined): string | null {
   const extension = /\.([A-Za-z0-9]+)$/.exec(path ?? "")?.[1]?.toLowerCase();
   const language = extension ? EXTENSION_LANGUAGE[extension] : undefined;
   return language && HIGHLIGHTABLE.test(language) ? language : null;
 }
 
-/** Highlighted HTML for a line or a block, or null when it is not worth colouring. */
+/** HTML destacado para uma linha ou um bloco, ou nulo quando não vale a pena colorir. */
 export function highlightCode(code: string, language: string | null): string | null {
   if (!language || code.length === 0 || code.length > 2000) {
     return null;
@@ -124,7 +124,7 @@ export const CodeBlock = memo(function CodeBlock(props: { code: string; language
     <div className={cn("code-surface group/code my-3 overflow-hidden rounded-xl bg-sunken shadow-[0_0_0_1px_var(--border)]", props.className)}>
       <div className="flex h-8 items-center justify-between pr-1 pl-3.5">
         <span className="font-mono text-2xs text-subtle">{props.language ?? "text"}</span>
-        <CopyButton text={props.code} label="Copy code" className="opacity-60 group-hover/code:opacity-100 focus-visible:opacity-100" />
+        <CopyButton text={props.code} label="Copiar código" className="opacity-60 group-hover/code:opacity-100 focus-visible:opacity-100" />
       </div>
       <pre className="max-h-[480px] overflow-auto px-3.5 pb-3">
         {html !== null ? <code dangerouslySetInnerHTML={{ __html: html }} /> : <code>{props.code}</code>}
@@ -147,13 +147,13 @@ function textOf(node: ReactNode): string {
 }
 
 /**
- * Where paths in rendered markdown lead. Inside a thread they open in the file viewer; inside a previewed file they
- * resolve from that file's folder, and relative images load from the project. Without it, markdown renders as before.
+ * Para onde levam os caminhos no markdown renderizado. Numa conversa eles abrem no visualizador de arquivos; num arquivo pré-visualizado eles
+ * resolvem a partir da pasta do arquivo, e imagens relativas carregam do projeto. Sem isso, o markdown renderiza como antes.
  */
 export interface FileLinks {
   resolve(href: string): FileTarget | null;
   open(target: FileTarget): void;
-  /** A URL for a project image a preview embeds; null leaves the source as written. */
+  /** Uma URL para uma imagem do projeto que uma prévia embute; nulo mantém a fonte como escrita. */
   imageUrl?(src: string): string | null;
 }
 
@@ -166,7 +166,7 @@ function MarkdownLink(props: { href?: string; children?: ReactNode }) {
     return (
       <a
         href={props.href}
-        title={`Open ${target.path}`}
+        title={`Abrir ${target.path}`}
         onClick={(event) => {
           event.preventDefault();
           links.open(target);
@@ -183,7 +183,7 @@ function MarkdownLink(props: { href?: string; children?: ReactNode }) {
   );
 }
 
-/** Inline code naming a file, like `src/app.ts:12`, opens it; any other inline code is left alone. */
+/** Código inline nomeando um arquivo, como `src/app.ts:12`, o abre; qualquer outro código inline é deixado em paz. */
 function InlineCode(props: { className?: string; children?: ReactNode }) {
   const links = useContext(FileLinksContext);
   const text = typeof props.children === "string" ? props.children : null;
@@ -193,7 +193,7 @@ function InlineCode(props: { className?: string; children?: ReactNode }) {
       <code
         role="link"
         tabIndex={0}
-        title={`Open ${target.path}`}
+        title={`Abrir ${target.path}`}
         className="cursor-pointer decoration-[color-mix(in_oklch,var(--accent-text)_45%,transparent)] underline-offset-2 hover:text-accent-text hover:underline"
         onClick={() => links.open(target)}
         onKeyDown={(event) => {
@@ -247,9 +247,9 @@ interface HastNode {
 }
 
 /**
- * Wraps each word of prose in a span while text is still streaming, so a word that just arrived can fade in
- * on its own. Word positions never shift as text is appended, so React keeps the old spans and only the new
- * ones mount and animate. Code keeps its own markup.
+ * Embrulha cada palavra da prosa num span enquanto o texto ainda está chegando, para uma palavra recém-chegada poder aparecer
+ * sozinha. As posições das palavras nunca mudam conforme o texto cresce, então o React mantém os spans antigos e só os novos
+ * montam e animam. Código mantém sua própria marcação.
  */
 function rehypeWords() {
   const walk = (node: HastNode): void => {
@@ -281,7 +281,7 @@ function rehypeWords() {
 
 const STREAM_PLUGINS = [rehypeWords];
 
-/** Agent prose: GitHub-flavored markdown with highlighted code blocks. `stream` fades in each new word. */
+/** Prosa do agente: markdown estilo GitHub com blocos de código destacados. `stream` revela cada palavra nova. */
 export const Markdown = memo(function Markdown(props: { text: string; className?: string; stream?: boolean }) {
   return (
     <div className={cn("prose-helicon", props.className)}>
