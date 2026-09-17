@@ -9,22 +9,40 @@ export interface PlanRow {
   label: string;
   percent: number;
   tone: PlanTone;
-  /** "Resets in 2h 14m", or "Reset" once the time has passed and Muse has not reported the new window yet. */
+  /** "Renova em 2h 14min", ou "Renovou" quando o horário passou e o Muse ainda não informou a nova janela. */
   resets: string;
 }
 
 export interface PlanView {
-  /** The plan's name when Muse gives a readable one; Muse 1.3.0 sends an opaque numeric id, which is left out. */
+  /** O nome do plano quando o Muse dá um legível; o Muse 1.3.0 manda um id numérico opaco, que é omitido. */
   tier: string | null;
   rows: PlanRow[];
-  /** When Muse last saw these numbers; they only move when a model call reports them. */
+  /** Quando o Muse viu estes números pela última vez; eles só mudam quando uma chamada ao modelo os informa. */
   observedAtMs: number;
-  /** True once the reading is old enough that the real meter has likely moved on. */
+  /** Verdadeiro quando a leitura está velha o bastante para o medidor real provavelmente já ter andado. */
   stale: boolean;
+  /** Há quanto tempo o Muse informou isto, pronto para ler: "agora", "4min", "2h". */
+  age: string;
 }
 
-/** A reading older than this is shown with its age, since the plan's windows keep moving without it. */
+/** Passado isto a leitura é apontada como velha, embora sua idade apareça desde o primeiro minuto de todo jeito. */
 const STALE_MS = 30 * 60 * 1000;
+
+const MINUTE_MS = 60 * 1000;
+
+/** A idade da leitura, curta o bastante para ficar ao lado do próprio número. */
+export function planAge(observedAtMs: number, now: number): string {
+  const ms = Math.max(0, now - observedAtMs);
+  if (ms < MINUTE_MS) {
+    return "agora";
+  }
+  const minutes = Math.floor(ms / MINUTE_MS);
+  if (minutes < 60) {
+    return `${minutes}min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
 
 function tone(percent: number): PlanTone {
   return percent >= 90 ? "danger" : percent >= 70 ? "warn" : "ok";
@@ -33,14 +51,14 @@ function tone(percent: number): PlanTone {
 function windowLabel(window: PlanWindow): string {
   const minutes = window.windowDurationMins;
   if (!minutes) {
-    return "Current window";
+    return "Janela atual";
   }
-  return minutes % 60 === 0 ? `${minutes / 60}-hour window` : `${minutes}-minute window`;
+  return minutes % 60 === 0 ? `Janela de ${minutes / 60}h` : `Janela de ${minutes}min`;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
 
-/** Hours and minutes for today's window, days and hours for the weekly one: "77h" says less than "3d 5h". */
+/** Horas e minutos para a janela de hoje, dias e horas para o teto semanal: "77h" diz menos que "3d 5h". */
 export function formatReset(ms: number): string {
   if (ms < 48 * HOUR_MS) {
     return formatDuration(ms);
@@ -54,23 +72,24 @@ export function formatReset(ms: number): string {
 function row(key: PlanRow["key"], label: string, window: PlanWindow, now: number): PlanRow {
   const percent = Math.max(0, Math.min(100, Math.round(window.usedPercent)));
   const left = window.resetsAtMs - now;
-  return { key, label, percent, tone: tone(percent), resets: left > 0 ? `Resets in ${formatReset(left)}` : "Reset" };
+  return { key, label, percent, tone: tone(percent), resets: left > 0 ? `Renova em ${formatReset(left)}` : "Renovou" };
 }
 
-/** The plan meter as the UI shows it: the short window and the weekly cap, each with how long until it resets. */
+/** O medidor de plano como a UI o mostra: a janela curta e o teto semanal, cada um com quanto falta para renovar. */
 export function planView(usage: PlanUsage | null, now: number): PlanView | null {
   if (!usage) {
     return null;
   }
   return {
     tier: /^[a-z][a-z0-9_ -]{0,31}$/i.test(usage.tier) ? humanize(usage.tier) : null,
-    rows: [row("window", windowLabel(usage.window), usage.window, now), row("weekly", "Weekly", usage.weekly, now)],
+    rows: [row("window", windowLabel(usage.window), usage.window, now), row("weekly", "Semanal", usage.weekly, now)],
     observedAtMs: usage.observedAtMs,
     stale: now - usage.observedAtMs > STALE_MS,
+    age: planAge(usage.observedAtMs, now),
   };
 }
 
-/** Tool calls in a thread still running in the background, which `task/stopAll` would stop. */
+/** Chamadas de ferramenta numa conversa ainda executando em segundo plano, que `task/stopAll` pararia. */
 export function backgroundTasks(fold: ThreadFold): string[] {
   const ids: string[] = [];
   for (const id of fold.order) {
