@@ -66,10 +66,10 @@ const TOOL_ICONS: Record<ToolKind, (props: { size: number; className?: string })
 };
 
 /**
- * One work-log row: icon, label, an inline chip for what it acted on, and an expandable body.
- * Hovering swaps the icon for the disclosure chevron.
+ * Uma linha do registro de trabalho: ícone, rótulo, um chip embutido para em que agiu, e um corpo expansível.
+ * Pairar troca o ícone pela seta de abrir.
  * Layout via Beautiful UI ToolChips (beautifului.dev), MIT (c) 2026 Shane Levine.
- * Adapted: Helicon tokens, lucide icons, real tool data, Collapse body.
+ * Adaptado: tokens do Helicon, ícones lucide, dados reais de ferramenta, corpo Collapse.
  */
 function Row(props: {
   icon: ReactNode;
@@ -81,9 +81,9 @@ function Row(props: {
   body?: ReactNode;
   preview?: ReactNode;
   tone?: "default" | "warn" | "danger";
-  /** Starts expanded, for output the user asked to see. */
+  /** Começa expandido, para saída que o usuário pediu para ver. */
   defaultOpen?: boolean;
-  /** Controls beside the row, kept outside its disclosure button so each stays its own control. */
+  /** Controles ao lado da linha, fora de seu botão de abrir para cada um ser seu próprio controle. */
   actions?: ReactNode;
 }) {
   const [open, setOpen] = useState(props.defaultOpen ?? false);
@@ -161,10 +161,10 @@ function Row(props: {
   );
 }
 
-/** How much stored output one "show more" loads, and the most a row will hold before sending you to the file. */
+/** Quanto de saída guardada um "mostrar mais" carrega, e o máximo que uma linha guarda antes de mandar você ao arquivo. */
 const OUTPUT_PAGE_LIMIT = 4 * 1024 * 1024;
 
-/** Where a truncated output's full bytes can be read from, when Muse kept them. */
+/** De onde os bytes completos de uma saída cortada podem ser lidos, quando o Muse os guardou. */
 export interface StoredOutput {
   sessionId: string;
   itemId: string;
@@ -182,7 +182,7 @@ export function OutputBlock(props: { text: string; truncated?: boolean; label?: 
     return null;
   }
   const stored = props.truncated && props.stored?.ref.availability !== "unavailable" ? props.stored : null;
-  // Pages until the end or the cap, so a runaway log cannot freeze the thread it is shown in.
+  // Página até o fim ou o teto, para um log descontrolado não travar a conversa onde aparece.
   const load = async () => {
     if (!stored || loading) {
       return;
@@ -195,7 +195,7 @@ export function OutputBlock(props: { text: string; truncated?: boolean; label?: 
       let eof = false;
       while (!eof && offset < OUTPUT_PAGE_LIMIT + (full?.next ?? 0)) {
         const page = await controller.readOutput(stored.sessionId, stored.itemId, stored.ref.id, offset);
-        text += page.encoding === "base64" ? "[binary output]" : page.content;
+        text += page.encoding === "base64" ? "[saída binária]" : page.content;
         offset = page.offsetBytes + page.byteLen;
         eof = page.eof || page.byteLen === 0;
       }
@@ -219,16 +219,16 @@ export function OutputBlock(props: { text: string; truncated?: boolean; label?: 
             {error ? (
               <span className="text-danger-text">{error}</span>
             ) : full ? (
-              `Showing the first ${formatBytes(full.next)}${total ? ` of ${formatBytes(total)}` : ""}.`
+              `Mostrando os primeiros ${formatBytes(full.next)}${total ? ` de ${formatBytes(total)}` : ""}.`
             ) : stored ? (
-              `Output was trimmed here${total ? `; the full log is ${formatBytes(total)}` : ""}.`
+              `A saída foi cortada aqui${total ? `; o log completo tem ${formatBytes(total)}` : ""}.`
             ) : (
-              "Output was trimmed here; the full log is in the Muse session."
+              "A saída foi cortada aqui; o log completo está na sessão do Muse."
             )}
           </p>
           {stored ? (
             <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" loading={loading} onClick={() => void load()}>
-              {full ? "Show more" : "Show full output"}
+              {full ? "Mostrar mais" : "Mostrar saída completa"}
             </Button>
           ) : null}
         </div>
@@ -247,17 +247,17 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** The stored-output handle on an item, when its view was truncated and Muse kept the rest. */
+/** O ponteiro de saída guardada num item, quando sua visão foi cortada e o Muse guardou o resto. */
 function storedOutput(item: MspItem, sessionId: string | undefined): StoredOutput | null {
   const ref = item.outputRef;
   return sessionId && item.truncated && ref && typeof ref.id === "string" ? { sessionId, itemId: item.itemId, ref } : null;
 }
 
 /**
- * Moving a running tool call to the background, or stopping one that already runs there. Muse names the task by
- * the tool call's own item id. Hidden on threads another client holds, where Muse would refuse the command.
+ * Levar uma chamada de ferramenta em execução para o segundo plano, ou parar uma que já roda lá. O Muse nomeia a tarefa pelo
+ * próprio id de item da chamada de ferramenta. Oculto em conversas que outro cliente segura, onde o Muse recusaria o comando.
  */
-/** Opens a file a tool touched in the file viewer beside the thread. */
+/** Abre um arquivo que uma ferramenta tocou no visualizador de arquivos ao lado da conversa. */
 function OpenFileAction(props: { sessionId: string; path: string }) {
   const controller = useController();
   const cwd = useApp((s) => s.sessions[props.sessionId]?.cwd ?? null);
@@ -266,8 +266,8 @@ function OpenFileAction(props: { sessionId: string; path: string }) {
     return null;
   }
   return (
-    <Tip label="Open in files">
-      <IconButton size="sm" label={`Open ${target.path}`} onClick={() => controller.openFile(props.sessionId, target.path, target.line)}>
+    <Tip label="Abrir nos arquivos">
+      <IconButton size="sm" label={`Abrir ${target.path}`} onClick={() => controller.openFile(props.sessionId, target.path, target.line)}>
         <FileSearch size={13} />
       </IconButton>
     </Tip>
@@ -290,7 +290,7 @@ function TaskActions(props: { item: MspItem; sessionId: string }) {
       loading={busy}
       onClick={() => void controller.taskAction(sessionId, "stop", item.itemId)}
     >
-      <CircleStop size={12} /> Stop
+      <CircleStop size={12} /> Parar
     </Button>
   ) : (
     <Button
@@ -298,21 +298,21 @@ function TaskActions(props: { item: MspItem; sessionId: string }) {
       variant="ghost"
       className="h-6 px-2 text-xs"
       loading={busy}
-      title="Let this keep running while Muse moves on"
+      title="Deixar isto executando enquanto o Muse segue adiante"
       onClick={() => void controller.taskAction(sessionId, "background", item.itemId)}
     >
-      <ArrowDownToLine size={12} /> Background
+      <ArrowDownToLine size={12} /> Segundo plano
     </Button>
   );
 }
 
 export function DiffBlock(props: { diff: DiffView }) {
-  // No header: the receipt row above, or the hovered chip, already names the file and its totals.
-  // A diff is code, so it gets the same colours a code block does; the language comes from the file's name.
+  // Sem cabeçalho: a linha de recibo acima, ou o chip pairado, já nomeia o arquivo e seus totais.
+  // Um diff é código, então ganha as mesmas cores que um bloco de código ganha; a linguagem vem do nome do arquivo.
   return <DiffCard lines={diffLines(props.diff)} language={languageFromPath(props.diff.path)} />;
 }
 
-/** Every change to one hovered file as a single continuous card, in turn order. */
+/** Toda mudança de um arquivo pairado como um cartão contínuo único, em ordem de mensagem. */
 function FileDiffCard(props: { diffs: DiffView[] }) {
   return <DiffCard lines={mergeDiffLines(props.diffs)} language={languageFromPath(props.diffs[0]?.path ?? null)} />;
 }
@@ -356,7 +356,7 @@ function DiffCard(props: { lines: DiffLine[]; language: string | null }) {
   );
 }
 
-/** One diff line's code, coloured when the file's language is one sugar-high knows. */
+/** O código de uma linha de diff, colorido quando a linguagem do arquivo é uma que o sugar-high conhece. */
 const DiffText = memo(function DiffText(props: { text: string; language: string | null }) {
   const html = useMemo(() => highlightCode(props.text, props.language), [props.text, props.language]);
   if (html === null) {
@@ -381,9 +381,9 @@ interface FileChanges {
 }
 
 /**
- * The files a turn changed, as chips; hover or focus one to preview its diff.
- * via Beautiful UI ToolChips file-diff chips (beautifului.dev), MIT (c) 2026 Shane Levine.
- * Adapted: Radix Popover for keyboard access instead of a hand-positioned portal.
+ * Os arquivos que uma mensagem mudou, como chips; paire ou foque um para prever seu diff.
+ * via chips de diff de arquivo do Beautiful UI ToolChips (beautifului.dev), MIT (c) 2026 Shane Levine.
+ * Adaptado: Radix Popover para acesso por teclado em vez de um portal posicionado à mão.
  */
 export function DiffChips(props: { entries: MspItem[]; className?: string; sessionId?: string }) {
   const files = useMemo(() => {
@@ -398,7 +398,7 @@ export function DiffChips(props: { entries: MspItem[]; className?: string; sessi
       }
       const key = diff.path ?? item.itemId;
       const stats = diffStats(diff);
-      const entry = byPath.get(key) ?? { path: diff.path ?? "file", added: 0, removed: 0, diffs: [] };
+      const entry = byPath.get(key) ?? { path: diff.path ?? "arquivo", added: 0, removed: 0, diffs: [] };
       entry.added += stats.added;
       entry.removed += stats.removed;
       entry.diffs.push(diff);
@@ -410,7 +410,7 @@ export function DiffChips(props: { entries: MspItem[]; className?: string; sessi
     return null;
   }
   return (
-    <div className={cn("flex max-w-full flex-wrap gap-1.5", props.className)} aria-label="Files changed">
+    <div className={cn("flex max-w-full flex-wrap gap-1.5", props.className)} aria-label="Arquivos alterados">
       {files.map((file) => (
         <DiffChip key={file.path} file={file} sessionId={props.sessionId} />
       ))}
@@ -471,7 +471,7 @@ function DiffChip(props: { file: FileChanges; sessionId?: string }) {
                   controller.openFile(props.sessionId!, target.path);
                 }}
               >
-                <FileSearch size={12} /> Open file
+                <FileSearch size={12} /> Abrir arquivo
               </Button>
             </div>
           ) : null}
@@ -505,8 +505,8 @@ function QuestionSummary(props: { item: MspItem; answers: UserInputAnswer[] | nu
         const chosen = answer?.selectedLabel ?? answer?.selectedLabels?.join(", ") ?? answer?.freeText ?? null;
         return (
           <div key={id}>
-            <p className="text-muted">{typeof q["question"] === "string" ? q["question"] : "Question"}</p>
-            <p className="mt-0.5 font-medium text-fg">{chosen ?? (props.answers ? "Skipped" : "Waiting for your answer")}</p>
+            <p className="text-muted">{typeof q["question"] === "string" ? q["question"] : "Pergunta"}</p>
+            <p className="mt-0.5 font-medium text-fg">{chosen ?? (props.answers ? "Ignorada" : "Esperando sua resposta")}</p>
           </div>
         );
       })}
@@ -528,16 +528,16 @@ export const ToolRow = memo(function ToolRow(props: { item: MspItem; gate?: Gate
   if (props.gate) {
     trailing = (
       <span className="shrink-0 text-xs font-medium text-warn-text">
-        {props.gate === "approval" ? "Waiting for approval" : "Waiting for your answer"}
+        {props.gate === "approval" ? "Esperando aprovação" : "Esperando sua resposta"}
       </span>
     );
   } else if (running) {
     trailing = item.background ? (
       <span className="flex shrink-0 items-center gap-1.5 text-xs text-subtle">
-        <Spinner size={12} className="text-accent-text" label="Running in the background" /> In the background
+        <Spinner size={12} className="text-accent-text" label="Executando em segundo plano" /> Em segundo plano
       </span>
     ) : (
-      <Spinner size={12} className="text-accent-text" label="Running" />
+      <Spinner size={12} className="text-accent-text" label="Executando" />
     );
   } else if (failed) {
     trailing = <span className="shrink-0 text-xs text-danger-text">{humanize(item.status)}</span>;
@@ -563,8 +563,8 @@ export const ToolRow = memo(function ToolRow(props: { item: MspItem; gate?: Gate
       body.push(<DiffBlock key="diff" diff={diff} />);
     }
     if (item.visibleOutput) {
-      // The runtime echoes the edit below its result header, unaligned; the diff above already shows
-      // that change properly, so only whatever else the output carried stays visible.
+      // O runtime ecoa a edição abaixo de seu cabeçalho de resultado, sem alinhar; o diff acima já mostra
+      // aquela mudança direito, então só o resto que a saída trouxe fica visível.
       const stripped =
         diff && (d.kind === "edit" || d.kind === "write") && !item.truncated ? withoutDiffEcho(item.visibleOutput) : null;
       const text = stripped ?? item.visibleOutput;
@@ -574,7 +574,7 @@ export const ToolRow = memo(function ToolRow(props: { item: MspItem; gate?: Gate
             key="out"
             text={text}
             truncated={item.truncated}
-            label={d.kind === "shell" ? "Output" : undefined}
+            label={d.kind === "shell" ? "Saída" : undefined}
             stored={storedOutput(item, props.sessionId)}
           />,
         );
@@ -627,7 +627,7 @@ export const ReasoningRow = memo(function ReasoningRow(props: { item: MspItem })
   return (
     <Row
       icon={running ? <Spinner size={11} /> : <span className="size-1.5 rounded-full bg-[var(--border-strong)]" />}
-      label={running ? <Shimmer>Thinking</Shimmer> : <span className="text-muted">Thought</span>}
+      label={running ? <Shimmer>Pensando</Shimmer> : <span className="text-muted">Pensou</span>}
       detail={headline || undefined}
       body={text ? <Markdown text={text} className="text-sm text-muted" /> : undefined}
     />
@@ -638,25 +638,25 @@ export const ShellRow = memo(function ShellRow(props: { item: MspItem; sessionId
   const { item } = props;
   const running = item.status === "inProgress";
   const code = item.exitCode;
-  // A command Muse could not start (no sandbox, say) fails without an exit code; its output says why.
+  // Um comando que o Muse não conseguiu iniciar (sem sandbox, digamos) falha sem código de saída; sua saída diz por quê.
   const failed = (code !== undefined && code !== 0) || TERMINAL_FAILURES.has(item.status);
-  // Muse 1.1.1 has no sandbox for `!` commands under `muse serve` on WSL, though the agent's own shell tool works there.
+  // O Muse 1.1.1 não tem sandbox para comandos `!` sob `muse serve` no WSL, embora a ferramenta shell do próprio agente funcione lá.
   const noSandbox = failed && /shell sandbox is unavailable/i.test(item.visibleOutput ?? "");
   return (
     <Row
       icon={<SquareTerminal size={14} />}
-      label="You ran"
-      chip={item.commandText ?? "a command"}
+      label="Você executou"
+      chip={item.commandText ?? "um comando"}
       mono
       defaultOpen
       tone={failed ? "danger" : "default"}
       trailing={
         running ? (
-          <Spinner size={12} className="text-accent-text" label="Running" />
+          <Spinner size={12} className="text-accent-text" label="Executando" />
         ) : code !== undefined && code !== 0 ? (
-          <span className="text-xs text-danger-text">Exit {code}</span>
+          <span className="text-xs text-danger-text">Saída {code}</span>
         ) : failed ? (
-          <span className="text-xs text-danger-text">Not run</span>
+          <span className="text-xs text-danger-text">Não executado</span>
         ) : item.durationMs ? (
           <span className="text-2xs text-subtle tabular-nums">{formatDuration(item.durationMs)}</span>
         ) : null
@@ -668,8 +668,8 @@ export const ShellRow = memo(function ShellRow(props: { item: MspItem; sessionId
             {noSandbox ? (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <p className="text-xs text-pretty text-muted">
-                  Muse can't sandbox <code className="font-mono">!</code> commands when Helicon hosts it, so this one never started. The
-                  agent's own shell works.
+                  O Muse não consegue isolar comandos <code className="font-mono">!</code> quando o Helicon o hospeda, então este nem
+                  começou. O shell do próprio agente funciona.
                 </p>
                 {props.sessionId && item.commandText ? <AskToRun sessionId={props.sessionId} command={item.commandText} /> : null}
               </div>
@@ -684,7 +684,7 @@ export const ShellRow = memo(function ShellRow(props: { item: MspItem; sessionId
 function AskToRun(props: { sessionId: string; command: string }) {
   const controller = useController();
   const [sending, setSending] = useState(false);
-  // One ask per click: a second send would run the same command twice.
+  // Um pedido por clique: um segundo envio executaria o mesmo comando duas vezes.
   const ask = () => {
     if (sending) {
       return;
@@ -694,7 +694,7 @@ function AskToRun(props: { sessionId: string; command: string }) {
   };
   return (
     <Button size="sm" variant="secondary" loading={sending} onClick={ask}>
-      Ask Muse to run it
+      Pedir ao Muse para executar
     </Button>
   );
 }
@@ -703,17 +703,17 @@ export const SubagentRow = memo(function SubagentRow(props: { item: MspItem; ses
   const { item } = props;
   const running = item.status === "inProgress";
   const result = item.result?.summary ?? item.result?.text ?? null;
-  // Muse addresses a subagent by its durable id; a build that does not report one gets no controls.
+  // O Muse chama um subagente por seu id durável; uma build que não informa um fica sem controles.
   const controls = props.sessionId && item.subagentId ? <SubagentControls item={item} sessionId={props.sessionId} subagentId={item.subagentId} /> : null;
   return (
     <Row
       icon={<Bot size={14} />}
-      label={running ? "Subagent working on" : "Subagent"}
-      detail={item.objective ?? item.role ?? "a task"}
+      label={running ? "Subagente trabalhando em" : "Subagente"}
+      detail={item.objective ?? item.role ?? "uma tarefa"}
       tone={TERMINAL_FAILURES.has(item.status) ? "danger" : "default"}
       trailing={
         running ? (
-          <Spinner size={12} className="text-accent-text" label="Running" />
+          <Spinner size={12} className="text-accent-text" label="Executando" />
         ) : item.usage?.outputTokens ? (
           <span className="text-2xs text-subtle tabular-nums">{formatTokens((item.usage.inputTokens ?? 0) + item.usage.outputTokens)} tokens</span>
         ) : null
@@ -731,7 +731,7 @@ export const SubagentRow = memo(function SubagentRow(props: { item: MspItem; ses
   );
 });
 
-/** What `subagent/*` allows for the state the child is in: talk to a running one, or bring a finished one back. */
+/** O que `subagent/*` permite para o estado em que o filho está: falar com um em execução, ou trazer um terminado de volta. */
 function SubagentControls(props: { item: MspItem; sessionId: string; subagentId: string }) {
   const controller = useController();
   const { item, sessionId, subagentId } = props;
@@ -768,43 +768,43 @@ function SubagentControls(props: { item: MspItem; sessionId: string; subagentId:
           value={note}
           onChange={(event) => setNote(event.target.value)}
           disabled={busy}
-          aria-label={running ? "Message this subagent" : "Give this subagent a follow-up task"}
-          placeholder={running ? "Tell this subagent something" : "Give it a follow-up task"}
+          aria-label={running ? "Mandar mensagem a este subagente" : "Dar a este subagente uma tarefa de retorno"}
+          placeholder={running ? "Diga algo a este subagente" : "Dê a ele uma tarefa de retorno"}
           className="h-7 min-w-0 flex-1 rounded-md bg-sunken px-2 text-sm text-fg shadow-[0_0_0_1px_var(--border)] outline-none placeholder:text-subtle focus-visible:shadow-[0_0_0_1px_var(--accent)]"
         />
         <Button type="submit" size="sm" variant="secondary" disabled={!note.trim()} loading={busy}>
-          <Send size={12} /> Send
+          <Send size={12} /> Enviar
         </Button>
       </form>
       <div className="flex flex-wrap items-center gap-1">
         {running ? (
           <>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("interrupt")}>
-              Pause at next step
+              Pausar no próximo passo
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("stop")}>
-              <CircleStop size={13} /> Stop
+              <CircleStop size={13} /> Parar
             </Button>
           </>
         ) : null}
         {control === "resultReady" ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("readResult")}>
-            Take the result
+            Pegar o resultado
           </Button>
         ) : null}
         {control === "recoveryPending" ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("resume")}>
-            Resume
+            Retomar
           </Button>
         ) : null}
         {!running && (control === "closed" || TERMINAL_FAILURES.has(item.status)) ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("reopen")}>
-            Reopen
+            Reabrir
           </Button>
         ) : null}
         {!running && control !== "closed" && control !== "closing" ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("close")}>
-            Close
+            Fechar
           </Button>
         ) : null}
       </div>
@@ -817,15 +817,15 @@ export function CompactionRow(props: { item: MspItem }) {
   const running = item.status === "inProgress";
   const saved =
     item.tokensBefore !== undefined && item.tokensAfter !== undefined
-      ? `${formatTokens(item.tokensBefore)} to ${formatTokens(item.tokensAfter)} tokens`
+      ? `${formatTokens(item.tokensBefore)} para ${formatTokens(item.tokensAfter)} tokens`
       : null;
   const label = running
-    ? "Compacting context"
+    ? "Compactando contexto"
     : item.outcome === "noop"
-      ? "Nothing to compact"
+      ? "Nada para compactar"
       : item.outcome === "failed"
-        ? "Context compaction failed"
-        : "Context compacted";
+        ? "Compactação de contexto falhou"
+        : "Contexto compactado";
   return (
     <div className="my-1 flex items-center gap-3 text-xs text-subtle" role="note">
       <span className="h-px flex-1 bg-line" />
@@ -855,7 +855,7 @@ export function GenericRow(props: { item: MspItem }) {
 export function SteerBubble(props: { item: MspItem }) {
   return (
     <div className="enter-up flex flex-col items-end gap-1">
-      <span className="text-2xs font-medium text-subtle">You added</span>
+      <span className="text-2xs font-medium text-subtle">Você adicionou</span>
       <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-active px-3.5 py-2 text-sm whitespace-pre-wrap text-fg">
         {props.item.displayText ?? props.item.text}
       </div>
