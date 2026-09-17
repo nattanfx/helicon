@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]): string {
 
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-/** The platform's command modifier, spelled out in ASCII. */
+/** O modificador de comando da plataforma, escrito em ASCII. */
 export const MOD = isMac ? "Cmd" : "Ctrl";
 
 export function Kbd(props: { children: ReactNode; className?: string }) {
@@ -126,7 +126,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
   );
 });
 
-/** The Helicon mark, drawn to match the app icon and favicon: the arch on a navy tile. */
+/** A marca Helicon, desenhada para combinar com o ícone do app e o favicon: o arco sobre fundo azul-marinho. */
 export function Logo(props: { size?: number; className?: string }) {
   const size = props.size ?? 22;
   return (
