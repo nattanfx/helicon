@@ -4,9 +4,9 @@ import type { ReactElement, ReactNode } from "react";
 import { Shortcut, cn } from "./primitives.js";
 
 /**
- * Radix defaults to `sticky="partial"` with `limitShift`, which keeps a menu glued to its
- * trigger and lets it paint off-screen. Desktop WKWebView then clips it; `always` drops the
- * limiter so shift can push the whole surface back into the window.
+ * Radix usa por padrão `sticky="partial"` com `limitShift`, o que mantém um menu grudado no seu
+ * gatilho e o deixa pintar fora da tela. O WKWebView do desktop então o corta; `always` remove o
+ * limitador para o shift poder empurrar a superfície inteira de volta para a janela.
  */
 export const FLOATING = {
   collisionPadding: 12,
@@ -21,7 +21,7 @@ export function TooltipProvider(props: { children: ReactNode }) {
   );
 }
 
-/** A label tooltip for icon buttons and truncated text. The trigger keeps its own accessible name. */
+/** Um tooltip de rótulo para botões de ícone e texto cortado. O gatilho mantém seu próprio nome acessível. */
 export function Tip(props: {
   label: ReactNode;
   shortcut?: string[];
@@ -67,7 +67,7 @@ export function MenuContent(props: {
         sideOffset={props.sideOffset ?? 6}
         {...FLOATING}
         className={cn(
-          // Never taller than the room Radix measured on the side it opened, so long menus scroll instead of clipping.
+          // Nunca mais alto que o espaço que o Radix mediu no lado em que abriu, para menus longos rolarem em vez de cortar.
           "pop z-[var(--z-dropdown)] max-h-[var(--radix-dropdown-menu-content-available-height)] max-w-[min(360px,calc(100dvw-24px))] min-w-[208px] overflow-y-auto rounded-xl bg-raised p-1 text-sm text-fg shadow-pop outline-none",
           props.className,
         )}
@@ -106,7 +106,7 @@ export function MenuItem(props: {
   );
 }
 
-/** A selectable option with an optional second line; shows a check when chosen. */
+/** Uma opção selecionável com uma segunda linha opcional; mostra um check quando escolhida. */
 export function MenuOption(props: {
   value: string;
   icon?: ReactNode;
@@ -138,7 +138,7 @@ export function MenuOption(props: {
   );
 }
 
-/** A menu item that turns a setting on or off, checked while on. The menu stays open to show the change. */
+/** Um item de menu que liga ou desliga uma configuração, marcado enquanto ligado. O menu fica aberto para mostrar a mudança. */
 export function MenuCheck(props: { checked: boolean; onChange: (checked: boolean) => void; children: ReactNode; description?: ReactNode }) {
   return (
     <DropdownMenu.CheckboxItem
@@ -169,8 +169,8 @@ export function MenuSeparator() {
 }
 
 /**
- * A panel off the right edge, for detail that would swamp a transcript row. Same dialog underneath
- * as `Modal`: focus is trapped, Escape closes, and the page behind it stays where it was.
+ * Um painel na borda direita, para detalhes que afogariam uma linha da transcrição. Mesmo diálogo por baixo
+ * do `Modal`: o foco fica preso, Escape fecha, e a página atrás fica onde estava.
  */
 export function Sheet(props: {
   open: boolean;
@@ -200,7 +200,7 @@ export function Sheet(props: {
               )}
             </div>
             <RDialog.Close
-              aria-label="Close"
+              aria-label="Fechar"
               className="-m-1 shrink-0 rounded-lg p-1 text-subtle transition-colors duration-100 hover:bg-hover hover:text-fg"
             >
               <X size={16} />
@@ -221,7 +221,7 @@ export function Modal(props: {
   children: ReactNode;
   className?: string;
   hideTitle?: boolean;
-  /** No inner padding, for full-bleed content like the command palette. */
+  /** Sem preenchimento interno, para conteúdo de borda a borda como a paleta de comandos. */
   bare?: boolean;
 }) {
   return (
