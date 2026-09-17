@@ -25,10 +25,10 @@ const FILL: Record<GoalTone, string> = {
   ended: "bg-line-strong",
 };
 
-/** The goal Muse is working toward in this thread, with how long, how many turns and how many tokens it took. */
+/** A meta que o Muse persegue nesta conversa, com há quanto tempo, quantas mensagens e quantos tokens levou. */
 export function GoalPanel(props: { sessionId: string; running: boolean; readOnly: boolean }) {
   const controller = useController();
-  // Only what the goal reads from: streamed text changes none of these, so tokens do not re-render the panel.
+  // Só o que a meta lê: texto transmitido não muda nada disto, então tokens não redesenham o painel.
   const inputs = useApp((s) => {
     const fold = s.threads[props.sessionId]?.fold;
     return fold
@@ -39,7 +39,7 @@ export function GoalPanel(props: { sessionId: string; running: boolean; readOnly
     const fold = controller.store.get().threads[props.sessionId]?.fold;
     return inputs && fold ? goalView(fold) : null;
   }, [inputs, controller, props.sessionId]);
-  // Kept in prefs, not here: this panel unmounts whenever the user looks at another thread.
+  // Guardado nas prefs, não aqui: este painel desmonta sempre que o usuário olha outra conversa.
   const cardKey = `goal:${props.sessionId}`;
   const open = useApp((s) => !s.prefs.collapsedCards.includes(cardKey));
   const hidden = useApp((s) => s.prefs.hiddenCards.includes(cardKey));
@@ -50,7 +50,7 @@ export function GoalPanel(props: { sessionId: string; running: boolean; readOnly
   }
   const elapsed = view.startedAt === null ? null : Math.max(0, (view.endedAt ?? now) - view.startedAt - view.pausedMs);
   return (
-    <section aria-label="Goal" className="enter-up overflow-hidden rounded-2xl bg-raised shadow-card">
+    <section aria-label="Meta" className="enter-up overflow-hidden rounded-2xl bg-raised shadow-card">
       <div className="flex items-center pr-1.5 transition-colors hover:bg-hover">
         <button
           type="button"
@@ -59,7 +59,7 @@ export function GoalPanel(props: { sessionId: string; running: boolean; readOnly
           className="flex h-10 min-w-0 flex-1 items-center gap-2.5 pl-3.5 text-left"
         >
           <Target size={15} className="shrink-0 text-subtle" />
-          <span className="text-sm font-medium text-fg">Goal</span>
+          <span className="text-sm font-medium text-fg">Meta</span>
           <span className={cn("shrink-0 rounded-md px-1.5 py-px text-2xs font-medium", PILL[view.tone])}>{view.label}</span>
           <span className="shrink-0 text-xs text-subtle tabular-nums">{Math.round(view.percent)}%</span>
           {!open ? <span className="min-w-0 truncate text-xs text-muted">{view.objective}</span> : null}
@@ -67,7 +67,7 @@ export function GoalPanel(props: { sessionId: string; running: boolean; readOnly
           {elapsed !== null ? <span className="shrink-0 text-xs text-subtle tabular-nums">{formatDuration(elapsed) || "0s"}</span> : null}
           <ChevronDown size={14} className={cn("shrink-0 text-subtle transition-transform duration-200", !open && "-rotate-90")} />
         </button>
-        <CloseCard label="Hide the goal" onClose={() => controller.setCardHidden(cardKey, true)} />
+        <CloseCard label="Ocultar a meta" onClose={() => controller.setCardHidden(cardKey, true)} />
       </div>
       {open ? <GoalBody view={view} elapsed={elapsed} now={now} {...props} /> : null}
     </section>
@@ -78,7 +78,7 @@ function GoalBody(props: { view: GoalView; elapsed: number | null; now: number; 
   const controller = useController();
   const { view } = props;
   const models = useApp((s) => s.models);
-  // The same turns the token count covers, priced at each call's own model rate.
+  // As mesmas mensagens que a contagem de tokens cobre, precificadas na tarifa do modelo de cada chamada.
   const spend = useMemo(() => {
     const fold = controller.store.get().threads[props.sessionId]?.fold;
     if (!fold) {
@@ -101,13 +101,13 @@ function GoalBody(props: { view: GoalView; elapsed: number | null; now: number; 
     return priced ? { cost, currency, complete } : null;
   }, [view, models, controller, props.sessionId]);
   const busy = useApp((s) => Boolean(s.busy[`goal:${props.sessionId}`]));
-  const muse = view.tokensUsed !== null && view.tokensUsed > 0 ? ` Muse's own count at its last goal update: ${formatTokens(view.tokensUsed)}.` : "";
+  const muse = view.tokensUsed !== null && view.tokensUsed > 0 ? ` Contagem do próprio Muse em sua última atualização de meta: ${formatTokens(view.tokensUsed)}.` : "";
   const lastUpdate = view.lastProgressAt ?? view.endedAt;
   const newGoal = () => {
-    // Keep an unsent draft: it becomes the start of the objective, and nothing is sent until the user does.
+    // Mantém um rascunho não enviado: ele vira o início do objetivo, e nada é enviado até o usuário enviar.
     const draft = document.querySelector<HTMLTextAreaElement>("textarea")?.value.trim() ?? "";
     controller.prefillComposer(props.sessionId, !draft ? "/goal " : /^\/goal\b/i.test(draft) ? draft : `/goal ${draft}`);
-    // The composer takes the text on its next render; put the caret after it.
+    // A caixa de mensagem recebe o texto no próximo render; põe o cursor após ele.
     requestAnimationFrame(() => {
       const composer = document.querySelector<HTMLTextAreaElement>("textarea[aria-autocomplete], textarea");
       composer?.focus();
@@ -121,7 +121,7 @@ function GoalBody(props: { view: GoalView; elapsed: number | null; now: number; 
       </p>
       <div
         role="progressbar"
-        aria-label="Goal progress"
+        aria-label="Progresso da meta"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(view.percent)}
@@ -130,45 +130,45 @@ function GoalBody(props: { view: GoalView; elapsed: number | null; now: number; 
         <div className={cn("h-full rounded-full transition-[width] duration-300 ease-out", FILL[view.tone])} style={{ width: `${view.percent}%` }} />
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-5">
-        <Metric label={view.tone === "active" ? "Running for" : "Ran for"} value={props.elapsed === null ? "Not known" : formatDuration(props.elapsed) || "0s"} />
-        <Metric label="Turns" value={String(view.turns)} />
-        <Tip label={`Input and output tokens of this goal's model calls.${muse}`}>
+        <Metric label={view.tone === "active" ? "Executando há" : "Executou por"} value={props.elapsed === null ? "Desconhecido" : formatDuration(props.elapsed) || "0s"} />
+        <Metric label="Mensagens" value={String(view.turns)} />
+        <Tip label={`Tokens de entrada e saída das chamadas ao modelo desta meta.${muse}`}>
           <div tabIndex={0} className="min-w-0 cursor-default">
-            <Metric label="Tokens" value={view.tokenBudget ? `${formatTokens(view.tokens)} of ${formatTokens(view.tokenBudget)}` : formatTokens(view.tokens)} />
+            <Metric label="Tokens" value={view.tokenBudget ? `${formatTokens(view.tokens)} de ${formatTokens(view.tokenBudget)}` : formatTokens(view.tokens)} />
           </div>
         </Tip>
         <Tip
-          label={`What this goal's work would have cost at published API rates.${
-            spend && !spend.complete ? " One of its models has no listed price, so the real figure is higher." : ""
+          label={`Quanto o trabalho desta meta teria custado nas tarifas de API publicadas.${
+            spend && !spend.complete ? " Um de seus modelos não tem preço listado, então o valor real é maior." : ""
           }`}
         >
           <div tabIndex={0} className="min-w-0 cursor-default">
             <Metric
-              label="Cost"
-              value={spend ? `${spend.complete ? "" : "≥ "}${formatCost(spend.cost, spend.currency ?? undefined)}` : "Not known"}
+              label="Custo"
+              value={spend ? `${spend.complete ? "" : "≥ "}${formatCost(spend.cost, spend.currency ?? undefined)}` : "Desconhecido"}
             />
           </div>
         </Tip>
-        <Metric label="Last update" value={lastUpdate ? relativeTime(new Date(lastUpdate).toISOString(), props.now) : "None yet"} />
+        <Metric label="Última atualização" value={lastUpdate ? relativeTime(new Date(lastUpdate).toISOString(), props.now) : "Nenhuma ainda"} />
       </dl>
-      {/* What Muse is on and plans next only means something while the goal is still open. */}
+      {/* Em que o Muse está e o que planeja depois só faz sentido enquanto a meta ainda está aberta. */}
       {(view.tone === "active" || view.tone === "paused" || view.tone === "attention") && (view.currentWork || view.nextWork) ? (
         <dl className="mt-2.5 flex flex-col gap-1 text-xs">
-          {view.currentWork ? <Work label="Now" text={view.currentWork} /> : null}
-          {view.nextWork ? <Work label="Next" text={view.nextWork} /> : null}
+          {view.currentWork ? <Work label="Agora" text={view.currentWork} /> : null}
+          {view.nextWork ? <Work label="Depois" text={view.nextWork} /> : null}
         </dl>
       ) : null}
       {props.readOnly ? null : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {/* Pausing keeps the goal and stops Muse starting new work on it; stopping only ends the running turn. */}
+          {/* Pausar mantém a meta e impede o Muse de começar trabalho novo nela; parar só encerra a mensagem em execução. */}
           {view.tone === "active" ? (
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void controller.goalAction(props.sessionId, "pause")}>
-              <Pause size={13} /> Pause goal
+              <Pause size={13} /> Pausar meta
             </Button>
           ) : null}
           {view.tone === "active" && props.running ? (
             <Button size="sm" variant="ghost" onClick={() => void controller.stop(props.sessionId)}>
-              <Square size={12} /> Stop turn
+              <Square size={12} /> Parar mensagem
             </Button>
           ) : null}
           {(view.tone === "paused" || view.tone === "attention") && !props.running ? (
@@ -178,15 +178,15 @@ function GoalBody(props: { view: GoalView; elapsed: number | null; now: number; 
               disabled={busy}
               onClick={() => void controller.continueGoal(props.sessionId, view.objective, view.status)}
             >
-              <Play size={13} /> {view.tone === "paused" ? "Resume goal" : "Keep going"}
+              <Play size={13} /> {view.tone === "paused" ? "Retomar meta" : "Continuar"}
             </Button>
           ) : null}
           <Button size="sm" variant="ghost" onClick={newGoal}>
-            {view.tone === "active" ? "Change goal" : "New goal"}
+            {view.tone === "active" ? "Trocar meta" : "Nova meta"}
           </Button>
           {view.tone !== "done" && view.tone !== "ended" ? (
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void controller.goalAction(props.sessionId, "clear")}>
-              <X size={13} /> Clear
+              <X size={13} /> Limpar
             </Button>
           ) : null}
         </div>
