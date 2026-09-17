@@ -54,7 +54,7 @@ function readDraft(key: string): string {
   }
 }
 
-/** A composer draft that survives switching threads and reloads. */
+/** Um rascunho da caixa de mensagem que sobrevive a trocar de conversa e a recarregar. */
 function useDraft(key: string): [string, (value: string) => void] {
   const [state, setState] = useState(() => ({ key, value: readDraft(key) }));
   const value = state.key === key ? state.value : readDraft(key);
@@ -71,7 +71,7 @@ function useDraft(key: string): [string, (value: string) => void] {
           window.localStorage.removeItem(DRAFT_PREFIX + key);
         }
       } catch {
-        /* drafts are best effort */
+        /* rascunhos são melhor-esforço */
       }
     },
     [key],
@@ -79,12 +79,13 @@ function useDraft(key: string): [string, (value: string) => void] {
   return [value, set];
 }
 
-/** The slash menu for a draft, with what picking a row writes in front of the command's name. */
+/** O menu de barra para um rascunho, com o que escolher uma linha escreve na frente do nome do comando. */
 type SlashMenuView = SlashMenuState & { prefix: string };
 
 /**
- * What the menu shows for the draft and caret. While the caret is in the first word it lists matching
- * commands; `/skill <name>` lists skills; after that it only appears to flag a command Muse does not know.
+ * O que o menu mostra para o rascunho e o cursor. Enquanto o cursor está na primeira palavra, ele lista
+ * comandos coincidentes; `/skill <nome>` lista skills; depois disso só aparece para sinalizar um comando
+ * que o Muse não conhece.
  */
 function slashMenuFor(text: string, caret: number, commands: SlashCommand[], skills: SkillsState | undefined): SlashMenuView | null {
   const first = /^\/(\S*)/.exec(text);
@@ -93,7 +94,7 @@ function slashMenuFor(text: string, caret: number, commands: SlashCommand[], ski
   }
   const loading = !skills || skills.status === "loading";
   const error = skills?.status === "error" ? skills.error : null;
-  // Only while typing the command word: a caret before the slash is not typing a command.
+  // Só enquanto digita a palavra do comando: um cursor antes da barra não está digitando um comando.
   if (caret >= 1 && caret <= first[0].length) {
     const query = first[1] as string;
     const items = matchSlash(commands, query);
@@ -119,7 +120,7 @@ function slashMenuFor(text: string, caret: number, commands: SlashCommand[], ski
   return loading ? { kind: "loading", prefix: "/" } : { kind: "unknown", name: parsed.name, prefix: "/" };
 }
 
-/** As many files per message as the server takes. */
+/** Tantos arquivos por mensagem quantos o servidor aceita. */
 const MAX_FILES = 10;
 
 export interface ComposerProps {
@@ -135,7 +136,7 @@ export function Composer(props: ComposerProps) {
   const controller = useController();
   const draftKey = props.sessionId ?? `new:${props.cwd ?? ""}`;
   const [text, setText] = useDraft(draftKey);
-  // A prompt that failed to send from another composer (the new-thread screen) comes back here.
+  // Um pedido que falhou ao enviar de outra caixa (a tela de nova conversa) volta para cá.
   const handoff = useApp((s) => (s.draftHandoff?.key === draftKey ? s.draftHandoff : null));
   useEffect(() => {
     if (handoff) {
@@ -149,9 +150,9 @@ export function Composer(props: ComposerProps) {
     }
   }, [handoff, draftKey, controller, setText]);
   const ref = useRef<HTMLTextAreaElement>(null);
-  // One keypress, one send: clearing is React state, so a second Enter in the same frame re-reads the
-  // same draft. The marker is synchronous where state is not; only an unchanged draft matches it, so a
-  // genuinely new message typed while a send is in flight still goes.
+  // Um aperto de tecla, um envio: limpar é estado do React, então um segundo Enter no mesmo quadro relê
+  // o mesmo rascunho. O marcador é síncrono onde o estado não é; só um rascunho inalterado combina com
+  // ele, então uma mensagem genuinamente nova digitada com um envio em voo ainda vai.
   const consumedRef = useRef<{ value: string; files: PendingFile[] | null } | null>(null);
   const tryConsume = (value: string, files: PendingFile[] | null): boolean => {
     const last = consumedRef.current;
@@ -169,7 +170,7 @@ export function Composer(props: ComposerProps) {
   const showStop = props.running && Boolean(props.sessionId) && !hasText;
   const shell = !props.readOnly && /^!\s*\S/.test(text);
 
-  // Files ride along with the next message: Muse sees images itself, anything else lands in the workspace.
+  // Arquivos pegam carona na próxima mensagem: o Muse vê imagens ele mesmo, qualquer outra coisa cai na pasta do projeto.
   const [files, setFiles] = useState<PendingFile[]>([]);
   const addFiles = (incoming: Iterable<File>) => {
     if (props.readOnly) {
@@ -187,7 +188,7 @@ export function Composer(props: ComposerProps) {
     });
   };
 
-  // The slash menu: which commands match, which row is active, and whether Esc closed it for this word.
+  // O menu de barra: quais comandos coincidem, qual linha está ativa e se o Esc o fechou para esta palavra.
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -203,7 +204,7 @@ export function Composer(props: ComposerProps) {
     [skills?.skills, props.sessionId],
   );
   const word = /^\/\S*/.exec(text)?.[0] ?? null;
-  /** The menu for a caret position. Keys read the caret live: a restored draft moves it without a select event. */
+  /** O menu para uma posição de cursor. As teclas leem o cursor ao vivo: um rascunho restaurado o move sem evento de seleção. */
   const menuAt = (at: number): SlashMenuView | null => {
     const view = slashing ? slashMenuFor(text, at, commands, skills) : null;
     return view && dismissed !== word ? view : null;
@@ -222,7 +223,7 @@ export function Composer(props: ComposerProps) {
     }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * 0.4))}px`;
-    // A draft restored, handed back or filled in puts the caret at the end without a select event.
+    // Um rascunho restaurado, devolvido ou preenchido põe o cursor no fim sem evento de seleção.
     setCaret(el.selectionStart);
   }, [text]);
 
@@ -230,7 +231,7 @@ export function Composer(props: ComposerProps) {
     const el = ref.current;
     if (props.autoFocus && !props.readOnly && el) {
       el.focus({ preventScroll: true });
-      // Focusing puts the caret before a restored draft; carry on typing at its end instead.
+      // Focar põe o cursor antes de um rascunho restaurado; continue digitando no fim dele.
       el.setSelectionRange(el.value.length, el.value.length);
       setCaret(el.value.length);
     }
@@ -259,7 +260,7 @@ export function Composer(props: ComposerProps) {
     }
   };
 
-  /** Runs a command picked from the menu, or sends the draft as a plain prompt when Muse has no such command. */
+  /** Executa um comando escolhido no menu, ou envia o rascunho como pedido simples quando o Muse não tem tal comando. */
   const runNow = async (value: string, raw: boolean) => {
     if (props.readOnly || starting) {
       return;
@@ -320,7 +321,7 @@ export function Composer(props: ComposerProps) {
       }
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
-        // A held Enter repeats: the first press already picked, so later ones do nothing.
+        // Um Enter segurado repete: o primeiro aperto já escolheu, então os seguintes não fazem nada.
         if (event.repeat) {
           return;
         }
@@ -329,7 +330,7 @@ export function Composer(props: ComposerProps) {
         } else if (live.kind === "unknown") {
           void runNow(text, true);
         } else {
-          // Skills are still loading: send anyway, and the controller resolves the command once they arrive.
+          // Skills ainda carregando: envia assim mesmo, e o controlador resolve o comando quando elas chegarem.
           void submit(props.running && (event.metaKey || event.ctrlKey));
         }
         return;
@@ -337,8 +338,8 @@ export function Composer(props: ComposerProps) {
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      // A held Enter repeats: the first press already sent, so later ones do nothing. Shift+Enter keeps
-      // repeating, since holding it for several new lines is deliberate.
+      // Um Enter segurado repete: o primeiro aperto já enviou, então os seguintes não fazem nada. Shift+Enter
+      // continua repetindo, já que segurá-lo por várias linhas novas é de propósito.
       if (event.repeat) {
         return;
       }
@@ -350,14 +351,14 @@ export function Composer(props: ComposerProps) {
   };
 
   const placeholder = props.readOnly
-    ? "Read-only while another Muse session has this thread open"
+    ? "Somente leitura enquanto outra sessão do Muse estiver com esta conversa"
     : props.running
-      ? `Queue a follow-up, or press ${MOD}+Enter to add it to this turn`
+      ? `Enfileire um complemento, ou aperte ${MOD}+Enter para juntar a esta mensagem`
       : props.variant === "home"
-        ? "Describe a change, a fix, or a question about the code. Use @path to point at files."
-        : "Reply, or ask for the next change";
+        ? "Descreva uma mudança, uma correção ou uma pergunta sobre o código. Use @caminho para apontar arquivos."
+        : "Responda, ou peça a próxima mudança";
 
-  const sendLabel = showStop ? "Stop the turn" : shell ? "Run command" : props.running ? "Queue message" : "Send";
+  const sendLabel = showStop ? "Parar a mensagem" : shell ? "Executar comando" : props.running ? "Enfileirar mensagem" : "Enviar";
 
   return (
     <div
@@ -372,7 +373,7 @@ export function Composer(props: ComposerProps) {
         }
       }}
       onPaste={(event) => {
-        // Only take over the paste when the clipboard actually holds files; pasted text stays text.
+        // Só assume a colagem quando a área de transferência tem arquivos de verdade; texto colado continua texto.
         if (event.clipboardData?.files?.length) {
           event.preventDefault();
           addFiles(Array.from(event.clipboardData.files));
@@ -402,13 +403,13 @@ export function Composer(props: ComposerProps) {
         />
       ) : null}
       <label htmlFor={id} className="sr-only">
-        Message Muse
+        Mensagem para o Muse
       </label>
       {shell ? (
         <div className="flex items-center gap-1.5 px-4 pt-2.5 text-xs text-muted">
           <SquareTerminal size={13} className="shrink-0" />
           <span className="truncate">
-            Helicon runs this{props.cwd ? ` in ${basename(props.cwd)}` : ""}; the output stays here until you send it to Muse
+            O Helicon executa isto{props.cwd ? ` em ${basename(props.cwd)}` : ""}; a saída fica aqui até você enviá-la ao Muse
           </span>
         </div>
       ) : null}
@@ -443,7 +444,7 @@ export function Composer(props: ComposerProps) {
         )}
       />
       <div className="flex min-w-0 flex-wrap items-center gap-0.5 px-2 pb-2">
-        {/* The new-thread composer sits high, so its menus open downward; they still flip when there is no room. */}
+        {/* A caixa de nova conversa fica no alto, então seus menus abrem para baixo; ainda viram quando não há espaço. */}
         <AttachButton onFiles={(picked) => addFiles(Array.from(picked))} disabled={props.readOnly || files.length >= MAX_FILES} />
         <ModelPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
         <EffortPicker side={props.variant === "home" ? "bottom" : "top"} />
@@ -453,8 +454,8 @@ export function Composer(props: ComposerProps) {
         {props.sessionId ? <CostMeter sessionId={props.sessionId} /> : null}
         {props.sessionId ? <ContextMeter sessionId={props.sessionId} /> : null}
         {props.running && props.sessionId && hasText ? (
-          <Tip label="Stop the turn" shortcut={["Esc"]}>
-            <IconButton size="md" label="Stop the turn" disabled={stopping} onClick={() => void controller.stop(props.sessionId as string)}>
+          <Tip label="Parar a mensagem" shortcut={["Esc"]}>
+            <IconButton size="md" label="Parar a mensagem" disabled={stopping} onClick={() => void controller.stop(props.sessionId as string)}>
               <Square size={11} className="fill-current" />
             </IconButton>
           </Tip>
@@ -462,7 +463,7 @@ export function Composer(props: ComposerProps) {
         <Tip label={sendLabel} shortcut={[showStop ? "Esc" : "Enter"]}>
           <button
             type="button"
-            aria-label={showStop ? "Stop the turn" : shell ? "Run command" : props.running ? "Queue message" : "Send message"}
+            aria-label={showStop ? "Parar a mensagem" : shell ? "Executar comando" : props.running ? "Enfileirar mensagem" : "Enviar mensagem"}
             disabled={showStop ? stopping : (!hasText && files.length === 0) || props.readOnly || starting}
             onClick={() => (showStop ? void controller.stop(props.sessionId as string) : void submit(false))}
             className={cn(
@@ -508,13 +509,13 @@ const ToolbarTrigger = forwardRef<
   );
 });
 
-/** Marks contributor-tier models. In menus the option's description explains it; elsewhere a tooltip does. */
+/** Marca modelos de nível contribuidor. Nos menus a descrição da opção explica; no resto, uma dica explica. */
 function ContributorBadge(props: { tip?: boolean }) {
-  const badge = <span className="shrink-0 rounded-[5px] bg-warn-soft px-1 py-px text-2xs font-medium text-warn-text">Contributor</span>;
-  return props.tip ? <Tip label="Your chats may be used to improve Meta's products">{badge}</Tip> : badge;
+  const badge = <span className="shrink-0 rounded-[5px] bg-warn-soft px-1 py-px text-2xs font-medium text-warn-text">Contribuidor</span>;
+  return props.tip ? <Tip label="Suas conversas podem ser usadas para melhorar os produtos da Meta">{badge}</Tip> : badge;
 }
 
-/** Which way a composer menu opens: away from the screen edge the composer sits against. */
+/** Para que lado um menu da caixa abre: para longe da borda da tela contra a qual ela está. */
 type PickerSide = "top" | "bottom";
 
 function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
@@ -532,7 +533,7 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
     <Menu open={open} onOpenChange={(next) => (next ? controller.setPicker("model") : controller.closePicker("model"))}>
       <MenuTrigger asChild>
         <ToolbarTrigger
-          aria-label={`Model: ${modelDisplayName(current)}`}
+          aria-label={`Modelo: ${modelDisplayName(current)}`}
           icon={<Cpu size={13} />}
           label={
             <>
@@ -547,9 +548,9 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
         />
       </MenuTrigger>
       <MenuContent side={props.side} className="w-[330px]">
-        <MenuLabel>Model</MenuLabel>
+        <MenuLabel>Modelo</MenuLabel>
         {models.length === 0 ? (
-          <p className="px-2 pb-2 text-xs text-muted">The model list loads once Muse is running.</p>
+          <p className="px-2 pb-2 text-xs text-muted">A lista de modelos carrega quando o Muse estiver rodando.</p>
         ) : (
           <MenuRadioGroup value={current ?? ""} onValueChange={(value) => void controller.setModel(value)}>
             {models.map((m) => (
@@ -560,9 +561,9 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
                 badge={m.contributor ? <ContributorBadge /> : null}
                 description={
                   m.contributor
-                    ? "Prompts and outputs may be used to improve Meta's products."
+                    ? "Pedidos e respostas podem ser usados para melhorar os produtos da Meta."
                     : m.contextLimit
-                      ? `${formatTokens(m.contextLimit)} token context`
+                      ? `contexto de ${formatTokens(m.contextLimit)} tokens`
                       : undefined
                 }
               />
@@ -574,22 +575,22 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
   );
 }
 
-/** Effort levels on the faster-to-smarter scale. Auto sits outside it: Muse picks per turn. */
+/** Níveis de esforço na escala do mais rápido ao mais esperto. O Automático fica fora dela: o Muse escolhe por mensagem. */
 export const LEVELS: { value: ReasoningEffort; label: string; description: string }[] = [
-  { value: "none", label: "Off", description: "Answers right away, without reasoning" },
-  { value: "minimal", label: "Minimal", description: "A quick think before answering" },
-  { value: "low", label: "Low", description: "Light reasoning for simple changes" },
-  { value: "medium", label: "Medium", description: "Balanced speed and depth" },
-  { value: "high", label: "High", description: "Thinks harder problems through" },
-  { value: "xhigh", label: "Extra high", description: "Deep reasoning for tricky work" },
-  // No Ultra: Muse Code 1.3.0 sends "ultra" to the model as "max", and the CLI stopped offering it.
-  { value: "max", label: "Max", description: "The slowest and most thorough" },
+  { value: "none", label: "Desligado", description: "Responde na hora, sem raciocinar" },
+  { value: "minimal", label: "Mínimo", description: "Uma pensada rápida antes de responder" },
+  { value: "low", label: "Baixo", description: "Raciocínio leve para mudanças simples" },
+  { value: "medium", label: "Médio", description: "Equilíbrio entre velocidade e profundidade" },
+  { value: "high", label: "Alto", description: "Mastiga problemas mais difíceis" },
+  { value: "xhigh", label: "Extra alto", description: "Raciocínio profundo para trabalho traiçoeiro" },
+  // Sem Ultra: o Muse Code 1.3.0 envia "ultra" ao modelo como "max", e o CLI deixou de oferecê-lo.
+  { value: "max", label: "Max", description: "O mais lento e minucioso" },
 ];
 const TOP = LEVELS.length - 1;
-// Where the slider rests while Auto is on and nothing was picked yet: Medium.
+// Onde o controle descansa com o Automático ligado e nada escolhido ainda: Médio.
 const RESTING = 3;
 
-/** Reasoning effort as a stepped slider in a popover, after the Claude desktop effort control. */
+/** Esforço de raciocínio como controle deslizante com etapas, inspirado no controle do Claude desktop. */
 function EffortPicker(props: { side: PickerSide }) {
   const controller = useController();
   const open = useApp((s) => s.picker === "effort");
@@ -600,7 +601,7 @@ function EffortPicker(props: { side: PickerSide }) {
   const picked = LEVELS.findIndex((l) => l.value === effort);
   const auto = picked < 0;
   const position = auto ? resting : picked;
-  const label = auto ? "Auto" : (LEVELS[picked]?.label ?? "Auto");
+  const label = auto ? "Automático" : (LEVELS[picked]?.label ?? "Automático");
   const ultra = !auto && picked === TOP;
   const choose = (index: number) => {
     const level = LEVELS[index];
@@ -612,7 +613,7 @@ function EffortPicker(props: { side: PickerSide }) {
   return (
     <Popover.Root open={open} onOpenChange={(next) => (next ? controller.setPicker("effort") : controller.closePicker("effort"))}>
       <Popover.Trigger asChild>
-        <ToolbarTrigger aria-label={`Reasoning effort: ${label}`} icon={<Brain size={13} />} label={label} />
+        <ToolbarTrigger aria-label={`Esforço de raciocínio: ${label}`} icon={<Brain size={13} />} label={label} />
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
@@ -627,13 +628,13 @@ function EffortPicker(props: { side: PickerSide }) {
           className="pop z-[var(--z-dropdown)] w-[300px] max-w-[calc(100dvw-24px)] rounded-xl bg-raised p-3.5 text-fg shadow-pop outline-none"
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted">Effort</span>
+            <span className="text-sm text-muted">Esforço</span>
             <span className={cn("text-sm font-semibold", !auto && picked === TOP ? "text-accent-text" : "text-fg")}>{label}</span>
             <span className="flex-1" />
-            <Tip label="Higher effort thinks longer for more thorough answers, but each turn takes more time.">
+            <Tip label="Esforço maior pensa mais para respostas mais completas, mas cada mensagem demora mais.">
               <button
                 type="button"
-                aria-label="What effort does"
+                aria-label="O que o esforço faz"
                 className="-m-1 rounded-full p-1 text-subtle transition-colors duration-100 hover:text-fg"
               >
                 <CircleHelp size={15} />
@@ -641,8 +642,8 @@ function EffortPicker(props: { side: PickerSide }) {
             </Tip>
           </div>
           <div className="mt-4 flex justify-between text-xs text-subtle">
-            <span>Faster</span>
-            <span>Smarter</span>
+            <span>Mais rápido</span>
+            <span>Mais esperto</span>
           </div>
           <Slider.Root
             min={0}
@@ -654,14 +655,14 @@ function EffortPicker(props: { side: PickerSide }) {
                 choose(index);
               }
             }}
-            aria-label="Reasoning effort"
+            aria-label="Esforço de raciocínio"
             className={cn("effort-slider relative mt-2 flex h-8 touch-none items-center select-none", auto && "opacity-60")}
           >
             <Slider.Track className="relative h-full grow overflow-hidden rounded-lg bg-active">
               <Slider.Range className={cn("effort-range absolute h-full overflow-hidden", ultra ? "bg-accent-soft" : "bg-fg/15")}>
                 {ultra ? <PixelFlow className="text-accent-text" /> : null}
               </Slider.Range>
-              {/* One dot per level, inset by half the thumb so each sits exactly where the thumb stops. */}
+              {/* Um ponto por nível, recuado de meia alavanca para cada um ficar onde ela para. */}
               {ultra ? null : (
                 <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-[9px] left-[9px]">
                   {LEVELS.map((level, index) => (
@@ -681,11 +682,11 @@ function EffortPicker(props: { side: PickerSide }) {
             />
           </Slider.Root>
           <p className={cn("mt-2 text-xs", auto ? "text-subtle" : "text-muted")}>
-            {auto ? "Muse picks the effort for each turn" : LEVELS[position]?.description}
+            {auto ? "O Muse escolhe o esforço de cada mensagem" : LEVELS[position]?.description}
           </p>
           <div className="mt-3 flex items-center gap-3 border-t border-line pt-3">
             <label htmlFor={switchId} className="min-w-0 flex-1 cursor-default text-sm text-fg">
-              Let Muse decide
+              Deixar o Muse decidir
             </label>
             <Switch.Root
               id={switchId}
@@ -703,23 +704,23 @@ function EffortPicker(props: { side: PickerSide }) {
 }
 
 export const MODES: { value: ApprovalMode; label: string; description: string; icon: ReactNode }[] = [
-  { value: "onRequest", label: "Ask first", description: "Muse asks before anything that needs approval.", icon: <Shield size={14} /> },
+  { value: "onRequest", label: "Perguntar antes", description: "O Muse pergunta antes de qualquer coisa que precise de aprovação.", icon: <Shield size={14} /> },
   {
     value: "promptUnmatched",
-    label: "Ask for unlisted",
-    description: "Commands your rules allow just run; anything else asks.",
+    label: "Perguntar o fora da lista",
+    description: "Comandos que suas regras permitem executam direto; o resto pergunta.",
     icon: <ShieldQuestion size={14} />,
   },
   {
     value: "denyUnmatched",
-    label: "Deny unlisted",
-    description: "Commands your rules allow just run; anything else is refused.",
+    label: "Negar o fora da lista",
+    description: "Comandos que suas regras permitem executam direto; o resto é recusado.",
     icon: <Lock size={14} />,
   },
   {
     value: "allowAll",
-    label: "Full access",
-    description: "Every tool runs without asking. Only for sandboxes.",
+    label: "Acesso total",
+    description: "Toda ferramenta executa sem perguntar. Só para ambientes descartáveis.",
     icon: <ShieldAlert size={14} />,
   },
 ];
@@ -727,7 +728,7 @@ export const MODES: { value: ApprovalMode; label: string; description: string; i
 function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
   const controller = useController();
   const open = useApp((s) => s.picker === "permissions");
-  // `/permissions full` opens the confirmation directly, so it lives in app state rather than here.
+  // `/permissions full` abre a confirmação direto, então mora no estado do app, não aqui.
   const confirming = useApp((s) => s.picker === "confirmFullAccess");
   const bypass = useApp((s) => s.bypassAll);
   const confirmingBypass = useApp((s) => s.picker === "confirmBypass");
@@ -742,14 +743,14 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
       <Menu open={open} onOpenChange={(next) => (next ? controller.setPicker("permissions") : controller.closePicker("permissions"))}>
         <MenuTrigger asChild>
           <ToolbarTrigger
-            aria-label={`Permissions: ${mode?.label}`}
+            aria-label={`Permissões: ${mode?.label}`}
             icon={mode?.icon}
             label={mode?.label}
             tone={current === "allowAll" || bypass ? "warn" : undefined}
           />
         </MenuTrigger>
         <MenuContent side={props.side} className="w-[300px]">
-          <MenuLabel>Permissions</MenuLabel>
+          <MenuLabel>Permissões</MenuLabel>
           <MenuRadioGroup
             value={current}
             onValueChange={(value) => {
@@ -764,11 +765,11 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
               <MenuOption key={m.value} value={m.value} icon={m.icon} label={m.label} description={m.description} />
             ))}
           </MenuRadioGroup>
-          {/* Muse asks whenever it cannot resolve a command's argv, whatever mode it is in. This answers those. */}
+          {/* O Muse pergunta sempre que não consegue resolver os argumentos de um comando, seja qual for o modo. Isto responde essas. */}
           <div className="mt-1 flex items-start gap-3 border-t border-line px-2 pt-2.5 pb-1">
             <label htmlFor={bypassId} className="min-w-0 flex-1 cursor-default">
-              <span className="block text-sm text-fg">Answer approvals for me</span>
-              <span className="block text-xs text-muted">Allowed once each, in every thread, until you close Helicon.</span>
+              <span className="block text-sm text-fg">Responder aprovações por mim</span>
+              <span className="block text-xs text-muted">Permitidos uma vez cada, em todas as conversas, até você fechar o Helicon.</span>
             </label>
             <Switch.Root
               id={bypassId}
@@ -784,12 +785,12 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
       <Modal
         open={confirming}
         onOpenChange={setConfirming}
-        title="Give Muse full access?"
-        description="Every tool call, including shell commands and file writes, will run without asking you first. Use this only in a disposable environment."
+        title="Dar acesso total ao Muse?"
+        description="Toda chamada de ferramenta, incluindo comandos e escrita de arquivos, vai executar sem perguntar antes. Use isto só num ambiente descartável."
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirming(false)}>
-            Keep asking
+            Continuar perguntando
           </Button>
           <Button
             variant="danger"
@@ -798,19 +799,19 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
               void controller.setMode("allowAll");
             }}
           >
-            Allow full access
+            Permitir acesso total
           </Button>
         </div>
       </Modal>
       <Modal
         open={confirmingBypass}
         onOpenChange={(next) => (next ? controller.setPicker("confirmBypass") : controller.closePicker("confirmBypass"))}
-        title="Answer approvals for you?"
-        description="Every approval Muse raises, in any thread, is allowed once without showing you the command first. Muse asks about the commands it could not resolve, so these are the ones nothing else has checked. This lasts until you close Helicon."
+        title="Responder aprovações por você?"
+        description="Toda aprovação que o Muse pedir, em qualquer conversa, é permitida uma vez sem mostrar o comando antes. O Muse pergunta sobre os comandos que não conseguiu resolver, então são estes que nada mais conferiu. Isto dura até você fechar o Helicon."
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => controller.closePicker("confirmBypass")}>
-            Keep asking
+            Continuar perguntando
           </Button>
           <Button
             variant="danger"
@@ -819,7 +820,7 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
               controller.setBypassAll(true);
             }}
           >
-            Answer them for me
+            Responda por mim
           </Button>
         </div>
       </Modal>
@@ -827,7 +828,7 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
   );
 }
 
-/** Output speed beside the context ring: an estimate while text streams, else the last turn's measured speed. */
+/** Velocidade de saída ao lado do anel de contexto: uma estimativa enquanto o texto flui, senão a velocidade medida da última mensagem. */
 function SpeedReadout(props: { sessionId: string }) {
   const controller = useController();
   const running = useApp((s) => Boolean(s.threads[props.sessionId]?.fold.activeTurnId));
@@ -842,7 +843,7 @@ function SpeedReadout(props: { sessionId: string }) {
   }, running);
   if (running && live !== null) {
     return (
-      <Tip label="Estimated from the text streaming now">
+      <Tip label="Estimado a partir do texto fluindo agora">
         <span tabIndex={0} className="shrink-0 px-1 text-2xs text-subtle tabular-nums">
           ~{formatSpeed(live)}
         </span>
@@ -853,7 +854,7 @@ function SpeedReadout(props: { sessionId: string }) {
     return null;
   }
   return (
-    <Tip label={`Last turn: ${formatTokens(last.tokens)} output tokens over ${formatDuration(last.ms)} of model calls`}>
+    <Tip label={`Última mensagem: ${formatTokens(last.tokens)} tokens de saída em ${formatDuration(last.ms)} de chamadas ao modelo`}>
       <span tabIndex={0} className="shrink-0 px-1 text-2xs text-subtle tabular-nums">
         {formatSpeed(last.tps)}
       </span>
@@ -881,8 +882,8 @@ export function ComposerFooter(props: { cwd: string | null; branch: string | nul
       <span className="flex-1" />
       <span className="hidden truncate md:inline">
         {props.running
-          ? `Enter queues, ${MOD}+Enter adds to this turn, Esc stops`
-          : "Enter to send, Shift+Enter for a new line, / for commands, ! for shell"}
+          ? `Enter enfileira, ${MOD}+Enter junta a esta mensagem, Esc para`
+          : "Enter envia, Shift+Enter pula linha, / para comandos, ! para terminal"}
       </span>
     </div>
   );
