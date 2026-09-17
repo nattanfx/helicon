@@ -12,15 +12,15 @@ export function SidebarToggle() {
     return null;
   }
   return (
-    <Tip label="Show sidebar" shortcut={[MOD, "B"]}>
-      <IconButton label="Show sidebar" onClick={() => controller.toggleSidebar()}>
+    <Tip label="Mostrar barra lateral" shortcut={[MOD, "B"]}>
+      <IconButton label="Mostrar barra lateral" onClick={() => controller.toggleSidebar()}>
         <PanelLeftOpen size={16} />
       </IconButton>
     </Tip>
   );
 }
 
-/** The 48px bar every main view starts with, so switching views never shifts content. */
+/** A barra de 48px com que toda visão principal começa, para trocar de visão nunca deslocar conteúdo. */
 export function TopBar(props: { children?: ReactNode; className?: string }) {
   const drag = useOverlayDragProps();
   return (
@@ -34,9 +34,9 @@ export function TopBar(props: { children?: ReactNode; className?: string }) {
 }
 
 /**
- * Clears the macOS traffic lights once the sidebar is hidden and they sit over the main view.
- * The shell pins them 20px from the left edge, three 12px lights with 8px gaps, so 68px after
- * the header's own 12px padding leaves an 8px breather.
+ * Limpa os semáforos do macOS quando a barra lateral some e eles ficam sobre a visão principal.
+ * O shell os fixa a 20px da borda esquerda, três luzes de 12px com gaps de 8px, então 68px após
+ * o padding de 12px do cabeçalho deixam um respiro de 8px.
  */
 export function TrafficLightSpacer() {
   const overlay = useTitlebarOverlay();
