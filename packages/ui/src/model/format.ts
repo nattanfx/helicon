@@ -1,7 +1,7 @@
 import type { ApprovalRequest, MspItem } from "../types.js";
 import { GOAL_TOOLS } from "./goal.js";
 
-/** Compact relative time for sidebars: now, 4m, 3h, 2d, 3w, then a short date. */
+/** Tempo relativo compacto para barras laterais: agora, 4min, 3h, 2d, 3sem, depois uma data curta. */
 export function relativeTime(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) {
     return "";
@@ -12,11 +12,11 @@ export function relativeTime(iso: string | null | undefined, now = Date.now()): 
   }
   const seconds = Math.max(0, (now - then) / 1000);
   if (seconds < 45) {
-    return "now";
+    return "agora";
   }
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) {
-    return `${minutes}m`;
+    return `${minutes}min`;
   }
   const hours = Math.round(minutes / 60);
   if (hours < 24) {
@@ -28,7 +28,7 @@ export function relativeTime(iso: string | null | undefined, now = Date.now()): 
   }
   const weeks = Math.round(days / 7);
   if (weeks < 5) {
-    return `${weeks}w`;
+    return `${weeks}sem`;
   }
   return new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -39,7 +39,7 @@ export function formatDuration(ms: number | null | undefined): string {
   }
   const total = Math.max(0, Math.round(ms / 1000));
   if (total < 1) {
-    return "under 1s";
+    return "menos de 1s";
   }
   if (total < 60) {
     return `${total}s`;
@@ -47,14 +47,14 @@ export function formatDuration(ms: number | null | undefined): string {
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
   if (minutes < 60) {
-    return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+    return seconds === 0 ? `${minutes}min` : `${minutes}min ${seconds}s`;
   }
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}min`;
 }
 
-/** A short wall-clock time: `3:42 PM` today, `Sep 10, 3:42 PM` on another day, with the year once it differs. */
+/** Um horário curto: `15:42` hoje, `10 de set., 15:42` em outro dia, com o ano quando difere. */
 export function formatClock(ms: number, now = Date.now()): string {
   const date = new Date(ms);
   const today = new Date(now);
@@ -67,17 +67,17 @@ export function formatClock(ms: number, now = Date.now()): string {
   return `${day}, ${time}`;
 }
 
-/** The full date and time, for tooltips behind a short clock time. */
+/** A data e hora completas, para dicas atrás de um horário curto. */
 export function formatFullDate(ms: number): string {
   return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
 }
 
-/** Output speed: `42 tok/s`, with one decimal below ten. */
+/** Velocidade de saída: `42 tok/s`, com uma casa decimal abaixo de dez. */
 export function formatSpeed(tokensPerSecond: number): string {
   return `${tokensPerSecond < 10 ? tokensPerSecond.toFixed(1) : Math.round(tokensPerSecond)} tok/s`;
 }
 
-/** A running timer as T3 Code shows it: `42s`, then `7m`, then `1h 7m`. */
+/** Um cronômetro correndo como o T3 Code mostra: `42s`, depois `7min`, depois `1h 7min`. */
 export function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   if (seconds < 60) {
@@ -85,9 +85,9 @@ export function formatElapsed(ms: number): string {
   }
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) {
-    return `${minutes}m`;
+    return `${minutes}min`;
   }
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
 }
 
 export function formatTokens(value: number | null | undefined): string {
@@ -111,7 +111,7 @@ export function basename(path: string): string {
   return parts[parts.length - 1] || trimmed;
 }
 
-/** Keep the tail of a long path readable: `D:\...\helicon\packages\ui`. */
+/** Mantém o fim de um caminho longo legível: `D:\...\helicon\packages\ui`. */
 export function shortenPath(path: string, max = 48): string {
   if (path.length <= max) {
     return path;
@@ -131,13 +131,32 @@ export function shortenPath(path: string, max = 48): string {
   return `${head}${separator}...${separator}${tail}`;
 }
 
+/** Palavras de status conhecidas, para `humanize` as mostrar em português; o resto segue mecânico. */
+const KNOWN_WORDS: Record<string, string> = {
+  failed: "falhou",
+  rejected: "rejeitado",
+  cancelled: "cancelado",
+  "timed out": "estourou o tempo",
+  completed: "concluído",
+  "in progress": "em execução",
+  pending: "pendente",
+  queued: "na fila",
+  running: "executando",
+  approved: "aprovado",
+  denied: "negado",
+  skipped: "ignorado",
+  "tool call": "chamada de ferramenta",
+};
+
 export function humanize(identifier: string): string {
   const spaced = identifier
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[_\-./]+/g, " ")
     .trim()
     .toLowerCase();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  const known = KNOWN_WORDS[spaced];
+  const words = known ?? spaced;
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export function parseArgs(args: string | undefined): Record<string, unknown> | null {
@@ -184,9 +203,9 @@ export type ToolKind =
 const PATH_KEYS = ["path", "file_path", "filePath", "filename", "file", "target_file", "targetFile"];
 const PATTERN_KEYS = ["pattern", "query", "regex", "search", "q"];
 
-/** Classify a tool by the words in its name, so `frobnicate` never reads as `cat`. */
+/** Classifica uma ferramenta pelas palavras em seu nome, para `frobnicate` nunca parecer `cat`. */
 export function toolKind(tool: string | undefined, args: Record<string, unknown> | null): ToolKind {
-  // Muse's goal tools, checked first so `create_goal` never reads as writing a file.
+  // As ferramentas de meta do Muse, verificadas primeiro para `create_goal` nunca parecer escrita de arquivo.
   if (tool && GOAL_TOOLS.has(tool)) {
     return "goal";
   }
@@ -233,29 +252,29 @@ export function toolKind(tool: string | undefined, args: Record<string, unknown>
 
 export interface ToolDescription {
   kind: ToolKind;
-  /** Sentence-start verb for the current state: "Ran", "Running", "Read"... */
+  /** Verbo de início de frase para o estado atual: "Executou", "Executando", "Leu"... */
   verb: string;
-  /** What the tool acted on: a command, path, pattern or URL. */
+  /** Em que a ferramenta agiu: um comando, caminho, padrão ou URL. */
   subject: string | null;
-  /** Render the subject in the code face. */
+  /** Mostra o assunto na fonte de código. */
   mono: boolean;
-  /** Optional model-authored explanation, e.g. bash's `description`. */
+  /** Explicação opcional escrita pelo modelo, ex. `description` do bash. */
   note: string | null;
 }
 
 const VERBS: Record<ToolKind, [string, string]> = {
-  shell: ["Ran", "Running"],
-  read: ["Read", "Reading"],
-  edit: ["Edited", "Editing"],
-  write: ["Wrote", "Writing"],
-  search: ["Searched for", "Searching for"],
-  list: ["Listed", "Listing"],
-  web: ["Fetched", "Fetching"],
-  question: ["Asked you", "Asking you"],
-  plan: ["Updated the plan", "Updating the plan"],
-  agent: ["Delegated", "Delegating"],
-  goal: ["Updated the goal", "Updating the goal"],
-  generic: ["Used", "Using"],
+  shell: ["Executou", "Executando"],
+  read: ["Leu", "Lendo"],
+  edit: ["Editou", "Editando"],
+  write: ["Escreveu", "Escrevendo"],
+  search: ["Buscou", "Buscando"],
+  list: ["Listou", "Listando"],
+  web: ["Buscou", "Buscando"],
+  question: ["Perguntou", "Perguntando"],
+  plan: ["Atualizou o plano", "Atualizando o plano"],
+  agent: ["Delegou", "Delegando"],
+  goal: ["Atualizou a meta", "Atualizando a meta"],
+  generic: ["Usou", "Usando"],
 };
 
 export function describeTool(item: MspItem): ToolDescription {
@@ -283,7 +302,7 @@ export function describeTool(item: MspItem): ToolDescription {
       }
       return {
         kind,
-        verb: running ? "Searching the web for" : "Searched the web for",
+        verb: running ? "Buscando na web por" : "Buscou na web por",
         subject: pickString(args, PATTERN_KEYS),
         mono: false,
         note,
@@ -306,13 +325,13 @@ export function describeTool(item: MspItem): ToolDescription {
       return { kind, verb, subject: pickString(args, ["description", "prompt", "objective", "task"]), mono: false, note: null };
     case "goal": {
       if (item.tool === "create_goal") {
-        return { kind, verb: running ? "Setting a goal" : "Set a goal", subject: pickString(args, ["objective"]), mono: false, note: null };
+        return { kind, verb: running ? "Definindo uma meta" : "Definiu uma meta", subject: pickString(args, ["objective"]), mono: false, note: null };
       }
       if (item.tool === "report_progress") {
         const percent = args && typeof args["percent_complete"] === "number" ? `${Math.round(args["percent_complete"])}%` : null;
         return {
           kind,
-          verb: running ? "Reporting progress" : "Reported progress",
+          verb: running ? "Reportando progresso" : "Reportou progresso",
           subject: percent,
           mono: false,
           note: pickString(args, ["current_work", "next_work"]),
@@ -322,20 +341,20 @@ export function describeTool(item: MspItem): ToolDescription {
         const status = pickString(args, ["status"]);
         return {
           kind,
-          verb: running ? "Updating the goal" : "Marked the goal",
-          subject: status === "complete" ? "done" : status,
+          verb: running ? "Atualizando a meta" : "Marcou a meta",
+          subject: status === "complete" ? "concluída" : status,
           mono: false,
           note: null,
         };
       }
-      return { kind, verb: running ? "Checking the goal" : "Checked the goal", subject: null, mono: false, note: null };
+      return { kind, verb: running ? "Verificando a meta" : "Verificou a meta", subject: null, mono: false, note: null };
     }
     default: {
       const firstString = args ? Object.values(args).find((v): v is string => typeof v === "string" && v.length < 160) : null;
       return {
         kind,
-        verb: running ? "Using" : "Used",
-        subject: item.tool ? humanize(item.tool) : "a tool",
+        verb: running ? "Usando" : "Usou",
+        subject: item.tool ? humanize(item.tool) : "uma ferramenta",
         mono: false,
         note: firstString ?? null,
       };
@@ -359,8 +378,8 @@ function lines(value: unknown): string[] {
 }
 
 /**
- * Aligns an edit's old and new lines the way a diff does: unchanged lines read as context instead of
- * showing as removed and re-added, which is what the find block's padding lines would otherwise do.
+ * Alinha as linhas antigas e novas de uma edição como um diff faz: linhas sem mudança aparecem como contexto em vez
+ * de mostrar como removidas e readicionadas, que é o que as linhas de preenchimento do bloco find fariam.
  */
 export function alignLines(removed: string[], added: string[]): DiffRow[] {
   if (removed.length === 0) {
@@ -387,7 +406,7 @@ export function alignLines(removed: string[], added: string[]): DiffRow[] {
       rows.push({ kind: "same", text: removed[i - 1] as string });
       i -= 1;
       j -= 1;
-      // Ties walk back through the additions first, so deletions read before them going forward.
+      // Empates voltam pelas adições primeiro, para deleções aparecerem antes delas indo adiante.
     } else if (j > 0 && (i === 0 || (table[i * width + (j - 1)] as number) >= (table[(i - 1) * width + j] as number))) {
       rows.push({ kind: "add", text: added[j - 1] as string });
       j -= 1;
@@ -405,8 +424,8 @@ interface EchoBlock {
 }
 
 /**
- * Splits the runtime's edit echo(es) off the front of a tool result. Null when the output is not an
- * echo at all; a bare blank line reads as both sides', since no prefix says which side dropped it.
+ * Separa o(s) eco(s) de edição do runtime da frente do resultado de uma ferramenta. Nulo quando a saída não é
+ * um eco; uma linha em branco solta conta para ambos os lados, já que nenhum prefixo diz qual lado a soltou.
  */
 function splitDiffEcho(output: string): { blocks: EchoBlock[]; rest: string } | null {
   const echoLines = output.replace(/\r\n/g, "\n").split("\n");
@@ -449,15 +468,15 @@ function splitDiffEcho(output: string): { blocks: EchoBlock[]; rest: string } | 
 }
 
 /**
- * Strips the runtime's edit echo from a tool result, leaving anything it carried beyond the echo. Null
- * when the output is not an echo at all, so callers keep showing those; "" when it is only the echo,
- * which the receipt's own diff already shows better.
+ * Tira o eco de edição do runtime do resultado de uma ferramenta, deixando o resto que ele trouxe. Nulo
+ * quando a saída não é um eco, para chamadores seguirem mostrando esses; "" quando é só o eco,
+ * que o diff do próprio recibo já mostra melhor.
  */
 export function withoutDiffEcho(output: string): string | null {
   return splitDiffEcho(output)?.rest ?? null;
 }
 
-/** Builds the receipt's diff from the result's echo, for when the arguments do not carry the change. */
+/** Monta o diff do recibo a partir do eco do resultado, para quando os argumentos não trazem a mudança. */
 export function diffFromEcho(output: string, path: string | null): DiffView | null {
   const echo = splitDiffEcho(output);
   if (!echo) {
@@ -470,7 +489,7 @@ export function diffFromEcho(output: string, path: string | null): DiffView | nu
   return { path, hunks };
 }
 
-/** Pull a reviewable diff out of an edit-style tool call, when its arguments carry one. */
+/** Puxa um diff revisável de uma chamada de ferramenta estilo edição, quando seus argumentos trazem um. */
 export function extractDiff(item: MspItem): DiffView | null {
   const args = parseArgs(item.args);
   if (!args) {
@@ -507,8 +526,8 @@ export function extractDiff(item: MspItem): DiffView | null {
   if (content && toolKind(item.tool, args) === "write") {
     return { path, hunks: [{ rows: alignLines([], lines(content)) }] };
   }
-  // Last resort: the result echoes the change even when the arguments do not name it, so an unfamiliar
-  // tool shape still renders an aligned diff instead of the raw echo.
+  // Último recurso: o resultado ecoa a mudança mesmo quando os argumentos não a nomeiam, então uma forma
+  // de ferramenta desconhecida ainda renderiza um diff alinhado em vez do eco cru.
   if (item.visibleOutput && !item.truncated) {
     const kind = toolKind(item.tool, args);
     if (kind === "edit" || kind === "write") {
@@ -550,7 +569,7 @@ export interface DiffLine {
   text: string;
 }
 
-/** Flattens one diff into renderable rows, marking the gaps between its hunks. */
+/** Achata um diff em linhas renderizáveis, marcando os vãos entre seus hunks. */
 export function diffLines(diff: DiffView): DiffLine[] {
   const lines: DiffLine[] = [];
   if ("patch" in diff) {
@@ -578,7 +597,7 @@ export function diffLines(diff: DiffView): DiffLine[] {
   return lines;
 }
 
-/** Joins one file's diffs into a single continuous row stream, in turn order. */
+/** Junta os diffs de um arquivo num fluxo único contínuo de linhas, em ordem de mensagem. */
 export function mergeDiffLines(diffs: DiffView[]): DiffLine[] {
   const lines: DiffLine[] = [];
   diffs.forEach((diff, index) => {
@@ -601,39 +620,39 @@ export function describeApproval(request: ApprovalRequest): ApprovalDescription 
   const stagesCommand = subject.stages?.map((s) => s.argv.join(" ")).join(" | ");
   switch (subject.kind) {
     case "shell":
-      return { title: "Run a shell command", detail: subject.command ?? stagesCommand ?? request.rawArgs ?? null, mono: true };
+      return { title: "Executar um comando shell", detail: subject.command ?? stagesCommand ?? request.rawArgs ?? null, mono: true };
     case "fileAccess": {
       const access = subject.access ? subject.access.toLowerCase() : "access";
-      const verb = access.includes("write") ? "Write to" : access.includes("read") ? "Read" : "Access";
-      return { title: `${verb} a file`, detail: subject.path ?? subject.target ?? null, mono: true };
+      const verb = access.includes("write") ? "Escrever em" : access.includes("read") ? "Ler" : "Acessar";
+      return { title: `${verb} um arquivo`, detail: subject.path ?? subject.target ?? null, mono: true };
     }
     case "network": {
       const target = subject.host
         ? `${subject.protocol ? `${subject.protocol}://` : ""}${subject.host}${subject.port ? `:${subject.port}` : ""}`
         : (subject.target ?? null);
-      return { title: "Connect to the network", detail: target, mono: true };
+      return { title: "Conectar à rede", detail: target, mono: true };
     }
     case "process":
-      return { title: "Start a process", detail: subject.command ?? subject.target ?? stagesCommand ?? null, mono: true };
+      return { title: "Iniciar um processo", detail: subject.command ?? subject.target ?? stagesCommand ?? null, mono: true };
     case "tool":
       return {
-        title: `Use the ${humanize(subject.toolName ?? request.toolName ?? "tool").toLowerCase()} tool`,
+        title: `Usar a ferramenta ${humanize(subject.toolName ?? request.toolName ?? "tool").toLowerCase()}`,
         detail: request.rawArgs ?? null,
         mono: true,
       };
     default:
       return {
-        title: `Allow ${humanize(subject.kind).toLowerCase()}`,
+        title: `Permitir ${humanize(subject.kind).toLowerCase()}`,
         detail: subject.command ?? subject.path ?? subject.target ?? request.rawArgs ?? null,
         mono: true,
       };
   }
 }
 
-/** Strip the provider tier suffix for display; the tier gets its own badge. */
+/** Tira o sufixo de nível do provedor para exibição; o nível ganha seu próprio selo. */
 export function modelDisplayName(modelId: string | null | undefined): string {
   if (!modelId) {
-    return "Default model";
+    return "Modelo padrão";
   }
   return modelId.replace(/-contributor$/i, "");
 }
