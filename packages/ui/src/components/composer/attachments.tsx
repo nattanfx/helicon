@@ -4,13 +4,13 @@ import type { AttachmentView, OutgoingAttachment } from "../../types.js";
 import type { EchoAttachment } from "../../model/fold.js";
 import { cn } from "../ui/primitives.js";
 
-/** A file the user attached but has not sent yet: bytes ready for the wire, plus a local preview. */
+/** Um arquivo que o usuário anexou mas ainda não enviou: bytes prontos para transmissão, mais uma prévia local. */
 export interface PendingFile {
   id: string;
   name: string;
   mediaType: string;
   kind: "image" | "file";
-  /** An object URL for an image preview; null for anything else. */
+  /** Uma URL de objeto para a prévia de imagem; nulo para o resto. */
   url: string | null;
   base64: string;
   width?: number;
@@ -18,7 +18,7 @@ export interface PendingFile {
   size: number;
 }
 
-/** Images are the one part Muse takes directly; everything else rides along as a file in the workspace. */
+/** Imagens são a única parte que o Muse recebe direto; o resto vai junto como arquivo na pasta do projeto. */
 export function kindOf(mediaType: string): "image" | "file" {
   return mediaType.startsWith("image/") ? "image" : "file";
 }
@@ -44,7 +44,7 @@ async function measure(url: string): Promise<{ width: number; height: number } |
 
 let fileSeq = 0;
 
-/** Reads dropped, pasted or picked files into what the composer holds until the message is sent. */
+/** Lê arquivos arrastados, colados ou escolhidos para o que o composer guarda até a mensagem ser enviada. */
 export async function readFiles(files: Iterable<File>): Promise<PendingFile[]> {
   const out: PendingFile[] = [];
   for (const file of files) {
@@ -56,7 +56,7 @@ export async function readFiles(files: Iterable<File>): Promise<PendingFile[]> {
     fileSeq += 1;
     out.push({
       id: `file-${Date.now().toString(36)}-${fileSeq}`,
-      name: file.name || (kind === "image" ? "pasted-image.png" : "file"),
+      name: file.name || (kind === "image" ? "imagem-colada.png" : "arquivo"),
       mediaType,
       kind,
       url,
@@ -69,15 +69,15 @@ export async function readFiles(files: Iterable<File>): Promise<PendingFile[]> {
 }
 
 /**
- * Reads a sent turn's files back from the server, so a retry carries the same bytes rather than
- * quietly asking the model a different question. Throws when a file cannot be read.
+ * Relê do servidor os arquivos de uma mensagem enviada, para uma repetição levar os mesmos bytes em vez de
+ * silenciosamente fazer outra pergunta ao modelo. Lança erro quando um arquivo não pode ser lido.
  */
 export async function refetchAttachments(files: readonly AttachmentView[]): Promise<PendingFile[]> {
   const out: PendingFile[] = [];
   for (const file of files) {
     const response = await fetch(file.url);
     if (!response.ok) {
-      throw new Error(`${file.name} could not be read back (${response.status}).`);
+      throw new Error(`${file.name} não pôde ser relido (${response.status}).`);
     }
     const bytes = new Uint8Array(await response.arrayBuffer());
     fileSeq += 1;
@@ -86,7 +86,7 @@ export async function refetchAttachments(files: readonly AttachmentView[]): Prom
       name: file.name,
       mediaType: file.mediaType,
       kind: file.kind,
-      // The server keeps serving these, so the preview needs no object URL of its own.
+      // O servidor continua servindo estes, então a prévia não precisa de URL de objeto própria.
       url: file.kind === "image" ? file.url : null,
       base64: toBase64(bytes),
       ...(file.width !== null && file.height !== null ? { width: file.width, height: file.height } : {}),
@@ -106,8 +106,8 @@ export function toOutgoing(file: PendingFile): OutgoingAttachment {
 }
 
 /**
- * Rebuilds the tray from a prompt handed back after a failed send. The bytes are already in hand, so
- * nothing is read a second time, and the previews the message went out with still resolve.
+ * Reconstrói a bandeja a partir de um prompt devolvido após um envio falho. Os bytes já estão em mãos, então
+ * nada é lido uma segunda vez, e as prévias com que a mensagem saiu continuam válidas.
  */
 export function restoreFiles(attachments: readonly OutgoingAttachment[], previews: readonly EchoAttachment[]): PendingFile[] {
   return attachments.map((file, index) => {
@@ -122,7 +122,7 @@ export function restoreFiles(attachments: readonly OutgoingAttachment[], preview
       url: preview?.url ?? null,
       base64: file.base64,
       ...(file.width !== undefined && file.height !== undefined ? { width: file.width, height: file.height } : {}),
-      // Four base64 characters carry three bytes, less whatever the padding stands in for.
+      // Quatro caracteres base64 carregam três bytes, menos o que o preenchimento substitui.
       size: Math.max(0, Math.floor((file.base64.length * 3) / 4) - padding),
     };
   });
@@ -142,7 +142,7 @@ export function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** What the composer shows for the files waiting to go with the next message. */
+/** O que o composer mostra para os arquivos esperando para ir com a próxima mensagem. */
 export function AttachmentTray(props: { files: PendingFile[]; onRemove: (id: string) => void }) {
   const [zoom, setZoom] = useState<PendingFile | null>(null);
   if (props.files.length === 0) {
@@ -157,7 +157,7 @@ export function AttachmentTray(props: { files: PendingFile[]; onRemove: (id: str
               <button
                 type="button"
                 onClick={() => setZoom(file)}
-                aria-label={`Open ${file.name}`}
+                aria-label={`Abrir ${file.name}`}
                 className="block size-16 overflow-hidden rounded-xl bg-sunken shadow-[0_0_0_1px_var(--border)] transition-transform duration-150 ease-out active:scale-[0.97]"
               >
                 <img src={file.url} alt={file.name} className="size-full object-cover" />
@@ -173,7 +173,7 @@ export function AttachmentTray(props: { files: PendingFile[]; onRemove: (id: str
             )}
             <button
               type="button"
-              aria-label={`Remove ${file.name}`}
+              aria-label={`Remover ${file.name}`}
               onClick={() => props.onRemove(file.id)}
               className="absolute -top-1.5 -right-1.5 inline-flex size-5 items-center justify-center rounded-full bg-inverse text-inverse-fg opacity-0 shadow-pop transition-opacity duration-100 group-hover/att:opacity-100 focus-visible:opacity-100"
             >
@@ -187,7 +187,7 @@ export function AttachmentTray(props: { files: PendingFile[]; onRemove: (id: str
   );
 }
 
-/** The sent message's copy of its attachments, served back by the server. */
+/** A cópia dos anexos na mensagem enviada, servida de volta pelo servidor. */
 export function SentAttachments(props: { files: (AttachmentView | EchoAttachment)[]; className?: string }) {
   const [zoom, setZoom] = useState<{ name: string; url: string } | null>(null);
   if (props.files.length === 0) {
@@ -202,7 +202,7 @@ export function SentAttachments(props: { files: (AttachmentView | EchoAttachment
               <button
                 type="button"
                 onClick={() => setZoom({ name: file.name, url: file.url as string })}
-                aria-label={`Open ${file.name}`}
+                aria-label={`Abrir ${file.name}`}
                 className="block max-h-44 overflow-hidden rounded-xl bg-sunken shadow-[0_0_0_1px_var(--border)] transition-transform duration-150 ease-out active:scale-[0.98]"
               >
                 <img src={file.url} alt={file.name} className="max-h-44 w-auto object-contain" />
@@ -221,7 +221,7 @@ export function SentAttachments(props: { files: (AttachmentView | EchoAttachment
   );
 }
 
-/** An image at full size over the thread; Escape or a click anywhere closes it. */
+/** Uma imagem em tamanho real sobre a conversa; Escape ou um clique em qualquer lugar a fecha. */
 function Lightbox(props: { name: string; url: string; onClose: () => void }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -246,7 +246,7 @@ function Lightbox(props: { name: string; url: string; onClose: () => void }) {
   );
 }
 
-/** The button that opens the file picker. */
+/** O botão que abre o seletor de arquivos. */
 export function AttachButton(props: { onFiles: (files: FileList) => void; disabled?: boolean }) {
   return (
     <label
@@ -255,7 +255,7 @@ export function AttachButton(props: { onFiles: (files: FileList) => void; disabl
         props.disabled && "pointer-events-none opacity-50",
       )}
     >
-      <span className="sr-only">Attach files</span>
+      <span className="sr-only">Anexar arquivos</span>
       <Paperclip size={14} />
       <input
         type="file"
