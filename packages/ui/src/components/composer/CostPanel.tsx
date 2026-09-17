@@ -5,7 +5,7 @@ import { formatCost } from "../../model/pricing.js";
 import { sessionUsage } from "../../model/usage.js";
 import { Tip, FLOATING } from "../ui/overlays.js";
 
-/** What this thread would have cost on API billing, beside the context meter. */
+/** Quanto esta conversa teria custado na cobrança por API, ao lado do medidor de contexto. */
 export function CostMeter(props: { sessionId: string }) {
   const total = useApp((s) => {
     const fold = s.threads[props.sessionId]?.fold;
@@ -20,11 +20,11 @@ export function CostMeter(props: { sessionId: string }) {
   }
   return (
     <Popover.Root>
-      <Tip label="What this thread would cost at API rates">
+      <Tip label="Quanto esta conversa custaria nas tarifas de API">
         <Popover.Trigger asChild>
           <button
             type="button"
-            aria-label={`Thread cost ${formatCost(total.cost, total.currency ?? undefined)}`}
+            aria-label={`Custo da conversa ${formatCost(total.cost, total.currency ?? undefined)}`}
             className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg px-1.5 text-2xs text-subtle tabular-nums transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg"
           >
             {formatCost(total.cost, total.currency ?? undefined)}
@@ -47,7 +47,7 @@ export function CostMeter(props: { sessionId: string }) {
   );
 }
 
-/** Mounted only while the popover is open, so a streaming thread does not recompute it. */
+/** Montado só enquanto o popover está aberto, para uma conversa em streaming não recalcular. */
 function CostPanel(props: { sessionId: string }) {
   const usage = useApp((s) => {
     const fold = s.threads[props.sessionId]?.fold;
@@ -65,21 +65,21 @@ function CostPanel(props: { sessionId: string }) {
     <div className="flex flex-col gap-3 p-3.5">
       <div>
         <p className="text-sm font-semibold text-fg">
-          {formatCost(usage.cost ?? 0, currency)} <span className="font-normal text-subtle">at API rates</span>
+          {formatCost(usage.cost ?? 0, currency)} <span className="font-normal text-subtle">nas tarifas de API</span>
         </p>
         <p className="mt-0.5 text-xs text-muted">
           {usage.costComplete
-            ? "What these tokens would have cost billed per token, not what you were charged."
-            : "Part of this thread ran on a model with no published price, so the total is a floor."}
+            ? "Quanto estes tokens teriam custado cobrados por token, não o que foi cobrado de você."
+            : "Parte desta conversa rodou num modelo sem preço publicado, então o total é um piso."}
         </p>
       </div>
 
       <dl className="flex flex-col gap-1 text-xs">
-        <Row label="Input" tokens={fresh} />
-        <Row label="Cached input" tokens={cached} />
-        <Row label="Output" tokens={usage.outputTokens} />
-        {usage.reasoningTokens > 0 ? <Row label="of that, reasoning" tokens={usage.reasoningTokens} muted /> : null}
-        <Row label="Model calls" tokens={usage.calls} raw />
+        <Row label="Entrada" tokens={fresh} />
+        <Row label="Entrada em cache" tokens={cached} />
+        <Row label="Saída" tokens={usage.outputTokens} />
+        {usage.reasoningTokens > 0 ? <Row label="disso, raciocínio" tokens={usage.reasoningTokens} muted /> : null}
+        <Row label="Chamadas ao modelo" tokens={usage.calls} raw />
       </dl>
 
       {usage.models.length > 0 ? (
@@ -93,13 +93,13 @@ function CostPanel(props: { sessionId: string }) {
                   <p className="truncate text-fg">
                     {modelDisplayName(model.modelId)}
                     {option?.contributor || /contributor/i.test(model.modelId) ? (
-                      <span className="ml-1.5 rounded bg-active px-1 py-px align-middle text-2xs font-medium text-muted">contributor</span>
+                      <span className="ml-1.5 rounded bg-active px-1 py-px align-middle text-2xs font-medium text-muted">colaborador</span>
                     ) : null}
                   </p>
                   <p className="text-2xs text-subtle tabular-nums">
                     {price
-                      ? `${formatCost(price.input, currency)}/M in · ${formatCost(price.cached, currency)}/M cached · ${formatCost(price.output, currency)}/M out`
-                      : "no published price"}
+                      ? `${formatCost(price.input, currency)}/M entrada · ${formatCost(price.cached, currency)}/M cache · ${formatCost(price.output, currency)}/M saída`
+                      : "sem preço publicado"}
                   </p>
                 </div>
                 <span className="shrink-0 tabular-nums text-muted">{model.cost === null ? "—" : formatCost(model.cost, currency)}</span>
