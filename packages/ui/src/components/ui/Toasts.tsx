@@ -73,7 +73,7 @@ export function Toasts() {
               </div>
               <button
                 type="button"
-                aria-label="Dismiss"
+                aria-label="Dispensar"
                 onClick={() => controller.dismissToast(toast.id)}
                 className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-subtle transition-colors hover:bg-hover hover:text-fg"
               >
