@@ -29,7 +29,7 @@ import { Tip } from "../ui/overlays.js";
 import { Button, IconButton, Spinner, cn } from "../ui/primitives.js";
 import { highlight } from "sugar-high";
 
-/** Past this, source is shown as plain lines: highlighting a huge file would freeze the thread beside it. */
+/** Acima disto, o código aparece como linhas simples: destacar um arquivo enorme travaria a conversa ao lado. */
 const HIGHLIGHT_LIMIT = 300_000;
 
 function iconFor(name: string): ReactNode {
@@ -52,7 +52,7 @@ function iconFor(name: string): ReactNode {
   return languageFromPath(name) ? <FileCode size={14} /> : <File size={14} />;
 }
 
-/** The file viewer beside a thread: open files as tabs, or the project's tree to find one. */
+/** O visualizador de arquivos ao lado de uma conversa: abra arquivos como abas, ou a árvore do projeto para achar um. */
 export function FilesPanel(props: { sessionId: string; cwd: string }) {
   const controller = useController();
   const width = useApp((s) => s.prefs.filesWidth);
@@ -65,22 +65,22 @@ export function FilesPanel(props: { sessionId: string; cwd: string }) {
   const showTree = !panel || panel.tree || !active;
   const close = (path: string) => {
     const dirty = drafts[fileKey(props.cwd, path)];
-    if (dirty && !window.confirm(`Discard your unsaved changes to ${basenameOf(path)}?`)) {
+    if (dirty && !window.confirm(`Descartar suas alterações não salvas em ${basenameOf(path)}?`)) {
       return;
     }
     controller.closeFile(props.sessionId, path);
   };
   return (
     <aside
-      aria-label="Files"
+      aria-label="Arquivos"
       className="relative flex h-full shrink-0 flex-col border-l border-line bg-bg"
       style={{ width: `min(${width}px, 70%)` }}
     >
       <ResizeHandle />
       <header data-drag-region {...drag} className="flex h-12 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2">
-        <Tip label={showTree ? "Back to the open file" : "Show files"}>
+        <Tip label={showTree ? "Voltar ao arquivo aberto" : "Mostrar arquivos"}>
           <IconButton
-            label={showTree ? "Back to the open file" : "Show files"}
+            label={showTree ? "Voltar ao arquivo aberto" : "Mostrar arquivos"}
             active={showTree}
             disabled={showTree && !active}
             onClick={() => controller.showFileTree(props.sessionId, !showTree)}
@@ -89,7 +89,7 @@ export function FilesPanel(props: { sessionId: string; cwd: string }) {
             <ListTree size={15} />
           </IconButton>
         </Tip>
-        <div role="tablist" aria-label="Open files" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" {...noDrag}>
+        <div role="tablist" aria-label="Arquivos abertos" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" {...noDrag}>
           {tabs.map((path) => {
             const selected = path === active && !showTree;
             const dirty = Boolean(drafts[fileKey(props.cwd, path)]);
@@ -114,7 +114,7 @@ export function FilesPanel(props: { sessionId: string; cwd: string }) {
                 </button>
                 <button
                   type="button"
-                  aria-label={dirty ? `${basenameOf(path)} has unsaved changes. Close` : `Close ${basenameOf(path)}`}
+                  aria-label={dirty ? `${basenameOf(path)} tem alterações não salvas. Fechar` : `Fechar ${basenameOf(path)}`}
                   onClick={() => close(path)}
                   className="flex size-5 shrink-0 items-center justify-center rounded text-subtle hover:bg-hover hover:text-fg"
                 >
@@ -125,8 +125,8 @@ export function FilesPanel(props: { sessionId: string; cwd: string }) {
             );
           })}
         </div>
-        <Tip label="Close files">
-          <IconButton label="Close files" onClick={() => controller.toggleFiles(false)} {...noDrag}>
+        <Tip label="Fechar arquivos">
+          <IconButton label="Fechar arquivos" onClick={() => controller.toggleFiles(false)} {...noDrag}>
             <X size={15} />
           </IconButton>
         </Tip>
@@ -151,7 +151,7 @@ function ResizeHandle() {
     const startWidth = controller.store.get().prefs.filesWidth;
     handle.setPointerCapture(event.pointerId);
     document.body.style.cursor = "col-resize";
-    // The panel sits on the right, so dragging left widens it.
+    // O painel fica à direita, então arrastar para a esquerda o alarga.
     const move = (e: globalThis.PointerEvent) => controller.setFilesWidth(startWidth - (e.clientX - startX));
     const up = () => {
       handle.removeEventListener("pointermove", move);
@@ -167,7 +167,7 @@ function ResizeHandle() {
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize files"
+      aria-label="Redimensionar arquivos"
       tabIndex={0}
       onPointerDown={onPointerDown}
       onDoubleClick={() => controller.setFilesWidth(DEFAULT_FILES_WIDTH)}
@@ -184,7 +184,7 @@ function ResizeHandle() {
   );
 }
 
-// ---------------------------------------------------------------- tree
+// ---------------------------------------------------------------- árvore
 
 function FileTree(props: { sessionId: string; cwd: string }) {
   const controller = useController();
@@ -201,7 +201,7 @@ function FileTree(props: { sessionId: string; cwd: string }) {
     }
     let live = true;
     setSearching(true);
-    // A short pause, so a search runs once the typing stops rather than on every key.
+    // Uma pausa curta, para a busca rodar quando a digitação parar em vez de a cada tecla.
     const timer = window.setTimeout(() => {
       controller
         .searchFiles(props.cwd, words)
@@ -230,21 +230,21 @@ function FileTree(props: { sessionId: string; cwd: string }) {
                 controller.openFile(props.sessionId, results[0].path);
               }
             }}
-            placeholder="Find a file"
-            aria-label="Find a file"
+            placeholder="Achar um arquivo"
+            aria-label="Achar um arquivo"
             className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-subtle"
           />
         </label>
-        <Tip label="Refresh">
-          <IconButton size="sm" label="Refresh files" onClick={() => setReload((n) => n + 1)}>
+        <Tip label="Atualizar">
+          <IconButton size="sm" label="Atualizar arquivos" onClick={() => setReload((n) => n + 1)}>
             <RefreshCw size={13} />
           </IconButton>
         </Tip>
       </div>
-      <div role="tree" aria-label="Project files" className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
+      <div role="tree" aria-label="Arquivos do projeto" className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
         {results ? (
           results.length === 0 && !searching ? (
-            <p className="px-3 py-6 text-center text-sm text-muted">No files match.</p>
+            <p className="px-3 py-6 text-center text-sm text-muted">Nenhum arquivo corresponde.</p>
           ) : (
             results.map((entry) => (
               <button
@@ -298,12 +298,12 @@ function TreeFolder(props: { sessionId: string; cwd: string; path: string; depth
   if (!entries) {
     return (
       <div className="flex items-center gap-2 py-1 text-xs text-subtle" style={indent}>
-        <Spinner size={10} /> Loading
+        <Spinner size={10} /> Carregando
       </div>
     );
   }
   if (entries.length === 0 && props.depth === 0) {
-    return <p className="px-3 py-6 text-center text-sm text-muted">This folder is empty.</p>;
+    return <p className="px-3 py-6 text-center text-sm text-muted">Esta pasta está vazia.</p>;
   }
   return (
     <div role="group">
@@ -316,7 +316,7 @@ function TreeFolder(props: { sessionId: string; cwd: string; path: string; depth
       )}
       {truncated ? (
         <p className="py-1 text-2xs text-subtle" style={indent}>
-          More files here than the tree lists. Find one by name above.
+          Há mais arquivos aqui do que a árvore lista. Ache um pelo nome acima.
         </p>
       ) : null}
     </div>
@@ -369,7 +369,7 @@ function TreeFile(props: { sessionId: string; cwd: string; entry: FileEntry; dep
   );
 }
 
-// ---------------------------------------------------------------- one file
+// ---------------------------------------------------------------- um arquivo
 
 function FileView(props: { sessionId: string; cwd: string; path: string; line: LineRange | null }) {
   const controller = useController();
@@ -383,7 +383,7 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
     kind: string | null;
   } | null>(null);
   const markdown = isMarkdownPath(props.path);
-  // Markdown opens as a preview unless there is an unsaved edit to get back to.
+  // Markdown abre como prévia, a não ser que haja uma edição não salva a retomar.
   const [source, setSource] = useState(() => !markdown || draft !== null);
 
   useEffect(() => {
@@ -403,7 +403,7 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
     return () => {
       live = false;
     };
-    // `version` moves when Muse edits the file or it is saved here, so the view reloads.
+    // `version` muda quando o Muse edita o arquivo ou ele é salvo aqui, então a visão recarrega.
   }, [controller, props.cwd, props.path, version]);
 
   const save = () => void controller.saveFile(props.cwd, props.path);
@@ -424,7 +424,7 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-line pr-1.5 pl-3">
-        <nav aria-label="Path" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs text-subtle">
+        <nav aria-label="Caminho" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs text-subtle">
           {crumbs.map((crumb, index) => (
             <span
               key={index}
@@ -437,22 +437,22 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
         </nav>
         {draft ? (
           <Button size="sm" variant="accent" className="h-6 px-2 text-xs" loading={saving} onClick={save}>
-            Save
+            Salvar
           </Button>
         ) : null}
         {editable ? (
-          <div role="radiogroup" aria-label="View" className="flex items-center rounded-md bg-sunken p-0.5">
-            <ModeButton label="Preview" active={!source} onClick={() => setSource(false)}>
+          <div role="radiogroup" aria-label="Exibição" className="flex items-center rounded-md bg-sunken p-0.5">
+            <ModeButton label="Prévia" active={!source} onClick={() => setSource(false)}>
               <Eye size={13} />
             </ModeButton>
-            <ModeButton label="Source" active={source} onClick={() => setSource(true)}>
+            <ModeButton label="Fonte" active={source} onClick={() => setSource(true)}>
               <Code size={13} />
             </ModeButton>
           </div>
         ) : null}
         {file && file.kind !== "text" && file.kind !== "markdown" ? (
-          <Tip label="Open in the default app">
-            <IconButton size="sm" label="Open in the default app" onClick={() => void controller.openFileExternally(props.cwd, props.path)}>
+          <Tip label="Abrir no app padrão">
+            <IconButton size="sm" label="Abrir no app padrão" onClick={() => void controller.openFileExternally(props.cwd, props.path)}>
               <ExternalLink size={13} />
             </IconButton>
           </Tip>
@@ -461,7 +461,7 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
       <div className="min-h-0 flex-1 overflow-auto">
         {error ? (
           <FileProblem
-            title={error.kind === null && /does not exist/.test(error.message) ? "This file is not there" : "Could not open this file"}
+            title={error.kind === null && /does not exist/.test(error.message) ? "Este arquivo não foi encontrado" : "Não foi possível abrir este arquivo"}
             detail={error.message}
             onRetry={() =>
               controller.store.set((s) => ({
@@ -472,7 +472,7 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
           />
         ) : !file ? (
           <div className="flex h-32 items-center justify-center gap-2 text-sm text-muted">
-            <Spinner size={13} /> Opening
+            <Spinner size={13} /> Abrindo
           </div>
         ) : (
           <FileBody
@@ -518,7 +518,7 @@ function FileProblem(props: { title: string; detail: string; onRetry?: () => voi
       <p className="max-w-[46ch] text-xs text-pretty text-muted">{props.detail}</p>
       {props.onRetry ? (
         <Button size="sm" variant="ghost" onClick={props.onRetry}>
-          <RefreshCw size={13} /> Try again
+          <RefreshCw size={13} /> Tentar de novo
         </Button>
       ) : null}
     </div>
@@ -580,27 +580,27 @@ function FileBody(props: {
     default:
       return (
         <FileProblem
-          title="No preview for this file"
-          detail={`${file.name} is a ${formatFileSize(file.size)} binary file. Open it in the app your system uses for it.`}
+          title="Sem prévia para este arquivo"
+          detail={`${file.name} é um arquivo binário de ${formatFileSize(file.size)}. Abra-o no app que seu sistema usa para ele.`}
         />
       );
   }
 }
 
-/** Source with line numbers and colour, scrolled to and marking the lines a link pointed at. */
+/** Código com números de linha e cor, rolado até as linhas que um link apontou e marcando-as. */
 function SourceView(props: { text: string; path: string; line: LineRange | null; truncated?: boolean }) {
   const ref = useRef<HTMLElement>(null);
   const [wrap, setWrap] = useState(false);
   const html = useMemo(() => {
     const language = languageFromPath(props.path);
-    // A file's final newline ends its last line; it is not a line of its own.
+    // A quebra de linha final de um arquivo termina sua última linha; ela não é uma linha própria.
     const text = props.text.endsWith("\n") ? props.text.slice(0, -1) : props.text;
     if (language && text.length <= HIGHLIGHT_LIMIT) {
       try {
-        // Each line is already a block, so the newlines between them would render as blank lines inside <pre>.
+        // Cada linha já é um bloco, então as quebras entre elas renderizariam como linhas em branco dentro de <pre>.
         return highlight(text).replace(/<\/span>\n<span class="sh__line">/g, '</span><span class="sh__line">');
       } catch {
-        /* falls through to plain lines */
+        /* cai para linhas simples */
       }
     }
     return text
@@ -632,20 +632,20 @@ function SourceView(props: { text: string; path: string; line: LineRange | null;
           aria-pressed={wrap}
           className="rounded bg-sunken/90 px-1.5 py-0.5 text-2xs text-subtle backdrop-blur hover:text-fg"
         >
-          {wrap ? "No wrap" : "Wrap"}
+          {wrap ? "Sem quebra" : "Quebrar linha"}
         </button>
       </div>
       <pre className="-mt-6 overflow-x-auto pt-1 pb-6">
         <code ref={ref} className={cn("file-code block font-mono", wrap && "wrap")} dangerouslySetInnerHTML={{ __html: html }} />
       </pre>
       {props.truncated ? (
-        <p className="border-t border-line px-4 py-2 text-xs text-subtle">This file is large, so only its start is shown.</p>
+        <p className="border-t border-line px-4 py-2 text-xs text-subtle">Este arquivo é grande, então só seu início aparece.</p>
       ) : null}
     </div>
   );
 }
 
-/** Markdown source, editable. Cmd/Ctrl+S saves; Tab indents instead of leaving the editor. */
+/** Código markdown, editável. Cmd/Ctrl+S salva; Tab indenta em vez de sair do editor. */
 function SourceEditor(props: { value: string; onChange: (value: string) => void; onSave: () => void }) {
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     const mod = navigator.platform.toLowerCase().includes("mac") ? event.metaKey : event.ctrlKey;
@@ -669,7 +669,7 @@ function SourceEditor(props: { value: string; onChange: (value: string) => void;
       onChange={(event) => props.onChange(event.target.value)}
       onKeyDown={onKeyDown}
       spellCheck={false}
-      aria-label="Markdown source"
+      aria-label="Código markdown"
       className="block h-full min-h-full w-full resize-none bg-bg px-5 py-4 font-mono text-[12.5px] leading-[1.6] text-fg outline-none"
     />
   );
