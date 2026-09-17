@@ -4,13 +4,14 @@ import { useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
 import { basename, formatDuration, formatTokens, modelDisplayName, relativeTime } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
-import { fillUsageDays, rangeLabel, USAGE_RANGES } from "../../model/usage-range.js";
+import { fillUsageDays, USAGE_RANGES } from "../../model/usage-range.js";
 import type { ModelOption, UsageBucket, UsageReport, UsageThread } from "../../types.js";
 import { Button, Spinner, cn } from "../ui/primitives.js";
+import { TopBar } from "../chrome.js";
 import { PlanMeter } from "./PlanMeter.js";
 import { Tip } from "../ui/overlays.js";
 
-/** One colour per model, in the order they appear; the accent leads and the rest step away from it. */
+/** Uma cor por modelo, na ordem em que aparecem; o destaque lidera e as demais se afastam dele. */
 const SERIES = [
   "var(--accent)",
   "color-mix(in oklch, var(--accent) 55%, var(--fg-muted))",
@@ -56,17 +57,20 @@ export function UsagePage() {
   }, [controller, days]);
 
   const view = useMemo(() => (report ? summarize(report, models) : null), [report, models]);
+  const collapsed = useApp((s) => s.prefs.sidebarCollapsed);
   const drag = useOverlayDragProps();
 
   return (
-    <div className="@container flex h-full min-w-0 flex-col overflow-x-hidden overflow-y-auto">
+    <div className="@container flex h-full min-w-0 flex-col">
+      {collapsed ? <TopBar /> : null}
+      <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
       <header {...drag} className="mx-auto flex w-full max-w-[980px] shrink-0 flex-wrap items-center gap-3 px-4 pt-6 pb-4 @min-[520px]:px-6 sm:pt-8">
         <Button size="sm" variant="ghost" onClick={() => controller.navigate({ kind: "home" })}>
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={14} /> Voltar
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold text-fg">Usage</h1>
-          <p className="text-pretty text-xs text-muted">What these threads would have cost billed per token, not what your plan charged.</p>
+          <h1 className="text-lg font-semibold text-fg">Uso</h1>
+          <p className="text-pretty text-xs text-muted">Quanto estas conversas teriam custado cobradas por token, não o que seu plano cobrou.</p>
         </div>
         <div className="flex w-full shrink-0 items-center gap-1 overflow-x-auto rounded-lg bg-sunken p-0.5 @min-[520px]:ml-auto @min-[520px]:w-auto">
           {USAGE_RANGES.map((range) => (
@@ -93,10 +97,10 @@ export function UsagePage() {
           <p className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-text">{error}</p>
         ) : !view ? (
           <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted">
-            <Spinner size={13} /> Reading usage
+            <Spinner size={13} /> Lendo uso
           </div>
         ) : view.calls === 0 ? (
-          <EmptyUsage days={days} />
+          <EmptyUsage />
         ) : (
           <div className="flex flex-col gap-6">
             <Totals view={view} />
@@ -104,11 +108,12 @@ export function UsagePage() {
             <Models view={view} />
             <Threads view={view} />
             <p className="text-xs text-subtle">
-              Prices are Meta's published rates per million tokens, or a model's own catalog price when it carries one. Contributor
-              tiers are billed separately and marked as such.
+              Os preços são as tarifas publicadas pela Meta por milhão de tokens, ou o preço de catálogo do próprio modelo quando ele
+              tem um. Níveis de colaborador são cobrados à parte e marcados como tal.
             </p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -212,7 +217,7 @@ function summarize(report: UsageReport, models: readonly ModelOption[]): UsageVi
   const modelRows = [...byModel.values()].sort((a, b) => b.cost - a.cost || b.calls - a.calls);
   const threads = report.threads
     .map((thread) => {
-      // Each model's own share at its own rate: a thread that moved between tiers is not one flat price.
+      // A parcela de cada modelo em sua própria tarifa: uma conversa que mudou de nível não tem um preço único.
       const shares = thread.models ?? [
         {
           modelId: thread.modelIds[0] ?? "",
@@ -266,20 +271,20 @@ function Totals(props: { view: UsageView }) {
   return (
     <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <Card
-        label="Cost at API rates"
+        label="Custo na tarifa de API"
         value={formatCost(view.cost, view.currency)}
-        detail={view.unpriced > 0 ? `${view.unpriced} calls have no published price` : `${view.calls} model calls`}
+        detail={view.unpriced > 0 ? `${view.unpriced} chamadas sem preço publicado` : `${view.calls} chamadas ao modelo`}
       />
-      <Card label="Input tokens" value={formatTokens(view.promptTokens)} detail={`${formatTokens(view.cachedTokens)} served from cache`} />
+      <Card label="Tokens de entrada" value={formatTokens(view.promptTokens)} detail={`${formatTokens(view.cachedTokens)} vindos do cache`} />
       <Card
-        label="Output tokens"
+        label="Tokens de saída"
         value={formatTokens(view.outputTokens)}
-        detail={view.reasoningTokens > 0 ? `${formatTokens(view.reasoningTokens)} reasoning` : undefined}
+        detail={view.reasoningTokens > 0 ? `${formatTokens(view.reasoningTokens)} de raciocínio` : undefined}
       />
       <Card
-        label="Caching saved"
+        label="Cache economizou"
         value={formatCost(view.cacheSaved, view.currency)}
-        detail={view.modelMs > 0 ? `${formatDuration(view.modelMs)} of model time` : undefined}
+        detail={view.modelMs > 0 ? `${formatDuration(view.modelMs)} de tempo de modelo` : undefined}
       />
     </section>
   );
@@ -292,8 +297,8 @@ function DailyChart(props: { view: UsageView }) {
   return (
     <section className="min-w-0 overflow-hidden rounded-xl bg-raised px-4 py-4 shadow-[0_0_0_1px_var(--border)]">
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-fg">Cost by day</h2>
-        <span className="text-2xs text-subtle tabular-nums">peak {formatCost(max, view.currency)}</span>
+        <h2 className="text-sm font-semibold text-fg">Custo por dia</h2>
+        <span className="text-2xs text-subtle tabular-nums">pico {formatCost(max, view.currency)}</span>
       </div>
       <div className="flex h-40 min-w-0 items-end gap-px overflow-hidden">
         {view.days.map((day) => (
@@ -331,7 +336,7 @@ function Models(props: { view: UsageView }) {
   const max = Math.max(...view.models.map((m) => m.cost), 0.000001);
   return (
     <section className="rounded-xl bg-raised px-4 py-4 shadow-[0_0_0_1px_var(--border)]">
-      <h2 className="mb-3 text-sm font-semibold text-fg">By model</h2>
+      <h2 className="mb-3 text-sm font-semibold text-fg">Por modelo</h2>
       <div className="flex flex-col gap-3">
         {view.models.map((model, index) => (
           <div key={model.modelId} className="flex flex-col gap-1.5">
@@ -340,7 +345,7 @@ function Models(props: { view: UsageView }) {
                 <span className="size-2 shrink-0 rounded-[3px]" style={{ background: SERIES[index % SERIES.length] }} aria-hidden="true" />
                 <span className="truncate text-sm text-fg">{modelDisplayName(model.modelId)}</span>
                 {model.contributor ? (
-                  <span className="shrink-0 rounded bg-active px-1 py-px text-2xs font-medium text-muted">contributor</span>
+                  <span className="shrink-0 rounded bg-active px-1 py-px text-2xs font-medium text-muted">colaborador</span>
                 ) : null}
               </div>
               <span className="shrink-0 text-sm text-fg tabular-nums">{formatCost(model.cost, view.currency)}</span>
@@ -352,11 +357,11 @@ function Models(props: { view: UsageView }) {
               />
             </div>
             <p className="text-2xs text-subtle tabular-nums">
-              {model.calls} calls · {formatTokens(model.promptTokens)} in ({formatTokens(model.cachedTokens)} cached) ·{" "}
-              {formatTokens(model.outputTokens)} out
+              {model.calls} chamadas · {formatTokens(model.promptTokens)} de entrada ({formatTokens(model.cachedTokens)} do cache) ·{" "}
+              {formatTokens(model.outputTokens)} de saída
               {model.price
-                ? ` · ${formatCost(model.price.input, view.currency)}/M in, ${formatCost(model.price.output, view.currency)}/M out`
-                : " · no published price"}
+                ? ` · ${formatCost(model.price.input, view.currency)}/M de entrada, ${formatCost(model.price.output, view.currency)}/M de saída`
+                : " · sem preço publicado"}
             </p>
           </div>
         ))}
@@ -373,7 +378,7 @@ function Threads(props: { view: UsageView }) {
   }
   return (
     <section className="rounded-xl bg-raised px-4 py-4 shadow-[0_0_0_1px_var(--border)]">
-      <h2 className="mb-3 text-sm font-semibold text-fg">Costliest threads</h2>
+      <h2 className="mb-3 text-sm font-semibold text-fg">Conversas mais caras</h2>
       <ul className="flex flex-col">
         {view.threads.map((thread) => (
           <li key={thread.sessionId}>
@@ -383,10 +388,10 @@ function Threads(props: { view: UsageView }) {
               className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-100 hover:bg-hover"
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-fg">{thread.title ?? "New thread"}</p>
+                <p className="truncate text-sm text-fg">{thread.title ?? "Nova conversa"}</p>
                 <p className="truncate text-2xs text-subtle tabular-nums">
                   {thread.cwd ? `${basename(thread.cwd)} · ` : ""}
-                  {thread.calls} calls · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {relativeTime(thread.lastAt)}
+                  {thread.calls} chamadas · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {relativeTime(thread.lastAt)}
                 </p>
               </div>
               <span className="shrink-0 text-sm text-fg tabular-nums">{formatCost(thread.cost, view.currency)}</span>
@@ -398,12 +403,13 @@ function Threads(props: { view: UsageView }) {
   );
 }
 
-function EmptyUsage(props: { days: number }) {
+function EmptyUsage() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl bg-raised px-6 py-16 text-center shadow-[0_0_0_1px_var(--border)]">
-      <p className="text-sm font-medium text-fg">No model calls in the last {rangeLabel(props.days)}</p>
+      <p className="text-sm font-medium text-fg">Nenhuma chamada ao modelo neste período</p>
       <p className="max-w-[42ch] text-xs text-muted">
-        This fills in as threads run. Opening an older thread also backfills what it spent, so its calls show up here too.
+        Isto se preenche conforme as conversas executam. Abrir uma conversa mais antiga também preenche o que ela gastou, então suas
+        chamadas aparecem aqui também.
       </p>
     </div>
   );
