@@ -37,15 +37,15 @@ export function NewThread(props: { cwd: string | null }) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col justify-center px-6 pt-6 pb-[12vh]">
           <h1 className={DISPLAY}>
-            Start a thread in <ProjectSwitcher project={project} projects={projects} />
+            Começar uma conversa em <ProjectSwitcher project={project} projects={projects} />
           </h1>
           <div className="mt-7">
             <Composer sessionId={null} cwd={project.cwd} running={false} readOnly={false} variant="home" autoFocus />
           </div>
           <ComposerFooter cwd={project.cwd} branch={null} running={false} />
           {recent.length > 0 ? (
-            <section className="mt-12" aria-label={`Recent threads in ${project.displayName}`}>
-              <h2 className="px-2 text-xs font-medium text-subtle">Recent in {project.displayName}</h2>
+            <section className="mt-12" aria-label={`Conversas recentes em ${project.displayName}`}>
+              <h2 className="px-2 text-xs font-medium text-subtle">Recentes em {project.displayName}</h2>
               <ul className="mt-1.5 flex flex-col">
                 {recent.map((session) => (
                   <li key={session.sessionId}>
@@ -98,7 +98,7 @@ function ProjectSwitcher(props: { project: ProjectView; projects: ProjectView[] 
         </MenuRadioGroup>
         <MenuSeparator />
         <MenuItem icon={<FolderPlus size={14} />} onSelect={() => controller.setAddProjectOpen(true)}>
-          Add project
+          Adicionar projeto
         </MenuItem>
       </MenuContent>
     </Menu>
@@ -121,16 +121,16 @@ export function Welcome() {
       <TopBar />
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pb-[10vh]">
         <div className="w-full max-w-[540px]">
-          <FolderArt label="Add your first project" onActivate={() => input.current?.focus()} />
-          <h1 className={cn(DISPLAY, "mt-8")}>Welcome to Helicon</h1>
+          <FolderArt label="Adicione seu primeiro projeto" onActivate={() => input.current?.focus()} />
+          <h1 className={cn(DISPLAY, "mt-8")}>Bem-vindo ao Helicon</h1>
           <p className="mt-3 text-md leading-relaxed text-pretty text-muted">
-            Point Muse at a project and start a thread. Threads live in the sidebar, grouped by project, and tell you when
-            they need you.
+            Aponte o Muse para um projeto e comece uma conversa. As conversas moram na barra lateral, agrupadas por projeto, e avisam
+            quando precisam de você.
           </p>
           <form className="mt-8 flex gap-2" onSubmit={submit}>
             <input
               ref={input}
-              aria-label="Project folder path"
+              aria-label="Caminho da pasta do projeto"
               value={path}
               spellCheck={false}
               autoComplete="off"
@@ -140,16 +140,16 @@ export function Welcome() {
               className="h-10 min-w-0 flex-1 rounded-lg bg-raised px-3 font-mono text-base text-fg shadow-[0_0_0_1px_var(--border-strong)] outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)] focus-visible:outline-none sm:text-sm"
             />
             <Button variant="primary" type="submit" className="h-10 px-4" loading={busy} disabled={!path.trim()}>
-              Add project
+              Adicionar projeto
             </Button>
           </form>
           <p className="mt-3 flex items-center gap-2 text-xs text-subtle">
             {discovering ? (
               <>
-                <Spinner size={10} /> Checking Muse for threads you started in the terminal
+                <Spinner size={10} /> Procurando no Muse conversas que você começou no terminal
               </>
             ) : (
-              "Threads you start from the Muse terminal show up here on their own."
+              "Conversas que você começa no terminal do Muse aparecem aqui sozinhas."
             )}
           </p>
         </div>
@@ -176,45 +176,45 @@ export function Onboarding() {
   const install = "irm https://dev.meta.ai/install.ps1 | iex";
   const steps: Step[] = [];
   if (windows && (env.runtime === "native" || !env.wslAvailable)) {
-    // Muse runs natively on Windows now, so a new setup needs no WSL at all.
+    // O Muse roda nativo no Windows agora, então uma instalação nova não precisa de WSL.
     steps.push({
       ok: env.museFound,
-      title: "Muse for Windows",
+      title: "Muse para Windows",
       detail: env.museFound
-        ? `Found at ${env.musePath}.`
-        : "Install Muse from PowerShell. No WSL needed. Already use Muse inside WSL? Set WSL up and Helicon uses it there.",
+        ? `Encontrado em ${env.musePath}.`
+        : "Instale o Muse pelo PowerShell. Sem WSL. Já usa o Muse dentro do WSL? Configure o WSL e o Helicon o usa lá.",
       command: env.museFound ? undefined : install,
     });
   } else if (windows) {
-    steps.push({ ok: true, title: "WSL2 with a Linux distro", detail: `Using ${env.defaultDistro ?? "your default distro"}.` });
+    steps.push({ ok: true, title: "WSL2 com uma distro Linux", detail: `Usando ${env.defaultDistro ?? "sua distro padrão"}.` });
     steps.push({
       ok: env.museFound,
-      title: "The Muse CLI",
+      title: "O CLI do Muse",
       detail: env.museFound
-        ? `Found at ${env.musePath}.`
-        : `Install Muse for Windows from PowerShell (no WSL needed), or install it inside ${env.defaultDistro ?? "your WSL distro"}.`,
+        ? `Encontrado em ${env.musePath}.`
+        : `Instale o Muse para Windows pelo PowerShell (sem WSL), ou instale dentro de ${env.defaultDistro ?? "sua distro WSL"}.`,
       command: env.museFound ? undefined : install,
     });
   } else {
     steps.push({
       ok: env.museFound,
-      title: "The Muse CLI",
-      detail: env.museFound ? `Found at ${env.musePath}.` : "Install Muse so the muse command is on your PATH.",
+      title: "O CLI do Muse",
+      detail: env.museFound ? `Encontrado em ${env.musePath}.` : "Instale o Muse para que o comando muse esteja no PATH.",
     });
   }
   steps.push({
     ok: null,
-    title: "Signed in to Muse",
-    detail: "Run this once in a terminal. Helicon uses your own login and never sees your credentials.",
+    title: "Logado no Muse",
+    detail: "Rode isto uma vez num terminal. O Helicon usa seu próprio login e nunca vê suas credenciais.",
     command: "muse login",
   });
   return (
     <div className="flex h-full items-center justify-center overflow-y-auto bg-bg px-6 py-10">
       <div className="w-full max-w-[560px]">
         <Logo size={40} />
-        <h1 className={cn(DISPLAY, "mt-7")}>Set up Muse</h1>
+        <h1 className={cn(DISPLAY, "mt-7")}>Configurar o Muse</h1>
         <p className="mt-3 text-md leading-relaxed text-muted">
-          Helicon drives the Muse Code CLI on this computer. Finish these steps, then check again.
+          O Helicon dirige o CLI do Muse Code neste computador. Termine estas etapas e verifique de novo.
         </p>
         <ol className="mt-8 flex flex-col gap-2.5">
           {steps.map((step, index) => (
@@ -224,7 +224,7 @@ export function Onboarding() {
                   "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
                   step.ok === true ? "bg-ok text-[oklch(0.99_0_0)]" : step.ok === false ? "bg-warn-soft text-warn-text" : "bg-active text-muted",
                 )}
-                aria-label={step.ok === true ? "Done" : step.ok === false ? "Needs attention" : "Check yourself"}
+                aria-label={step.ok === true ? "Feita" : step.ok === false ? "Precisa de atenção" : "Confira você mesmo"}
               >
                 {step.ok === true ? <Check size={13} strokeWidth={3} /> : index + 1}
               </span>
@@ -234,7 +234,7 @@ export function Onboarding() {
                 {step.command ? (
                   <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-sunken py-1 pr-1 pl-3 font-mono text-xs text-fg shadow-[0_0_0_1px_var(--border)]">
                     <span className="min-w-0 flex-1 truncate">{step.command}</span>
-                    <CopyButton text={step.command} label="Copy command" />
+                    <CopyButton text={step.command} label="Copiar comando" />
                   </div>
                 ) : null}
               </div>
@@ -243,7 +243,7 @@ export function Onboarding() {
         </ol>
         <div className="mt-6">
           <Button variant="primary" onClick={() => controller.retryBoot()} loading={checking}>
-            <RefreshCw size={14} /> Check again
+            <RefreshCw size={14} /> Verificar de novo
           </Button>
         </div>
       </div>
@@ -257,7 +257,7 @@ export function BootScreen() {
       <div className="flex flex-col items-center gap-5">
         <Logo size={36} />
         <span className="flex items-center gap-2 text-sm text-subtle">
-          <Spinner size={12} /> Starting Helicon
+          <Spinner size={12} /> Iniciando o Helicon
         </span>
       </div>
     </div>
@@ -271,11 +271,11 @@ export function BootError() {
     <div className="flex h-full items-center justify-center bg-bg px-6">
       <div className="w-full max-w-[480px]">
         <Logo size={36} />
-        <h1 className={cn(DISPLAY, "mt-6 text-3xl")}>Helicon could not reach its server</h1>
-        <p className="mt-3 text-sm break-words text-muted">{message ?? "The local Helicon server did not answer."}</p>
+        <h1 className={cn(DISPLAY, "mt-6 text-3xl")}>O Helicon não alcançou seu servidor</h1>
+        <p className="mt-3 text-sm break-words text-muted">{message ?? "O servidor local do Helicon não respondeu."}</p>
         <div className="mt-6">
           <Button variant="primary" onClick={() => controller.retryBoot()}>
-            <RefreshCw size={14} /> Try again
+            <RefreshCw size={14} /> Tentar de novo
           </Button>
         </div>
       </div>
