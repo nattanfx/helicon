@@ -1,17 +1,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { emptyFold, type ThreadFold } from "../src/model/fold.js";
-import { backgroundTasks, formatReset, planView } from "../src/model/plan.js";
+import { backgroundTasks, formatReset, planAge, planView } from "../src/model/plan.js";
 import type { MspItem } from "../src/types.js";
 
 const NOW = 1_800_000_000_000;
 
-describe("plan meter", () => {
-  it("shows nothing until Muse has seen a window", () => {
+describe("medidor de plano", () => {
+  it("não mostra nada até o Muse ter visto uma janela", () => {
     assert.equal(planView(null, NOW), null);
   });
 
-  it("names the short window by its length and counts down to each reset", () => {
+  it("nomeia a janela curta por seu tamanho e conta até cada renovação", () => {
     const view = planView(
       {
         tier: "high_usage",
@@ -23,13 +23,32 @@ describe("plan meter", () => {
     );
     assert.equal(view?.tier, "High usage");
     assert.deepEqual(view?.rows, [
-      { key: "window", label: "5-hour window", percent: 72, tone: "warn", resets: "Resets in 2h 14m" },
-      { key: "weekly", label: "Weekly", percent: 94, tone: "danger", resets: "Reset" },
+      { key: "window", label: "Janela de 5h", percent: 72, tone: "warn", resets: "Renova em 2h 14min" },
+      { key: "weekly", label: "Semanal", percent: 94, tone: "danger", resets: "Renovou" },
     ]);
     assert.equal(view?.stale, false);
   });
 
-  it("clamps odd percentages and marks an old reading as stale", () => {
+  it("carrega há quanto tempo é a leitura, desde o primeiro minuto", () => {
+    // O Muse só informa isto com uma chamada ao modelo, então uma porcentagem sozinha não diz nada sobre agora.
+    const at = (ms: number) =>
+      planView(
+        {
+          tier: "high_usage",
+          observedAtMs: NOW - ms,
+          window: { usedPercent: 0, resetsAtMs: NOW + 60_000, windowDurationMins: 300 },
+          weekly: { usedPercent: 1, resetsAtMs: NOW + 60_000, windowDurationMins: null },
+        },
+        NOW,
+      )?.age;
+    assert.equal(at(5_000), "agora");
+    assert.equal(at(4 * 60_000), "4min");
+    assert.equal(at(3 * 60 * 60_000), "3h");
+    assert.equal(at(3 * 24 * 60 * 60_000), "3d");
+    assert.equal(planAge(NOW, NOW), "agora");
+  });
+
+  it("limita porcentagens estranhas e marca leitura velha como desatualizada", () => {
     const view = planView(
       {
         tier: "everyday",
@@ -39,14 +58,14 @@ describe("plan meter", () => {
       },
       NOW,
     );
-    assert.equal(view?.rows[0]?.label, "90-minute window");
+    assert.equal(view?.rows[0]?.label, "Janela de 90min");
     assert.equal(view?.rows[0]?.percent, 100);
     assert.equal(view?.rows[1]?.percent, 0);
     assert.equal(view?.rows[1]?.tone, "ok");
     assert.equal(view?.stale, true);
   });
 
-  it("leaves out a tier that is an opaque id rather than a plan name", () => {
+  it("omite um nível que é um id opaco em vez de nome de plano", () => {
     const reading = (tier: string) =>
       planView(
         {
@@ -57,24 +76,24 @@ describe("plan meter", () => {
         },
         NOW,
       )?.tier;
-    // What Muse Code 1.3.0 actually reports.
+    // O que o Muse Code 1.3.0 realmente informa.
     assert.equal(reading("27681527378179523"), null);
     assert.equal(reading("power_usage"), "Power usage");
   });
 });
 
-describe("reset countdown", () => {
-  it("stays in hours for a day or so and switches to days for the weekly cap", () => {
+describe("contagem para renovar", () => {
+  it("fica em horas por um dia ou assim e muda para dias para o teto semanal", () => {
     const hour = 60 * 60 * 1000;
-    assert.equal(formatReset(2 * hour + 17 * 60_000), "2h 17m");
+    assert.equal(formatReset(2 * hour + 17 * 60_000), "2h 17min");
     assert.equal(formatReset(47 * hour), "47h");
     assert.equal(formatReset(77 * hour), "3d 5h");
     assert.equal(formatReset(72 * hour), "3d");
   });
 });
 
-describe("background tasks", () => {
-  it("lists only tool calls still running in the background", () => {
+describe("tarefas em segundo plano", () => {
+  it("lista só chamadas de ferramenta ainda executando em segundo plano", () => {
     const item = (itemId: string, patch: Partial<MspItem>): MspItem => ({ itemId, kind: "toolCall", status: "inProgress", revision: 1, ...patch });
     const base = emptyFold();
     const fold: ThreadFold = {
