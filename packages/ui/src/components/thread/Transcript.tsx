@@ -76,7 +76,7 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
   const models = useApp((s) => s.models);
   const controller = useController();
   const cwd = useApp((s) => s.sessions[props.sessionId]?.cwd ?? null);
-  // Paths Muse mentions in a reply open in the file viewer rather than a browser tab.
+  // Caminhos que o Muse menciona numa resposta abrem no visualizador de arquivos em vez de uma aba do navegador.
   const links = useMemo<FileLinks | null>(
     () =>
       cwd
@@ -93,8 +93,8 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
   );
   const costs = useMemo(() => turnCosts(fold, models), [fold.meta.calls, models]);
   const echoes = fold.echoes.filter((e) => e.disposition !== "queued");
-  // Files the server kept for this thread, grouped by the turn they were sent with.
-  // Turns and the commands Helicon ran share one timeline: a command's output caused the prompt after it.
+  // Arquivos que o servidor guardou para esta conversa, agrupados pela mensagem com que foram enviados.
+  // Mensagens e os comandos que o Helicon executou dividem uma linha do tempo: a saída de um comando causou o pedido após ele.
   const timeline = useMemo(() => {
     let last = 0;
     const blocks = turns.map((turn, index) => {
@@ -116,8 +116,8 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
   }, [thread.attachments]);
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({ initial: "instant", resize: "smooth" });
 
-  // The dock below grows when a request or panel appears, which shrinks this viewport. Follow it down so the
-  // last thing Muse said is never left cut off behind the card asking about it.
+  // O dock abaixo cresce quando um pedido ou painel aparece, o que encolhe esta visão. Acompanhe para baixo para a
+  // última coisa que o Muse disse nunca ficar cortada atrás do cartão que pergunta sobre ela.
   const requests = Object.keys(fold.approvals).length + Object.keys(fold.userInputs).length;
   useEffect(() => {
     if (requests > 0) {
@@ -150,7 +150,7 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
         <div ref={scrollRef} className="h-full overflow-y-auto [scrollbar-gutter:stable_both-edges]">
           <div ref={contentRef} className="mx-auto flex w-full max-w-[776px] flex-col gap-8 px-4 pt-8 pb-10 @min-[520px]:px-6">
             {thread.truncated ? (
-              <p className="text-center text-xs text-subtle">Earlier turns are not shown. Open the session in Muse to see the full history.</p>
+              <p className="text-center text-xs text-subtle">Mensagens anteriores não aparecem. Abra a sessão no Muse para ver o histórico completo.</p>
             ) : null}
             {thread.load === "loading" && empty ? <TranscriptSkeleton /> : null}
             {timeline.map((entry) =>
@@ -185,7 +185,7 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
               onClick={() => void scrollToBottom()}
               className="enter-up pointer-events-auto inline-flex h-8 items-center gap-1.5 rounded-full bg-raised px-3 text-xs font-medium text-muted shadow-pop hover:text-fg"
             >
-              <ArrowDown size={13} /> Latest
+              <ArrowDown size={13} /> Mais recentes
             </button>
           </div>
         ) : null}
@@ -224,10 +224,10 @@ const TurnBlock = memo(
     const failed = info?.terminal === "failed" && !info.dismissed && !closed;
     const cancelled = info?.terminal === "cancelled";
     const hasWork = turn.entries.length > 0;
-    // Items outside any turn are the user's own `!` commands: shown as they are, never folded into a work log.
+    // Itens fora de qualquer mensagem são os próprios comandos `!` do usuário: mostrados como são, nunca dobrados num registro de trabalho.
     const standalone = !turn.turnId && !turn.prompt;
     return (
-      <article className="flex flex-col gap-3" aria-label="Turn">
+      <article className="flex flex-col gap-3" aria-label="Mensagem">
         {turn.prompt ? (
           <PromptBubble item={turn.prompt} sentAt={sentTime(turn)} files={props.attachments[turn.turnId ?? ""] ?? []} />
         ) : null}
@@ -255,18 +255,18 @@ const TurnBlock = memo(
           </div>
         ) : null}
         {failed && !props.isLast ? (
-          // A failure the thread has since moved past stays in the record, but quietly.
+          // Uma falha que a conversa já deixou para trás fica no registro, mas discretamente.
           <p className="flex min-w-0 items-center gap-1.5 text-xs text-subtle">
             <CircleAlert size={12} className="shrink-0 text-danger" />
-            <span className="shrink-0">Failed</span>
+            <span className="shrink-0">Falhou</span>
             <span aria-hidden="true">·</span>
             <span className="min-w-0 truncate" title={info?.error?.message ?? undefined}>
-              {info?.error?.message ?? "The turn failed."}
+              {info?.error?.message ?? "A mensagem falhou."}
             </span>
           </p>
         ) : failed ? (
           <TurnError
-            message={info?.error?.message ?? "The turn failed."}
+            message={info?.error?.message ?? "A mensagem falhou."}
             retryable={info?.error?.retryable ?? true}
             prompt={props.isLast && !props.readOnly ? (turn.prompt?.displayText ?? turn.prompt?.text ?? null) : null}
             sessionId={props.sessionId}
@@ -277,8 +277,8 @@ const TurnBlock = memo(
         ) : null}
         {cancelled ? (
           <p className="flex items-center gap-1.5 text-xs text-subtle">
-            <Square size={11} className="fill-current" /> Stopped
-            {info?.durationMs ? <span className="tabular-nums">after {formatDuration(info.durationMs)}</span> : null}
+            <Square size={11} className="fill-current" /> Parado
+            {info?.durationMs ? <span className="tabular-nums">após {formatDuration(info.durationMs)}</span> : null}
           </p>
         ) : null}
       </article>
@@ -295,7 +295,7 @@ const TurnBlock = memo(
     a.isLast === b.isLast &&
     a.readOnly === b.readOnly &&
     a.attachments === b.attachments &&
-    // Prices arrive after the catalog loads, so a turn's cost can change with nothing else about it changing.
+    // Preços chegam após o catálogo carregar, então o custo de uma mensagem pode mudar sem nada mais sobre ela mudar.
     a.cost?.cost === b.cost?.cost &&
     a.speed?.tokensPerSecond === b.speed?.tokensPerSecond,
 );
@@ -308,12 +308,12 @@ function parseTime(iso: string | undefined): number | null {
   return Number.isNaN(time) ? null : time;
 }
 
-/** When the prompt went in: its record time, or when its turn started. */
+/** Quando o pedido entrou: seu horário de registro, ou quando sua mensagem começou. */
 function sentTime(turn: TurnView): number | null {
   return parseTime(turn.prompt?.recordedAt) ?? turn.info?.startedAt ?? null;
 }
 
-/** When the turn finished: the live completion, or its reply's record time for history. */
+/** Quando a mensagem terminou: a conclusão ao vivo, ou o horário de registro de sua resposta para o histórico. */
 function completedTime(turn: TurnView): number | null {
   return turn.info?.completedAt ?? parseTime(turn.final?.recordedAt) ?? parseTime(turn.entries[turn.entries.length - 1]?.recordedAt);
 }
@@ -378,12 +378,12 @@ function summarize(entries: MspItem[]): string {
     }
   }
   const parts: string[] = [];
-  if (edits) parts.push(plural(edits, "edit", "edits"));
-  if (commands) parts.push(plural(commands, "command", "commands"));
-  if (reads) parts.push(plural(reads, "file read", "files read"));
-  if (searches) parts.push(plural(searches, "search", "searches"));
-  if (goals) parts.push(plural(goals, "goal update", "goal updates"));
-  if (other) parts.push(plural(other, "tool call", "tool calls"));
+  if (edits) parts.push(plural(edits, "edição", "edições"));
+  if (commands) parts.push(plural(commands, "comando", "comandos"));
+  if (reads) parts.push(plural(reads, "arquivo lido", "arquivos lidos"));
+  if (searches) parts.push(plural(searches, "busca", "buscas"));
+  if (goals) parts.push(plural(goals, "atualização de meta", "atualizações de meta"));
+  if (other) parts.push(plural(other, "chamada de ferramenta", "chamadas de ferramenta"));
   return parts.join(", ");
 }
 
@@ -402,8 +402,8 @@ function turnDuration(turn: TurnView): number | null {
 }
 
 /**
- * A finished turn's work, collapsed to one line; the files it changed stay visible as chips.
- * Header grammar via Beautiful UI ToolChips (beautifului.dev), MIT (c) 2026 Shane Levine.
+ * O trabalho de uma mensagem terminada, dobrado numa linha; os arquivos que mudou ficam visíveis como chips.
+ * Gramática do cabeçalho via Beautiful UI ToolChips (beautifului.dev), MIT (c) 2026 Shane Levine.
  */
 function WorkLog(props: { turn: TurnView; gates: GateMap; answers: AnswerMap; sessionId: string; speed?: TurnSpeed | null }) {
   const { turn } = props;
@@ -420,7 +420,7 @@ function WorkLog(props: { turn: TurnView; gates: GateMap; answers: AnswerMap; se
         className="group/log -mx-1.5 flex h-8 max-w-full min-w-0 items-center gap-2 overflow-hidden rounded-lg px-1.5 text-sm text-subtle transition-colors duration-100 hover:bg-hover hover:text-muted"
       >
         <ChevronRight size={13} strokeWidth={2.2} className={cn("shrink-0 transition-transform duration-200 ease-out", open && "rotate-90")} />
-        <span className="shrink-0">{duration !== null ? `Worked for ${formatDuration(duration)}` : "Work log"}</span>
+        <span className="shrink-0">{duration !== null ? `Trabalhou por ${formatDuration(duration)}` : "Registro de trabalho"}</span>
         {summary ? (
           <>
             <span className="h-3 w-px shrink-0 bg-line-strong" aria-hidden="true" />
@@ -463,23 +463,23 @@ function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
   const waiting = turn.entries.some((e) => props.gates[e.itemId]);
   const last = turn.entries[turn.entries.length - 1];
   const retry = turn.info?.retry;
-  let label = "Working";
+  let label = "Trabalhando";
   if (retry) {
-    label = `Retrying (attempt ${retry.nextAttempt} of ${retry.maxAttempts})`;
+    label = `Tentando de novo (tentativa ${retry.nextAttempt} de ${retry.maxAttempts})`;
   } else if (last?.status === "inProgress" && last.kind === "toolCall") {
     const d = describeTool(last);
     label = d.subject && d.mono ? `${d.verb} ${d.subject.split("\n")[0]}` : d.verb;
   } else if (last?.status === "inProgress" && last.kind === "reasoning") {
-    label = "Thinking";
+    label = "Pensando";
   } else if (last?.kind === "agentMessage" && last.status === "inProgress") {
-    label = "Writing";
+    label = "Escrevendo";
   }
   return (
     <div className="flex h-8 items-center gap-2.5 text-sm" role="status">
       {waiting ? (
         <>
           <span className="attention-pulse size-2 rounded-full bg-warn" />
-          <span className="font-medium text-warn-text">Waiting for you below</span>
+          <span className="font-medium text-warn-text">Esperando você abaixo</span>
         </>
       ) : (
         <>
@@ -489,7 +489,7 @@ function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
       )}
       {elapsed ? <span className="font-mono text-xs text-subtle tabular-nums">{elapsed}</span> : null}
       {speed !== null && !waiting ? (
-        <Tip label="Estimated from the text streaming now">
+        <Tip label="Estimado do texto transmitindo agora">
           <span tabIndex={0} className="font-mono text-xs text-subtle tabular-nums">
             ~{formatSpeed(speed)}
           </span>
@@ -500,7 +500,7 @@ function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
   );
 }
 
-/** Under a reply: when it finished, how long it took when there was no work log, and its output speed. */
+/** Sob uma resposta: quando terminou, quanto levou quando não houve registro de trabalho, e sua velocidade de saída. */
 function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: TurnCost | null }) {
   const duration = turnDuration(props.turn);
   const hasWork = props.turn.entries.length > 0;
@@ -513,9 +513,9 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
   return (
     <div className="flex h-6 items-center gap-1.5 text-xs text-subtle">
       {completed !== null ? (
-        <Tip label={`Completed ${formatFullDate(completed)}`}>
+        <Tip label={`Concluída ${formatFullDate(completed)}`}>
           <span tabIndex={0} className="tabular-nums">
-            Completed {formatClock(completed)}
+            Concluída {formatClock(completed)}
           </span>
         </Tip>
       ) : null}
@@ -528,7 +528,7 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
       {props.speed ? (
         <>
           {completed !== null || (duration !== null && !hasWork) ? dot : null}
-          <Tip label={`${formatTokens(props.speed.outputTokens)} output tokens over ${formatDuration(props.speed.generationMs)} of model calls`}>
+          <Tip label={`${formatTokens(props.speed.outputTokens)} tokens de saída em ${formatDuration(props.speed.generationMs)} de chamadas ao modelo`}>
             <span tabIndex={0} className="tabular-nums">
               {formatSpeed(props.speed.tokensPerSecond)}
             </span>
@@ -539,7 +539,7 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
         <>
           {completed !== null || props.speed || (duration !== null && !hasWork) ? dot : null}
           <Tip
-            label={`At API rates: ${formatTokens(props.cost.promptTokens)} in (${formatTokens(props.cost.cachedTokens)} cached), ${formatTokens(props.cost.outputTokens)} out${props.cost.complete ? "" : "; a call here has no published price"}`}
+            label={`Nas tarifas de API: ${formatTokens(props.cost.promptTokens)} de entrada (${formatTokens(props.cost.cachedTokens)} do cache), ${formatTokens(props.cost.outputTokens)} de saída${props.cost.complete ? "" : "; uma chamada aqui não tem preço publicado"}`}
           >
             <span tabIndex={0} className="tabular-nums">
               {formatCost(props.cost.cost, props.cost.currency ?? undefined)}
@@ -549,7 +549,7 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
         </>
       ) : null}
       <span className="ml-0.5 opacity-0 transition-opacity duration-150 group-hover/final:opacity-100 focus-within:opacity-100">
-        <CopyButton text={props.turn.final?.text ?? ""} label="Copy reply" />
+        <CopyButton text={props.turn.final?.text ?? ""} label="Copiar resposta" />
       </span>
     </div>
   );
@@ -576,13 +576,13 @@ function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: Att
           <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/prompt:opacity-100 focus-within:opacity-100">
             {long ? (
               <button type="button" onClick={() => setExpanded((v) => !v)} className="rounded-md px-1.5 py-0.5 text-xs text-subtle hover:bg-hover hover:text-fg">
-                {expanded ? "Show less" : "Show all"}
+                {expanded ? "Mostrar menos" : "Mostrar tudo"}
               </button>
             ) : null}
-            <CopyButton text={text} label="Copy prompt" />
+            <CopyButton text={text} label="Copiar pedido" />
           </div>
           {props.sentAt !== null ? (
-            <Tip label={`Sent ${formatFullDate(props.sentAt)}`}>
+            <Tip label={`Enviado ${formatFullDate(props.sentAt)}`}>
               <span tabIndex={0} className="px-1 text-xs text-subtle tabular-nums">
                 {formatClock(props.sentAt)}
               </span>
@@ -595,7 +595,7 @@ function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: Att
 }
 
 /**
- * A `!` command Helicon ran itself. Muse never saw it, so its output stays here until the user hands it over.
+ * Um comando `!` que o próprio Helicon executou. O Muse nunca o viu, então sua saída fica aqui até o usuário a entregar.
  */
 function ShellRunRow(props: { run: ShellRun; sessionId: string }) {
   const controller = useController();
@@ -603,36 +603,35 @@ function ShellRunRow(props: { run: ShellRun; sessionId: string }) {
   const failed = run.exitCode !== 0;
   const output = run.output.trim();
   return (
-    <section className="enter-up flex flex-col gap-1.5" aria-label={`Command ${run.command}`}>
+    <section className="enter-up flex flex-col gap-1.5" aria-label={`Comando ${run.command}`}>
       <div className="flex items-center gap-2">
         <SquareTerminal size={14} className="shrink-0 text-subtle" />
-        <span className="shrink-0 text-xs text-muted">You ran</span>
+        <span className="shrink-0 text-xs text-muted">Você executou</span>
         <code className="min-w-0 flex-1 truncate rounded-md bg-sunken px-1.5 py-0.5 font-mono text-xs text-fg">{run.command}</code>
-        {failed ? <span className="shrink-0 text-xs text-danger-text">Exit {run.exitCode ?? "?"}</span> : null}
+        {failed ? <span className="shrink-0 text-xs text-danger-text">Saída {run.exitCode ?? "?"}</span> : null}
         {run.durationMs !== null ? (
           <span className="shrink-0 text-2xs text-subtle tabular-nums">{formatDuration(run.durationMs)}</span>
         ) : null}
-        <Tip label="Muse did not see this run; this sends it the command and its output">
+        <Tip label="O Muse não viu esta execução; isto envia a ele o comando e sua saída">
           <Button size="sm" variant="ghost" onClick={() => void controller.sendShellOutput(props.sessionId, run)}>
-            Send to Muse
+            Enviar ao Muse
           </Button>
         </Tip>
       </div>
-      {output ? <CodeBlock code={run.truncated ? `[earlier output dropped]\n${output}` : output} language="text" className="my-0" /> : null}
+      {output ? <CodeBlock code={run.truncated ? `[saída anterior descartada]\n${output}` : output} language="text" className="my-0" /> : null}
     </section>
   );
 }
 
 /**
- * What a prompt says while it waits for the stream to echo it back. Only the first of these is still
- * on its way out: once the host has acknowledged the turn the message is sent, and saying otherwise
- * reads as a message that never left.
+ * O que um pedido diz enquanto espera o stream ecoá-lo de volta. Só o primeiro destes ainda está a caminho:
+ * uma vez que o host reconheceu a mensagem, ela está enviada, e dizer o contrário parece uma mensagem que nunca saiu.
  */
 const ECHO_LABEL: Record<LocalEcho["disposition"], string> = {
-  sending: "Sending",
-  started: "Sent",
-  queued: "Queued",
-  steered: "Adding to the current turn",
+  sending: "Enviando",
+  started: "Enviado",
+  queued: "Na fila",
+  steered: "Adicionando à mensagem atual",
 };
 
 function PendingPrompt(props: { echo: LocalEcho }) {
@@ -660,17 +659,17 @@ function TurnError(props: {
   sessionId: string;
   turnId: string | null;
   readOnly: boolean;
-  /** The failed turn's own files: what the provider rejects in the same words, and what a retry has to carry. */
+  /** Os próprios arquivos da mensagem falha: o que o provedor rejeita nas mesmas palavras, e o que uma nova tentativa tem de levar. */
   files: AttachmentView[];
 }) {
   const controller = useController();
   const hadImages = props.files.some((file) => file.kind === "image");
-  // Some failures are about the thread, not the turn: retrying sends the same history and fails the same way.
+  // Algumas falhas são sobre a conversa, não a mensagem: tentar de novo envia o mesmo histórico e falha do mesmo jeito.
   const stuck = stuckThread(props.message, { ownImages: hadImages });
   /**
-   * Sends the prompt again with the same files: their bytes live on the server, so they are read back
-   * rather than left out, which would quietly ask the model a different question. Nothing goes at all
-   * when they cannot be read, so the notice stays up and the choice is still the user's.
+   * Envia o pedido de novo com os mesmos arquivos: seus bytes vivem no servidor, então são lidos de volta
+   * em vez de omitidos, o que discretamente perguntaria outra coisa ao modelo. Nada vai se não puderem ser
+   * lidos, então o aviso fica e a escolha segue do usuário.
    */
   const again = (send: (files: { attachments: OutgoingAttachment[]; previews: EchoAttachment[] }) => Promise<unknown>) => {
     void (async () => {
@@ -682,7 +681,7 @@ function TurnError(props: {
         } catch (error) {
           controller.toast(
             "error",
-            "Could not read the attached files again",
+            "Não foi possível ler os arquivos anexados de novo",
             error instanceof Error ? error.message : String(error),
           );
           return;
@@ -696,7 +695,7 @@ function TurnError(props: {
     <div className="flex items-start gap-3 rounded-xl bg-danger-soft px-3.5 py-3" role="alert">
       <CircleAlert size={16} className="mt-0.5 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-fg">{stuck ? "This thread cannot go on as it is" : "This turn failed"}</p>
+        <p className="text-sm font-medium text-fg">{stuck ? "Esta conversa não pode seguir como está" : "Esta mensagem falhou"}</p>
         <p className="mt-0.5 text-sm break-words text-muted">{stuck ? stuck.message : props.message}</p>
         {stuck ? <p className="mt-1 text-2xs break-words text-subtle">{props.message}</p> : null}
       </div>
@@ -704,17 +703,17 @@ function TurnError(props: {
         <Tip
           label={
             stuck.remedy === "compact"
-              ? "Summarize the history, leave behind what cannot be sent, and carry on"
-              : "Start a thread beside this one, without the history that cannot be sent"
+              ? "Resumir o histórico, deixar para trás o que não pode ser enviado, e seguir"
+              : "Começar uma conversa ao lado desta, sem o histórico que não pode ser enviado"
           }
         >
           <Button
             size="sm"
             onClick={() => {
-              // These failures come back non-retryable, but repairing the history is what changes that:
-              // the prompt goes again once the thread can carry it.
-              // Either way the files go too: an older unreadable image is what makes this thread stuck, and
-              // the turn being retried may carry perfectly good files of its own.
+              // Estas falhas voltam como não-tentáveis, mas reparar o histórico é o que muda isto:
+              // o pedido vai de novo quando a conversa puder levá-lo.
+              // De todo jeito os arquivos vão junto: uma imagem ilegível mais antiga é o que trava esta conversa, e
+              // a mensagem tentada de novo pode levar arquivos bons seus.
               const prompt = props.prompt;
               again((files) =>
                 stuck.remedy === "compact"
@@ -725,42 +724,42 @@ function TurnError(props: {
           >
             {stuck.remedy === "compact" ? (
               <>
-                <RotateCcw size={13} /> {props.prompt ? "Compact and retry" : "Compact this thread"}
+                <RotateCcw size={13} /> {props.prompt ? "Compactar e tentar de novo" : "Compactar esta conversa"}
               </>
             ) : (
               <>
-                <SquarePen size={13} /> Start a fresh thread
+                <SquarePen size={13} /> Começar uma conversa nova
               </>
             )}
           </Button>
         </Tip>
       ) : stuck && stuck.remedy === "none" && !props.readOnly ? (
-        <Tip label="If the image you sent opens fine elsewhere, an older one in this thread is the unreadable one">
+        <Tip label="Se a imagem que você enviou abre bem em outro lugar, uma mais antiga nesta conversa é a ilegível">
           <Button
             size="sm"
             variant="secondary"
             onClick={() => {
-              // No retry here: the prompt would go back without its image, quietly asking something else.
+              // Sem nova tentativa aqui: o pedido voltaria sem sua imagem, discretamente perguntando outra coisa.
               controller.dismissTurnError(props.sessionId, props.turnId);
               void controller.compactAndRetry(props.sessionId, null);
             }}
           >
-            <RotateCcw size={13} /> Compact the thread
+            <RotateCcw size={13} /> Compactar a conversa
           </Button>
         </Tip>
       ) : props.prompt && props.retryable ? (
-        <Tip label="Send the same prompt again">
+        <Tip label="Enviar o mesmo pedido de novo">
           <Button
             size="sm"
             variant="secondary"
             onClick={() => again((files) => controller.retryTurn(props.sessionId, props.prompt as string, files))}
           >
-            <RotateCcw size={13} /> Retry
+            <RotateCcw size={13} /> Tentar de novo
           </Button>
         </Tip>
       ) : null}
-      <Tip label="Dismiss">
-        <IconButton size="sm" label="Dismiss this error" className="-mt-0.5 -mr-1 shrink-0" onClick={() => controller.dismissTurnError(props.sessionId, props.turnId)}>
+      <Tip label="Dispensar">
+        <IconButton size="sm" label="Dispensar este erro" className="-mt-0.5 -mr-1 shrink-0" onClick={() => controller.dismissTurnError(props.sessionId, props.turnId)}>
           <X size={13} />
         </IconButton>
       </Tip>
@@ -774,11 +773,11 @@ function LoadError(props: { sessionId: string; message: string | null }) {
     <div className="flex items-start gap-3 rounded-xl bg-danger-soft px-3.5 py-3" role="alert">
       <CircleAlert size={16} className="mt-0.5 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-fg">Could not open this thread</p>
-        <p className="mt-0.5 text-sm break-words text-muted">{props.message ?? "Muse did not answer."}</p>
+        <p className="text-sm font-medium text-fg">Não foi possível abrir esta conversa</p>
+        <p className="mt-0.5 text-sm break-words text-muted">{props.message ?? "O Muse não respondeu."}</p>
       </div>
       <Button size="sm" onClick={() => void controller.loadThread(props.sessionId)}>
-        Try again
+        Tentar de novo
       </Button>
     </div>
   );
@@ -787,9 +786,9 @@ function LoadError(props: { sessionId: string; message: string | null }) {
 function EmptyThread() {
   return (
     <div className="flex flex-col items-center pt-[14vh] text-center">
-      <p className="font-display text-2xl text-fg">A clean slate</p>
+      <p className="font-display text-2xl text-fg">Uma folha em branco</p>
       <p className="mt-2 max-w-[44ch] text-sm text-muted">
-        Describe the change you want. Muse reads the project, runs what it needs, and asks before anything risky.
+        Descreva a mudança que você quer. O Muse lê o projeto, executa o que precisa, e pergunta antes de qualquer coisa arriscada.
       </p>
     </div>
   );
@@ -797,7 +796,7 @@ function EmptyThread() {
 
 function TranscriptSkeleton() {
   return (
-    <div className="flex flex-col gap-8" aria-busy="true" aria-label="Loading thread">
+    <div className="flex flex-col gap-8" aria-busy="true" aria-label="Carregando conversa">
       {[0, 1].map((i) => (
         <div key={i} className="flex flex-col gap-3">
           <div className="ml-auto h-10 w-[46%] rounded-2xl bg-hover" />
