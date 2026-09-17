@@ -1,19 +1,21 @@
 /**
- * Failures that leave a thread stuck rather than merely failing once. Each turn sends the whole thread, so a
- * piece of history the provider will not take fails every later turn the same way, however many times it is
- * retried. Compacting summarizes the history and drops the part that cannot be sent.
+ * Falhas que deixam uma conversa travada em vez de falhar uma única vez. Cada mensagem envia a conversa
+ * inteira, então um pedaço do histórico que o provedor não aceita faz todas as mensagens seguintes falharem
+ * do mesmo jeito, por mais que se tente de novo. "Compactar" resume o histórico e descarta o pedaço que não
+ * pode ser enviado.
  */
 export type StuckKind = "image" | "reasoning";
 /**
- * Compacting drops what cannot be sent for some failures; for others only a new thread will do. `none` is
- * the case where nothing about the thread is wrong: the file just sent is the one the model could not read.
+ * "Compactar" descarta o que não pode ser enviado em algumas falhas; em outras, só uma conversa nova resolve.
+ * `none` é o caso em que não há nada de errado com a conversa: o arquivo que acabou de ser enviado é que o
+ * modelo não conseguiu ler.
  */
 export type StuckRemedy = "compact" | "fresh" | "none";
 
 export interface StuckThread {
   kind: StuckKind;
   remedy: StuckRemedy;
-  /** Said in place of the provider's own wording, which explains nothing about what to do. */
+  /** Dito no lugar do texto do próprio provedor, que não explica o que fazer. */
   message: string;
 }
 
@@ -23,25 +25,27 @@ const PATTERNS: { kind: StuckKind; remedy: StuckRemedy; test: RegExp; message: s
     remedy: "compact",
     test: /invalid image data at input\[|payload could not be decoded/i,
     message:
-      "An image earlier in this thread is unreadable to the model. Every turn sends the whole thread, so the next one fails the same way. Compacting summarizes what happened and leaves the image behind.",
+      "Uma imagem mais antiga desta conversa está ilegível para o modelo. Como cada mensagem envia a conversa inteira, a próxima falharia do mesmo jeito. Usar 'Compactar' resume o que aconteceu e deixa a imagem para trás.",
   },
   {
-    // Compacting keeps the recent turns as they are, reasoning included, so it does not clear this one.
+    // "Compactar" mantém as mensagens recentes como estão, raciocínio incluído, então não resolve este caso.
     kind: "reasoning",
     remedy: "fresh",
     test: /provider-private history is incompatible|reasoning replay .* has no provider attribution/i,
     message:
-      "This thread's stored reasoning belongs to the provider it ran on before, and cannot be replayed after the switch. Compacting will not clear it, because the recent turns are kept as they are. A new thread starts without that history.",
+      "O raciocínio guardado desta conversa pertence ao provedor onde ela rodava antes e não pode ser reaproveitado após a troca. 'Compactar' não resolve, porque as mensagens recentes são mantidas como estão. Uma nova conversa começa sem esse histórico.",
   },
 ];
 
 /**
- * What is wrong with this thread's history, when a failure says a later turn cannot succeed either.
+ * O que há de errado com o histórico desta conversa, quando uma falha indica que uma próxima mensagem também
+ * não teria sucesso.
  *
- * `ownImages` says the failed turn carried images of its own. The provider words a rejected image exactly as
- * it words an unreadable one from earlier, and the difference matters: compacting a thread over the image
- * just sent would drop it and retry the prompt alone, quietly asking something else. Only images count:
- * any other file is written into the workspace and cannot cause an image-decoding failure.
+ * `ownImages` diz que a mensagem que falhou levava imagens próprias. O provedor descreve uma imagem rejeitada
+ * exatamente como descreve uma imagem ilegível mais antiga, e a diferença importa: compactar a conversa por
+ * causa da imagem recém-enviada a descartaria e tentaria o pedido sozinho, discretamente perguntando outra
+ * coisa. Só imagens contam: qualquer outro arquivo é escrito na pasta do projeto e não pode causar falha de
+ * decodificação de imagem.
  */
 export function stuckThread(
   message: string | null | undefined,
@@ -53,13 +57,14 @@ export function stuckThread(
     return null;
   }
   if (found.kind === "image" && options.ownImages) {
-    // Every request carries the whole thread, so a current image does not prove which one the model choked
-    // on. Say both, and leave the thread's own repair available rather than pretending to know.
+    // Cada pedido carrega a conversa inteira, então uma imagem atual não prova em qual delas o modelo
+    // engasgou. Diga as duas possibilidades e mantenha o reparo da própria conversa disponível, em vez de
+    // fingir que sabe.
     return {
       kind: "image",
       remedy: "none",
       message:
-        "The model could not read one of this thread's images. Most likely the one sent with this message: try it again as a PNG or JPEG. If it opens fine elsewhere, an older image in the thread is the unreadable one, and compacting leaves that behind.",
+        "O modelo não conseguiu ler uma das imagens desta conversa. Provavelmente a que foi enviada nesta mensagem: tente de novo como PNG ou JPEG. Se ela abre normalmente em outro lugar, a culpada é uma imagem mais antiga — e 'Compactar' deixa essa para trás.",
     };
   }
   return { kind: found.kind, remedy: found.remedy, message: found.message };
