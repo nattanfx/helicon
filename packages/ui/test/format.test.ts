@@ -32,29 +32,29 @@ function tool(name: string, args: unknown, status = "completed", visibleOutput?:
   };
 }
 
-describe("formatting", () => {
-  it("formats relative times compactly", () => {
+describe("formatação", () => {
+  it("formata tempos relativos de forma compacta", () => {
     const now = Date.parse("2026-09-11T12:00:00Z");
-    assert.equal(relativeTime("2026-09-11T11:59:40Z", now), "now");
-    assert.equal(relativeTime("2026-09-11T11:56:00Z", now), "4m");
+    assert.equal(relativeTime("2026-09-11T11:59:40Z", now), "agora");
+    assert.equal(relativeTime("2026-09-11T11:56:00Z", now), "4min");
     assert.equal(relativeTime("2026-09-11T09:00:00Z", now), "3h");
     assert.equal(relativeTime("2026-09-09T12:00:00Z", now), "2d");
-    assert.equal(relativeTime("2026-08-21T12:00:00Z", now), "3w");
+    assert.equal(relativeTime("2026-08-21T12:00:00Z", now), "3sem");
     assert.equal(relativeTime("garbage", now), "");
   });
 
-  it("formats durations and token counts", () => {
+  it("formata durações e contagens de tokens", () => {
     assert.equal(formatDuration(42316), "42s");
-    assert.equal(formatDuration(73471), "1m 13s");
-    assert.equal(formatDuration(120000), "2m");
-    assert.equal(formatDuration(3_900_000), "1h 5m");
+    assert.equal(formatDuration(73471), "1min 13s");
+    assert.equal(formatDuration(120000), "2min");
+    assert.equal(formatDuration(3_900_000), "1h 5min");
     assert.equal(formatTokens(842), "842");
     assert.equal(formatTokens(21177), "21k");
     assert.equal(formatTokens(1500), "1.5k");
     assert.equal(formatTokens(1_007_997), "1M");
   });
 
-  it("shortens long paths from the middle", () => {
+  it("encurta caminhos longos pelo meio", () => {
     assert.equal(shortenPath("D:\\Projects\\helicon", 48), "D:\\Projects\\helicon");
     const short = shortenPath("D:\\Projects\\clients\\acme\\platform\\packages\\ui\\src", 32);
     assert.ok(short.startsWith("D:\\...\\"));
@@ -63,29 +63,29 @@ describe("formatting", () => {
   });
 });
 
-describe("tool descriptions", () => {
-  it("describes a real bash call", () => {
+describe("descrições de ferramenta", () => {
+  it("descreve uma chamada bash real", () => {
     const description = describeTool(tool("bash", { command: "ls -la", description: "List workspace directory contents" }));
     assert.deepEqual(description, {
       kind: "shell",
-      verb: "Ran",
+      verb: "Executou",
       subject: "ls -la",
       mono: true,
       note: "List workspace directory contents",
     });
-    assert.equal(describeTool(tool("bash", { command: "npm test" }, "inProgress")).verb, "Running");
+    assert.equal(describeTool(tool("bash", { command: "npm test" }, "inProgress")).verb, "Executando");
   });
 
-  it("describes questions, file tools, searches and unknown tools", () => {
+  it("descreve perguntas, ferramentas de arquivo, buscas e ferramentas desconhecidas", () => {
     const question = describeTool(
       tool("request_user_input", { questions: [{ id: "q", header: "Color", question: "Which color?", options: [], selection: { mode: "single" } }] }),
     );
     assert.equal(question.kind, "question");
     assert.equal(question.subject, "Which color?");
     assert.equal(describeTool(tool("read_file", { path: "src/app.ts" })).subject, "src/app.ts");
-    assert.equal(describeTool(tool("str_replace_editor", { file_path: "a.ts", old_string: "a", new_string: "b" })).verb, "Edited");
+    assert.equal(describeTool(tool("str_replace_editor", { file_path: "a.ts", old_string: "a", new_string: "b" })).verb, "Editou");
     const search = describeTool(tool("grep", { pattern: "TODO", path: "src" }));
-    assert.equal(search.verb, "Searched for");
+    assert.equal(search.verb, "Buscou");
     assert.equal(search.note, "src");
     const unknown = describeTool(tool("frobnicate_widgets", { target: "x" }));
     assert.equal(unknown.kind, "generic");
@@ -93,7 +93,7 @@ describe("tool descriptions", () => {
     assert.equal(describeTool({ itemId: "i", kind: "toolCall", status: "completed", revision: 1, tool: "bash", args: "{not json" }).subject, "{not json");
   });
 
-  it("extracts reviewable diffs from edit arguments", () => {
+  it("extrai diffs revisáveis dos argumentos de edição", () => {
     const diff = extractDiff(tool("edit", { path: "a.ts", old_string: "const a = 1;\nconst b = 2;", new_string: "const a = 3;" }));
     assert.ok(diff && "hunks" in diff);
     assert.deepEqual(diffStats(diff), { added: 1, removed: 2 });
@@ -103,7 +103,7 @@ describe("tool descriptions", () => {
     assert.equal(extractDiff(tool("bash", { command: "ls" })), null);
   });
 
-  it("aligns an edit's padding lines as context instead of remove-and-re-add", () => {
+  it("alinha as linhas de preenchimento de uma edição como contexto em vez de remover-e-readicionar", () => {
     const diff = extractDiff(
       tool("edit", {
         path: "ThreadView.tsx",
@@ -128,7 +128,7 @@ describe("tool descriptions", () => {
     assert.deepEqual(diffStats(diff), { added: 4, removed: 1 });
   });
 
-  it("aligns one-sided changes without hunting for overlap", () => {
+  it("alinha mudanças de um lado só sem caçar sobreposição", () => {
     assert.deepEqual(
       alignLines([], ["a", "b"]).map((row) => row.kind),
       ["add", "add"],
@@ -143,7 +143,7 @@ describe("tool descriptions", () => {
     assert.deepEqual(diffStats(written), { added: 2, removed: 0 });
   });
 
-  it("strips the runtime's edit echo but keeps anything else the output carried", () => {
+  it("tira o eco de edição do runtime mas mantém o resto que a saída trouxe", () => {
     const echo = ["edited", "changed lines: lines 39-43", "--- original", "+++ updated", "@@", "-old", "+new"].join("\n");
     assert.equal(withoutDiffEcho(echo), "");
     assert.equal(withoutDiffEcho(`${echo}\nnote: lint is unhappy`), "note: lint is unhappy");
@@ -154,7 +154,7 @@ describe("tool descriptions", () => {
     assert.equal(withoutDiffEcho("edited\nchanged lines: lines 1-2\n--- original\n+++ updated"), null);
   });
 
-  it("reads the runtime's find/replace edit arguments", () => {
+  it("lê os argumentos de edição find/replace do runtime", () => {
     const diff = extractDiff(
       tool("edit_file", {
         find: 'import { useApp } from "../../app/context.js";\nimport { modelDisplayName } from "../../model/format.js";',
@@ -172,7 +172,7 @@ describe("tool descriptions", () => {
     assert.deepEqual(diffStats(diff), { added: 1, removed: 0 });
   });
 
-  it("builds the diff from the result's echo when the arguments do not carry it", () => {
+  it("monta o diff do eco do resultado quando os argumentos não o trazem", () => {
     const echo = [
       "edited",
       "changed lines: lines 4-5",
@@ -193,15 +193,15 @@ describe("tool descriptions", () => {
     );
     assert.deepEqual(diffStats(direct), { added: 1, removed: 0 });
     assert.equal(diffFromEcho("command not found: frobnicate", null), null);
-    // An unfamiliar edit shape still renders a diff, from the echo rather than the arguments.
+    // Uma forma de edição desconhecida ainda renderiza um diff, do eco em vez dos argumentos.
     const fellBack = extractDiff(tool("edit", { target: "a.ts", patch: null }, "completed", echo));
     assert.ok(fellBack && "hunks" in fellBack);
     assert.deepEqual(diffStats(fellBack), { added: 1, removed: 0 });
-    // But a result that echoes nothing still yields no diff.
+    // Mas um resultado que não ecoa nada ainda não rende diff.
     assert.equal(extractDiff(tool("edit", { target: "a.ts" }, "completed", "File updated successfully")), null);
   });
 
-  it("flattens one diff into rows, marking the gaps between its hunks", () => {
+  it("achata um diff em linhas, marcando os vãos entre seus hunks", () => {
     const hunks = diffLines({
       path: "a.ts",
       hunks: [
@@ -229,7 +229,7 @@ describe("tool descriptions", () => {
     );
   });
 
-  it("joins one file's diffs into a single continuous row stream, in order", () => {
+  it("junta os diffs de um arquivo num fluxo único contínuo de linhas, em ordem", () => {
     const first = extractDiff(tool("edit_file", { path: "a.ts", find: "one", replace: "ONE" }));
     const second = extractDiff(tool("edit_file", { path: "a.ts", find: "two", replace: "TWO" }));
     assert.ok(first && "hunks" in first && second && "hunks" in second);
@@ -247,20 +247,20 @@ describe("tool descriptions", () => {
   });
 });
 
-describe("approvals and models", () => {
-  it("describes approval subjects in plain language", () => {
+describe("aprovações e modelos", () => {
+  it("descreve assuntos de aprovação em linguagem simples", () => {
     const base = { approvalId: "a", sessionId: "s", availableChoices: [], currentRequirementId: null };
     assert.deepEqual(describeApproval({ ...base, subject: { kind: "shell", command: "rm -rf dist" } }), {
-      title: "Run a shell command",
+      title: "Executar um comando shell",
       detail: "rm -rf dist",
       mono: true,
     });
-    assert.equal(describeApproval({ ...base, subject: { kind: "fileAccess", access: "write", path: "/etc/hosts" } }).title, "Write to a file");
+    assert.equal(describeApproval({ ...base, subject: { kind: "fileAccess", access: "write", path: "/etc/hosts" } }).title, "Escrever em um arquivo");
     assert.equal(describeApproval({ ...base, subject: { kind: "network", host: "api.github.com", port: 443, protocol: "https" } }).detail, "https://api.github.com:443");
-    assert.equal(describeApproval({ ...base, subject: { kind: "somethingNew", target: "x" } }).title, "Allow something new");
+    assert.equal(describeApproval({ ...base, subject: { kind: "somethingNew", target: "x" } }).title, "Permitir something new");
   });
 
-  it("parses the real model catalog and flags contributor tiers", () => {
+  it("interpreta o catálogo real de modelos e marca níveis de colaborador", () => {
     const models = parseModelList(modelList);
     assert.equal(models.length, 4);
     const contributor = models.find((m) => m.modelId === "muse-spark-1.3-contributor");
