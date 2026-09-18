@@ -1,21 +1,21 @@
 import type { ApprovalMode, ModelOption, ReasoningEffort, SkillEntry } from "../types.js";
 
-/** What a built-in command does; skills are the other kind of command. */
+/** O que um comando nativo faz; skills são o outro tipo de comando. */
 export type SlashAction = "compact" | "model" | "effort" | "permissions" | "fork" | "new" | "resume" | "init" | "skill" | "goal";
 
 export interface SlashCommand {
-  /** Typed after the slash. */
+  /** Digitado depois da barra. */
   name: string;
   aliases: string[];
-  /** The arguments it takes, like `[level]`; null when it takes none. */
+  /** Os argumentos que recebe, como `[level]`; nulo quando não recebe nenhum. */
   hint: string | null;
   description: string;
   kind: "action" | "skill";
   action: SlashAction | null;
   skill: SkillEntry | null;
-  /** Only works inside a thread, like compacting or forking it. */
+  /** Só funciona dentro de uma conversa, como compactá-la ou ramificá-la. */
   needsThread: boolean;
-  /** Picking it from the menu runs it at once; otherwise the menu fills in `/name ` for arguments. */
+  /** Escolhê-lo no menu o executa na hora; senão o menu preenche `/nome ` para os argumentos. */
   runsBare: boolean;
 }
 
@@ -38,37 +38,37 @@ function builtin(
   };
 }
 
-/** The Muse terminal commands that map onto the session protocol, in its wording where it has one. */
+/** Os comandos de terminal do Muse que correspondem ao protocolo de sessão, com o texto dele quando ele tem um. */
 export const BUILTIN_COMMANDS: readonly SlashCommand[] = [
-  builtin("compact", "compact", "Summarize the conversation to free up context", { needsThread: true }),
-  builtin("model", "model", "Choose the model", { aliases: ["models"], hint: "[model]" }),
-  builtin("effort", "effort", "Set how long the model thinks: off, low, medium, high, xhigh, max or auto", { hint: "[level]" }),
-  builtin("permissions", "permissions", "Choose what Muse can do without asking: ask, unlisted, deny or full", { hint: "[mode]" }),
-  builtin("fork", "fork", "Branch this thread into a new one", { needsThread: true }),
-  builtin("new", "new", "Start a new thread in this project", { aliases: ["clear"] }),
-  builtin("resume", "resume", "Open an earlier thread"),
-  builtin("init", "init", "Explore the workspace and create or improve AGENTS.md"),
-  builtin("goal", "goal", "Set a goal Muse keeps working toward across turns, or pause, resume or clear it", {
+  builtin("compact", "compact", "Resumir a conversa para liberar contexto", { needsThread: true }),
+  builtin("model", "model", "Escolher o modelo", { aliases: ["models"], hint: "[model]" }),
+  builtin("effort", "effort", "Definir quanto tempo o modelo pensa: off, low, medium, high, xhigh, max ou auto", { hint: "[level]" }),
+  builtin("permissions", "permissions", "Escolher o que o Muse pode fazer sem perguntar: ask, unlisted, deny ou full", { hint: "[mode]" }),
+  builtin("fork", "fork", "Ramificar esta conversa numa nova", { needsThread: true }),
+  builtin("new", "new", "Começar uma nova conversa neste projeto", { aliases: ["clear"] }),
+  builtin("resume", "resume", "Abrir uma conversa anterior"),
+  builtin("init", "init", "Explorar a pasta do projeto e criar ou melhorar o AGENTS.md"),
+  builtin("goal", "goal", "Definir uma meta que o Muse continua buscando a cada mensagem, ou pausar, continuar ou limpá-la", {
     hint: "<objective> | pause | resume | clear",
     runsBare: false,
   }),
-  builtin("skill", "skill", "Run a skill by name", { hint: "<skill> [request]", runsBare: false }),
+  builtin("skill", "skill", "Executar uma skill pelo nome", { hint: "<skill> [request]", runsBare: false }),
 ];
 
-/** Sent for `/init`; the terminal UI's own prompt is not published, so this asks for the same outcome. */
+/** Enviado para `/init`; o prompt próprio do terminal não é publicado, então este pede o mesmo resultado. */
 export const INIT_PROMPT =
   "Explore this workspace and create or improve its AGENTS.md: what the project is, how to build, run and test it, how the code is organized, and the conventions a coding agent should follow here.";
 
-/** The terminal UI's preamble for a skill the user invoked by hand, followed by the skill's body. */
+/** O preâmbulo do terminal para uma skill que o usuário invocou à mão, seguido do corpo da skill. */
 export const SKILL_PREAMBLE =
   "Muse Code loaded the full instructions for an explicitly invoked skill. Apply these instructions only to the current user turn.";
 
-/** The `/name` a skill answers to: plugin skills are named `plugin:<plugin>:<skill>`, so the last part. */
+/** O `/nome` ao qual uma skill responde: skills de plug-in se chamam `plugin:<plugin>:<skill>`, então a última parte. */
 export function shortName(skill: SkillEntry): string {
   return (skill.name.split(":").pop() || skill.name).toLowerCase();
 }
 
-/** One line for menus: skill descriptions are written for the model and run long. */
+/** Uma linha para menus: descrições de skill são escritas para o modelo e são longas. */
 export function skillSummary(skill: SkillEntry): string {
   if (skill.shortDescription) {
     return skill.shortDescription;
@@ -78,7 +78,7 @@ export function skillSummary(skill: SkillEntry): string {
   return end > 0 ? text.slice(0, end + 1) : text;
 }
 
-/** Built-ins first; each skill also gets a `/name` shortcut unless a built-in or earlier skill has that name. */
+/** Nativos primeiro; cada skill também ganha um atalho `/nome`, a menos que um nativo ou skill anterior tenha esse nome. */
 export function slashCommands(skills: readonly SkillEntry[], options: { inThread: boolean }): SlashCommand[] {
   const taken = new Set<string>();
   const commands: SlashCommand[] = [];
@@ -116,7 +116,7 @@ export interface ParsedSlash {
   args: string;
 }
 
-/** `/name args` at the very start of a message. A path like `/usr/bin` is not a command. */
+/** `/nome args` bem no início de uma mensagem. Um caminho como `/usr/bin` não é um comando. */
 export function parseSlash(text: string): ParsedSlash | null {
   const match = /^\/([A-Za-z0-9][\w:.-]*)(?:\s+([\s\S]*))?$/.exec(text.trim());
   if (!match) {
@@ -130,7 +130,7 @@ export type ResolvedSlash =
   | { kind: "skill"; skill: SkillEntry; args: string }
   | { kind: "unknown"; name: string };
 
-/** Finds what a typed command means. `/skill <name> …` reaches every skill, shortcut or not. */
+/** Descobre o que um comando digitado significa. `/skill <nome> …` alcança toda skill, com atalho ou sem. */
 export function resolveSlash(parsed: ParsedSlash, commands: readonly SlashCommand[], skills: readonly SkillEntry[]): ResolvedSlash {
   const command = commands.find((c) => c.name === parsed.name || c.aliases.includes(parsed.name));
   if (!command) {
@@ -152,7 +152,7 @@ export function resolveSlash(parsed: ParsedSlash, commands: readonly SlashComman
   return { kind: "action", command, args: parsed.args };
 }
 
-/** Lower is better; null means no match. */
+/** Menor é melhor; nulo significa sem match. */
 function rank(command: SlashCommand, query: string): number | null {
   if (!query) {
     return 0;
@@ -186,9 +186,9 @@ function rank(command: SlashCommand, query: string): number | null {
 }
 
 /**
- * Commands matching what follows the slash, kept in two runs (built-ins, skills) so the menu can group them.
- * The run holding the best match comes first, so `/thr` puts a skill named threejs above a built-in
- * that only mentions threads.
+ * Comandos que combinam com o que vem depois da barra, mantidos em duas sequências (nativos, skills) para o menu agrupá-los.
+ * A sequência com o melhor match vem primeiro, então `/thr` põe uma skill chamada threejs acima de um nativo
+ * que só combina pela descrição.
  */
 export function matchSlash(commands: readonly SlashCommand[], query: string): SlashCommand[] {
   const wanted = query.toLowerCase();
@@ -207,7 +207,7 @@ export function matchSlash(commands: readonly SlashCommand[], query: string): Sl
   return order.flatMap((kind) => runs[kind].map((entry) => entry.command));
 }
 
-/** The turn a skill invocation sends: the model gets instructions, the transcript shows what was typed. */
+/** A mensagem que uma invocação de skill envia: o modelo recebe instruções, a transcrição mostra o que foi digitado. */
 export function skillTurn(skill: SkillEntry, args: string, typed: string, body: string | null): { text: string; displayText: string } {
   const request = args.trim();
   if (body !== null) {
@@ -232,11 +232,11 @@ const EFFORT_WORDS: Record<string, ReasoningEffort | null> = {
   "extra high": "xhigh",
   "extra-high": "xhigh",
   max: "max",
-  // Muse sends "ultra" to the model as "max", so the word still works and means the same.
+  // O Muse envia "ultra" ao modelo como "max", então a palavra continua funcionando e significa o mesmo.
   ultra: "max",
 };
 
-/** `undefined` when the word is not an effort level; `null` means Auto. */
+/** `undefined` quando a palavra não é um nível de esforço; `null` significa Auto. */
 export function parseEffort(word: string): ReasoningEffort | null | undefined {
   const key = word.trim().toLowerCase();
   return key in EFFORT_WORDS ? EFFORT_WORDS[key] : undefined;
@@ -261,7 +261,7 @@ export function parseMode(word: string): ApprovalMode | undefined {
   return MODE_WORDS[word.trim().toLowerCase()];
 }
 
-/** A model by id or display label, exact before prefix. */
+/** Um modelo por id ou rótulo de exibição, exato antes de prefixo. */
 export function findModel(models: readonly ModelOption[], word: string, label: (id: string) => string): ModelOption | undefined {
   const wanted = word.trim().toLowerCase();
   if (!wanted) {
