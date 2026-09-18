@@ -1800,7 +1800,7 @@ export class HeliconController {
     }
   }
 
-  /** Pause, resume, clear or edit the thread's goal. `quiet` leaves failures to the caller. */
+  /** Pausa, continua, limpa ou edita a meta da conversa. `quiet` deixa as falhas com quem chamou. */
   async goalAction(sessionId: string, action: GoalAction, objective?: string, options: { quiet?: boolean } = {}): Promise<boolean> {
     const key = `goal:${sessionId}`;
     if (this.state.busy[key]) {
@@ -1812,9 +1812,9 @@ export class HeliconController {
       return true;
     } catch (error) {
       if (!options.quiet) {
-        // Muse refuses a verb the goal's current state does not allow, like pausing one that is already blocked.
+        // O Muse recusa um verbo que o estado atual da meta não permite, como pausar uma que já está bloqueada.
         const stale = /invalid_goal_state|missing_goal/.test(errorMessage(error));
-        this.toast(stale ? "info" : "error", GOAL_FAILURES[action], stale ? "The goal changed since this panel last updated. Try again once it catches up." : errorMessage(error));
+        this.toast(stale ? "info" : "error", GOAL_FAILURES[action], stale ? "A meta mudou desde que este painel foi atualizado. Tente de novo quando ele alcançar." : errorMessage(error));
       }
       return false;
     } finally {
@@ -1824,7 +1824,7 @@ export class HeliconController {
 
   // ---------------------------------------------------------------- tasks, subagents and workflows
 
-  /** `background` or `stop` one tool task by its item id, or `stopAll` the thread's background work. */
+  /** `background` ou `stop` numa tarefa de ferramenta pelo id do item, ou `stopAll` no trabalho de fundo da conversa. */
   async taskAction(sessionId: string, action: TaskAction, taskId?: string): Promise<boolean> {
     const key = `task:${sessionId}:${taskId ?? "all"}`;
     if (this.state.busy[key]) {
@@ -1852,7 +1852,7 @@ export class HeliconController {
       await this.client.subagent(sessionId, action, subagentId, body ? { body } : {});
       return true;
     } catch (error) {
-      this.toast("error", "The subagent did not take that", errorMessage(error));
+      this.toast("error", "O subagente não aceitou isso", errorMessage(error));
       return false;
     } finally {
       this.setBusy(key, false);
@@ -1874,33 +1874,33 @@ export class HeliconController {
       await this.client.workflow(sessionId, action, workflowRunId, child);
       return true;
     } catch (error) {
-      // A stale attempt means the child moved on since this card last drew; the next view update redraws it.
+      // Uma tentativa obsoleta significa que o filho avançou desde que este cartão foi desenhado; a próxima atualização da tela o redesenha.
       const stale = errorKind(error) === "stale_attempt";
-      this.toast(stale ? "info" : "error", stale ? "That agent already moved on" : "The workflow did not take that", stale ? "Try again once the card updates." : errorMessage(error));
+      this.toast(stale ? "info" : "error", stale ? "Esse agente já avançou" : "O workflow não aceitou isso", stale ? "Tente de novo quando o cartão atualizar." : errorMessage(error));
       return false;
     } finally {
       this.setBusy(key, false);
     }
   }
 
-  /** One page of a tool's full stored output; the caller keeps asking from `offsetBytes + byteLen` until `eof`. */
+  /** Uma página da saída completa guardada de uma ferramenta; quem chama continua pedindo de `offsetBytes + byteLen` até `eof`. */
   readOutput(sessionId: string, itemId: string, outputRef: string, offset = 0): Promise<OutputRange> {
     return this.client.readOutput(sessionId, itemId, outputRef, offset);
   }
 
-  /** Hands a `!` command the host could not run to the agent, whose own shell tool can. */
+  /** Passa um comando `!` que o host não conseguiu rodar ao agente, cuja própria ferramenta de shell consegue. */
   askToRun(sessionId: string, command: string): Promise<boolean> {
-    // A fence longer than any run of backticks in the command, so the command cannot close its own block.
+    // Uma cerca maior que qualquer sequência de crases no comando, para o comando não fechar o próprio bloco.
     const runs = command.match(/`+/g) ?? [];
     const fence = "`".repeat(Math.max(3, ...runs.map((run) => run.length + 1)));
-    // The failed `!` item says the environment is broken, which makes the agent refuse; tell it that its own shell is fine.
+    // O item `!` que falhou diz que o ambiente está quebrado, o que faz o agente recusar; diga a ele que o próprio shell dele funciona.
     const text =
       `Run this with your shell tool and show me the output:\n\n${fence}sh\n${command}\n${fence}\n\n` +
       "That failure came from Helicon's `!` path, not from your tools: your own shell works here.";
     return this.sendToThread(sessionId, text, {}, false);
   }
 
-  /** Branches a thread into a new one and opens it. */
+  /** Ramifica uma conversa numa nova e a abre. */
   async fork(sessionId: string): Promise<boolean> {
     const key = `fork:${sessionId}`;
     if (this.state.busy[key]) {
@@ -1911,13 +1911,13 @@ export class HeliconController {
       const session = await this.client.forkSession(sessionId);
       this.upsertSession(session);
       this.navigate({ kind: "thread", sessionId: session.sessionId });
-      this.toast("success", "Forked into a new thread", "The original thread stays as it was.");
+      this.toast("success", "Ramificada numa nova conversa", "A conversa original continua como estava.");
       return true;
     } catch (error) {
       this.toast(
         "error",
-        "Could not fork the thread",
-        errorKind(error) === "forkBoundaryInvalid" ? "Muse could not find a point in this thread to fork it at." : errorMessage(error),
+        "Não foi possível ramificar a conversa",
+        errorKind(error) === "forkBoundaryInvalid" ? "O Muse não encontrou um ponto nesta conversa para ramificá-la." : errorMessage(error),
       );
       return false;
     } finally {
@@ -1925,30 +1925,30 @@ export class HeliconController {
     }
   }
 
-  /** True only when Muse took the compaction on: a refusal or a noop leaves the history exactly as it was. */
+  /** Verdadeiro só quando o Muse assumiu a compactação: uma recusa ou uma operação vazia deixa o histórico exatamente como estava. */
   async compact(sessionId: string): Promise<boolean> {
     try {
       const result = await this.client.compact(sessionId);
       if (result.noop) {
-        const reason = result.reason === "no_compactable_history" ? "There is no earlier history to summarize." : result.reason;
-        this.toast("info", "Nothing to compact yet", reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1).replace(/_/g, " ")}` : undefined);
+        const reason = result.reason === "no_compactable_history" ? "Não há histórico anterior para resumir." : result.reason;
+        this.toast("info", "Nada para compactar ainda", reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1).replace(/_/g, " ")}` : undefined);
         return false;
       }
-      this.toast("info", "Compacting context", "Muse will summarize earlier turns to free up the context window.");
+      this.toast("info", "Compactando o contexto", "O Muse vai resumir as mensagens anteriores para liberar a janela de contexto.");
       return true;
     } catch (error) {
-      this.toast("error", "Could not compact the context", errorMessage(error));
+      this.toast("error", "Não foi possível compactar o contexto", errorMessage(error));
       return false;
     }
   }
 
   /**
-   * For a thread whose history the provider will not take: summarize it, which leaves the unusable part
-   * behind, then send the prompt again. The retry queues behind the compaction Muse runs as its own turn.
+   * Para uma conversa cujo histórico o provedor não aceita: resume-o, o que deixa a parte inutilizável
+   * para trás, e reenvia o prompt. A repetição entra na fila atrás da compactação que o Muse roda como mensagem própria.
    */
   /**
-   * For a thread whose stored reasoning cannot be replayed at all: start one beside it in the same project
-   * and send the prompt there. Compacting keeps the recent turns as they are, so it cannot clear that.
+   * Para uma conversa cujo raciocínio guardado não pode ser repetido: começa uma ao lado, no mesmo projeto
+   * e envia o prompt para lá. Compactar mantém as mensagens recentes como estão, então não resolve isso.
    */
   async freshThread(
     sessionId: string,
@@ -1957,20 +1957,20 @@ export class HeliconController {
   ): Promise<boolean> {
     const cwd = this.state.sessions[sessionId]?.cwd ?? null;
     if (!cwd) {
-      this.toast("error", "Could not start a new thread", "That thread's project is not known here.");
+      this.toast("error", "Não foi possível começar uma nova conversa", "O projeto dessa conversa é desconhecido aqui.");
       return false;
     }
-    // An image with no words of its own is still a question, so it goes too; with neither, there is
-    // nothing to ask again and the new thread simply opens.
+    // Uma imagem sem palavras próprias ainda é uma pergunta, então ela vai junto; sem nenhum dos dois, não há
+    // nada a perguntar de novo e a nova conversa apenas se abre.
     const carrying = files.attachments?.length ?? 0;
     if (!prompt && carrying === 0) {
       this.newThread(cwd);
       return true;
     }
     const text = prompt ?? "";
-    // Through the retry path, so a prompt entered as `/goal …` or a skill is expanded again rather than
-    // reaching the model as the literal command the transcript showed.
-    // The real result, so a prompt that did not go comes back to the composer instead of being lost.
+    // Pelo caminho de repetição, para que um prompt digitado como `/goal …` ou uma skill se expanda de novo em vez de
+    // chegar ao modelo como o comando literal que a transcrição mostrou.
+    // O resultado real, para um prompt que não foi voltar ao composer em vez de se perder.
     return this.startThread(cwd, text, (fresh) => this.retryTurn(fresh, text, files), files);
   }
 
@@ -1979,8 +1979,8 @@ export class HeliconController {
     prompt: string | null,
     files: { attachments?: OutgoingAttachment[]; previews?: EchoAttachment[] } = {},
   ): Promise<void> {
-    // Only a compaction Muse took on changes the history: after a refusal or a noop, the prompt would fail
-    // exactly as before. The retry queues behind the compaction turn, which may not have reached us yet.
+    // Só uma compactação que o Muse assumiu muda o histórico: depois de uma recusa ou de uma operação vazia, o prompt falharia
+    // exatamente como antes. A repetição entra na fila atrás da mensagem de compactação, que pode ainda não ter chegado até nós.
     if (!(await this.compact(sessionId)) || !prompt) {
       return;
     }
@@ -1991,7 +1991,7 @@ export class HeliconController {
     try {
       await this.client.openFolder(cwd, target);
     } catch (error) {
-      this.toast("error", target === "editor" ? "Could not open VS Code" : "Could not open the folder", errorMessage(error));
+      this.toast("error", target === "editor" ? "Não foi possível abrir o VS Code" : "Não foi possível abrir a pasta", errorMessage(error));
     }
   }
 
@@ -2017,8 +2017,8 @@ export class HeliconController {
   }
 
   /**
-   * Remembers whether a dock card is open, per thread. Without this the card is local state that dies with
-   * the view, so leaving a thread and coming back reopens what the user had folded away.
+   * Lembra se um cartão do dock está aberto, por conversa. Sem isso o cartão é um estado local que morre com
+   * a tela, então sair de uma conversa e voltar reabriria o que o usuário tinha dobrado.
    */
   setCardOpen(key: string, open: boolean): void {
     const collapsed = this.state.prefs.collapsedCards;
@@ -2028,7 +2028,7 @@ export class HeliconController {
     this.setPrefs({ collapsedCards: open ? collapsed.filter((k) => k !== key) : [...collapsed, key] });
   }
 
-  /** Closes a dock card for good, or brings it back. The oldest are forgotten past a few hundred threads. */
+  /** Fecha um cartão do dock para valer, ou o traz de volta. Os mais antigos são esquecidos após algumas centenas de conversas. */
   setCardHidden(key: string, hidden: boolean): void {
     const current = this.state.prefs.hiddenCards;
     if (hidden === current.includes(key)) {
@@ -2037,7 +2037,7 @@ export class HeliconController {
     this.setPrefs({ hiddenCards: hidden ? [...current, key].slice(-300) : current.filter((k) => k !== key) });
   }
 
-  /** Brings back every dock card closed in one thread. */
+  /** Traz de volta todo cartão do dock fechado numa conversa. */
   showThreadCards(sessionId: string): void {
     const suffix = `:${sessionId}`;
     const current = this.state.prefs.hiddenCards;
@@ -2084,7 +2084,7 @@ export class HeliconController {
 
   // ---------------------------------------------------------------- files
 
-  /** Shows or hides the file viewer beside threads; it keeps each thread's open files either way. */
+  /** Mostra ou esconde o visualizador de arquivos ao lado das conversas; ele mantém os arquivos abertos de cada conversa de todo jeito. */
   toggleFiles(open?: boolean): void {
     this.setPrefs({ filesOpen: open ?? !this.state.prefs.filesOpen });
   }
@@ -2101,8 +2101,8 @@ export class HeliconController {
   }
 
   /**
-   * Opens a file in a thread's viewer, from the tree or from a path a reply named, and shows the viewer. A path with
-   * a line (`app.ts:12`) scrolls there. Returns false when the thread's project is unknown.
+   * Abre um arquivo no visualizador de uma conversa, da árvore ou de um caminho que uma resposta citou, e mostra o visualizador. Um caminho com
+   * linha (`app.ts:12`) rola até lá. Retorna falso quando o projeto da conversa é desconhecido.
    */
   openFile(sessionId: string, raw: string, line: LineRange | null = null): boolean {
     const cwd = this.state.sessions[sessionId]?.cwd;
@@ -2130,7 +2130,7 @@ export class HeliconController {
     this.patchPanel(sessionId, (panel) => (panel.tabs.includes(path) ? { ...panel, active: path, tree: false, line: null } : panel));
   }
 
-  /** Closes a tab, discarding its unsaved edit; the view asks first when there is one. */
+  /** Fecha uma aba, descartando sua edição não salva; a tela pergunta antes quando há uma. */
   closeFile(sessionId: string, path: string): void {
     const cwd = this.state.sessions[sessionId]?.cwd;
     if (cwd) {
@@ -2139,13 +2139,13 @@ export class HeliconController {
     this.patchPanel(sessionId, (panel) => {
       const index = panel.tabs.indexOf(path);
       const tabs = panel.tabs.filter((tab) => tab !== path);
-      // The neighbour to the left takes over, as in an editor; closing the last tab shows the tree.
+      // O vizinho à esquerda assume, como num editor; fechar a última aba mostra a árvore.
       const active = panel.active !== path ? panel.active : (tabs[Math.max(0, index - 1)] ?? null);
       return { tabs, active, tree: active === null ? true : panel.tree, line: panel.active === path ? null : panel.line };
     });
   }
 
-  /** Keeps an unsaved edit across tab switches; null drops it. */
+  /** Mantém uma edição não salva ao trocar de aba; null a descarta. */
   setFileDraft(cwd: string, path: string, content: string | null, baseMtimeMs: number | null = null): void {
     const key = fileKey(cwd, path);
     this.update((s) => {
@@ -2160,8 +2160,8 @@ export class HeliconController {
   }
 
   /**
-   * Saves a file's unsaved edit. When the file changed on disk since it was opened, nothing is written and the user
-   * chooses: the toast's action overwrites, or reloading the file shows the other change. Returns the new write time.
+   * Salva a edição não salva de um arquivo. Quando o arquivo mudou no disco desde que foi aberto, nada é escrito e o usuário
+   * escolhe: a ação do toast sobrescreve, ou recarregar o arquivo mostra a outra mudança. Retorna o novo horário de escrita.
    */
   async saveFile(cwd: string, path: string, overwrite = false): Promise<number | null> {
     const key = fileKey(cwd, path);
@@ -2172,7 +2172,7 @@ export class HeliconController {
     this.setBusy(`save:${key}`, true);
     try {
       const saved = await this.client.writeFile(cwd, path, draft.content, overwrite ? null : draft.baseMtimeMs);
-      // Only a draft still holding what was sent is done; typing during the save keeps the newer text as unsaved.
+      // Só um rascunho ainda com o que foi enviado está pronto; digitar durante o salvamento mantém o texto mais novo como não salvo.
       this.update((s) => {
         const fileDrafts = { ...s.fileDrafts };
         if (fileDrafts[key]?.content === draft.content) {
@@ -2185,12 +2185,12 @@ export class HeliconController {
       return saved.mtimeMs;
     } catch (error) {
       if (errorKind(error) === "fileChanged") {
-        this.toast("error", "This file changed on disk", "Something else saved it since you opened it. Reload to see that change, or overwrite it with yours.", {
-          label: "Overwrite",
+        this.toast("error", "Este arquivo mudou no disco", "Outra coisa o salvou desde que você o abriu. Recarregue para ver essa mudança, ou sobrescreva com a sua.", {
+          label: "Sobrescrever",
           run: () => void this.saveFile(cwd, path, true),
         });
       } else {
-        this.toast("error", "Could not save the file", errorMessage(error));
+        this.toast("error", "Não foi possível salvar o arquivo", errorMessage(error));
       }
       return null;
     } finally {
@@ -2226,7 +2226,7 @@ export class HeliconController {
     try {
       await this.client.openFileExternally(cwd, path);
     } catch (error) {
-      this.toast("error", "Could not open the file", errorMessage(error));
+      this.toast("error", "Não foi possível abrir o arquivo", errorMessage(error));
     }
   }
 

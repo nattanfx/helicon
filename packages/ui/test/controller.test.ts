@@ -592,8 +592,8 @@ describe("HeliconController", () => {
     assert.deepEqual(client.actions, ["compact", "shell-proxy:git status"], "Helicon runs `!` itself now");
     client.compactNoop = true;
     assert.equal(await controller.send("/compact"), true);
-    assert.equal(controller.store.get().toasts.at(-1)?.title, "Nothing to compact yet");
-    assert.equal(controller.store.get().toasts.at(-1)?.detail, "There is no earlier history to summarize.");
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Nada para compactar ainda");
+    assert.equal(controller.store.get().toasts.at(-1)?.detail, "Não há histórico anterior para resumir.");
 
     assert.equal(await controller.send("/effort high"), true);
     assert.equal(controller.store.get().prefs.effort, "high");
@@ -698,7 +698,7 @@ describe("HeliconController", () => {
 
     client.workflowError = new HeliconError("stale", 409, "stale_attempt");
     assert.equal(await controller.workflowAction("s1", "skip", "run-1", { childId: "c1", attempt: 1 }), false);
-    assert.equal(controller.store.get().toasts.at(-1)?.title, "That agent already moved on");
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Esse agente já avançou");
     stop();
   });
 
@@ -774,7 +774,7 @@ describe("HeliconController", () => {
     client.writeError = new HeliconError("changed", 409, "fileChanged");
     assert.equal(await controller.saveFile("/work/app", "README.md"), null);
     const toast = controller.store.get().toasts.at(-1);
-    assert.equal(toast?.title, "This file changed on disk");
+    assert.equal(toast?.title, "Este arquivo mudou no disco");
     assert.ok(controller.store.get().fileDrafts[key], "the edit is kept when the save is refused");
     toast?.action?.run();
     await settle();
@@ -963,7 +963,7 @@ describe("HeliconController", () => {
     const state = controller.store.get();
     assert.deepEqual(state.route, { kind: "thread", sessionId: "s2" });
     assert.equal(state.sessions["s2"]?.title, "Probe (fork)");
-    assert.equal(state.toasts.at(-1)?.title, "Forked into a new thread");
+    assert.equal(state.toasts.at(-1)?.title, "Ramificada numa nova conversa");
     stop();
   });
 
