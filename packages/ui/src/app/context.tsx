@@ -11,7 +11,7 @@ export function ControllerProvider(props: { controller: HeliconController; child
 export function useController(): HeliconController {
   const controller = useContext(ControllerContext);
   if (!controller) {
-    throw new Error("Helicon: useController outside of <ControllerProvider>.");
+    throw new Error("Helicon: useController fora de <ControllerProvider>.");
   }
   return controller;
 }
@@ -39,7 +39,7 @@ export function shallowEqual<T>(a: T, b: T): boolean {
   return true;
 }
 
-/** Select a slice of app state; re-renders only when the slice changes under `equal`. */
+/** Seleciona uma fatia do estado do app; renderiza de novo só quando a fatia muda sob `equal`. */
 export function useApp<T>(selector: (state: AppState) => T, equal: (a: T, b: T) => boolean = Object.is): T {
   const store = useController().store;
   const selectorRef = useRef(selector);
@@ -64,7 +64,7 @@ export function useApp<T>(selector: (state: AppState) => T, equal: (a: T, b: T) 
   return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
 }
 
-/** A clock that re-renders the caller every `intervalMs` while `active`. */
+/** Um relógio que renderiza quem chama de novo a cada `intervalMs` enquanto `active`. */
 export function useNow(intervalMs: number, active = true): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

@@ -1,23 +1,23 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { cn } from "../components/ui/primitives.js";
 
-/** Window chrome a desktop shell hands to the UI when the UI draws the title bar itself. */
+/** O chrome da janela que um shell de desktop entrega à UI quando a UI desenha a barra de título. */
 export interface WindowFrame {
   minimize(): void;
   toggleMaximize(): void;
   close(): void;
   startDragging(): void;
   isMaximized(): Promise<boolean>;
-  /** Calls back after every resize, and returns an unsubscribe. */
+  /** Chama de volta após cada redimensionamento, e retorna um descadastramento. */
   onResized(callback: () => void): () => void;
 }
 
 const FrameContext = createContext<WindowFrame | null>(null);
 
-/** True when the shell overlays macOS traffic lights on the UI instead of a title bar. */
+/** Verdadeiro quando o shell sobrepõe os semáforos do macOS à UI em vez de uma barra de título. */
 const OverlayContext = createContext(false);
 
-// Presses on these never move the window, even inside a drag region.
+// Cliques nestes nunca movem a janela, mesmo dentro de uma região de arrasto.
 const INTERACTIVE =
   'button, a, input, textarea, select, label, [role="button"], [role="menuitem"], [role="option"], [role="tab"], [contenteditable="true"], [data-no-drag]';
 
@@ -27,7 +27,7 @@ export function FrameProvider(props: { frame: WindowFrame | undefined; overlay?:
     if (!frame) {
       return;
     }
-    // Any `data-drag-region` surface moves the window, and a double press toggles maximize, like a native title bar.
+    // Qualquer superfície `data-drag-region` move a janela, e um duplo clique alterna maximizar, como uma barra de título nativa.
     const onDown = (event: MouseEvent) => {
       const target = event.target;
       if (event.button !== 0 || !(target instanceof Element)) {
@@ -62,10 +62,10 @@ export function useTitlebarOverlay(): boolean {
 }
 
 /**
- * Native drag-region props on macOS overlay windows, empty elsewhere: the Windows shell drags
- * through its own handler, and firing both would double-toggle maximize. `deep` drags from
- * anywhere in the subtree except clickable elements, `self` only from the element itself,
- * and `off` opts one element out so e.g. double-click to rename keeps working.
+ * Props nativas de região de arrasto em janelas de sobreposição do macOS, vazias nos outros lugares: o shell do Windows arrasta
+ * pelo próprio manipulador, e disparar os dois alternaria maximizar duas vezes. `deep` arrasta de
+ * qualquer lugar da subárvore exceto elementos clicáveis, `self` só do próprio elemento,
+ * e `off` tira um elemento para que, p. ex., o duplo clique para renomear continue funcionando.
  */
 export function useOverlayDragProps(mode: "deep" | "self" | "off" = "deep"): { "data-tauri-drag-region"?: string } {
   if (!useTitlebarOverlay()) {
@@ -74,12 +74,12 @@ export function useOverlayDragProps(mode: "deep" | "self" | "off" = "deep"): { "
   return { "data-tauri-drag-region": mode === "deep" ? "deep" : mode === "self" ? "true" : "false" };
 }
 
-/** Reserves the caption buttons' width at the end of a `px-3` header, so its own actions never sit under them. */
+/** Reserva a largura dos botões da barra de título no fim de um cabeçalho `px-3`, para suas próprias ações nunca ficarem sob eles. */
 export function CaptionSpacer() {
   return useFrame() ? <span aria-hidden="true" className="-mr-3 ml-auto w-[138px] shrink-0 self-stretch" /> : null;
 }
 
-/** A drag strip for full-window screens that have no header. */
+/** Uma faixa de arrasto para telas de janela cheia que não têm cabeçalho. */
 export function FrameStrip() {
   const frame = useFrame();
   const overlay = useTitlebarOverlay();
@@ -92,7 +92,7 @@ export function FrameStrip() {
   );
 }
 
-/** Minimize, maximize and close, drawn to match Windows 11 caption buttons. */
+/** Minimizar, maximizar e fechar, desenhados para combinar com os botões da barra de título do Windows 11. */
 export function WindowControls() {
   const frame = useFrame();
   const [maximized, setMaximized] = useState(false);
@@ -135,20 +135,20 @@ export function WindowControls() {
   return (
     <div
       role="group"
-      aria-label="Window"
-      // Stays clickable while a dialog has disabled pointer events on the page, like native caption buttons.
+      aria-label="Janela"
+      // Continua clicável enquanto um diálogo desabilitou os eventos de ponteiro na página, como os botões nativos da barra de título.
       className={cn(
         "pointer-events-auto fixed top-0 right-0 z-[var(--z-titlebar)] flex h-12 transition-colors duration-100",
         focused ? "text-fg" : "text-subtle",
       )}
     >
-      <CaptionButton label="Minimize" glyph={"\uE921"} onClick={() => frame.minimize()} />
+      <CaptionButton label="Minimizar" glyph={"\uE921"} onClick={() => frame.minimize()} />
       <CaptionButton
-        label={maximized ? "Restore" : "Maximize"}
+        label={maximized ? "Restaurar" : "Maximizar"}
         glyph={maximized ? "\uE923" : "\uE922"}
         onClick={() => frame.toggleMaximize()}
       />
-      <CaptionButton label="Close" glyph={"\uE8BB"} onClick={() => frame.close()} close />
+      <CaptionButton label="Fechar" glyph={"\uE8BB"} onClick={() => frame.close()} close />
     </div>
   );
 }

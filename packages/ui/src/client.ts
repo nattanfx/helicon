@@ -23,7 +23,7 @@ import type {
 } from "./types.js";
 import { listedPrice } from "./model/pricing.js";
 
-/** An error from the Helicon server, carrying the MSP error kind when there is one. */
+/** Um erro do servidor Helicon, carregando o tipo de erro MSP quando há um. */
 export class HeliconError extends Error {
   constructor(
     message: string,
@@ -51,9 +51,9 @@ export type EventHandler = (event: HeliconEvent) => void;
 export interface TurnOptions {
   ifBusy?: IfBusy;
   reasoningEffort?: ReasoningEffort;
-  /** What the transcript shows in place of the text the model gets, like `/plan tidy the API`. */
+  /** O que a transcrição mostra no lugar do texto que o modelo recebe, como `/plan tidy the API`. */
   displayText?: string;
-  /** Files the user attached: images reach the model, anything else lands in the workspace as a mention. */
+  /** Arquivos que o usuário anexou: imagens chegam ao modelo, o resto cai na pasta do projeto como menção. */
   attachments?: OutgoingAttachment[];
 }
 
@@ -65,33 +65,33 @@ export interface ApprovalDecisionInput {
   feedback?: string | null;
 }
 
-/** Everything the UI needs from a transport. The web and desktop shells both implement it over REST and SSE. */
+/** Tudo que a UI precisa de um transporte. Os shells web e de desktop implementam via REST e SSE. */
 export interface HeliconClient {
   probeEnvironment(refresh?: boolean): Promise<EnvironmentStatus>;
   listProjects(): Promise<ProjectView[]>;
-  /** `create` makes the folder first when it does not exist. */
+  /** `create` cria a pasta antes quando ela não existe. */
   addProject(cwd: string, options?: { create?: boolean }): Promise<{ cwd: string; warning: string | null }>;
   cloneProject(url: string, path: string): Promise<{ cwd: string; warning: string | null }>;
   listDirectory(path: string): Promise<import("./types.js").DirectoryListing>;
-  /** Opens a folder in the OS file manager. */
+  /** Abre uma pasta no gerenciador de arquivos do SO. */
   revealPath(path: string): Promise<void>;
   hideProject(cwd: string): Promise<void>;
   setPinned(cwd: string, pinned: boolean): Promise<void>;
-  /** The order the user dragged the sidebar's projects into. */
+  /** A ordem em que o usuário arrastou os projetos da lateral. */
   setProjectOrder(cwds: string[]): Promise<void>;
-  /** Token usage across every thread the server has seen, for the usage page. */
+  /** Uso de tokens em toda conversa que o servidor viu, para a página de uso. */
   usage(days?: number): Promise<import("./types.js").UsageReport>;
   listSessions(options?: { archived?: boolean }): Promise<SessionSummary[]>;
   discover(cwd?: string): Promise<void>;
   startSession(cwd: string, options?: { approvalMode?: ApprovalMode; modelId?: string }): Promise<SessionSummary>;
   loadTranscript(sessionId: string): Promise<TranscriptLoad>;
   /**
-   * A server path the browser loads by itself, like an attachment's bytes, returned with whatever the
-   * client's own calls carry: a token-protected server refuses a bare one.
+   * Um caminho do servidor que o navegador carrega sozinho, como os bytes de um anexo, retornado com a
+   * autenticação das próprias chamadas do cliente: um servidor protegido por token recusa um sem ela.
    */
   assetUrl(path: string): string;
   updateSession(sessionId: string, patch: { title?: string; archived?: boolean; settled?: boolean }): Promise<SessionSummary | null>;
-  /** `attachments` come back saved, so the open thread can show them without waiting for a reload. */
+  /** `attachments` voltam salvos, para a conversa aberta mostrá-los sem esperar recarregar. */
   sendTurn(
     sessionId: string,
     text: string,
@@ -106,50 +106,50 @@ export interface HeliconClient {
   listModels(sessionId?: string): Promise<ModelOption[]>;
   setSessionModel(sessionId: string, modelId: string): Promise<void>;
   setApprovalMode(sessionId: string, mode: ApprovalMode): Promise<void>;
-  /** `noop` when Muse had nothing to summarize; `reason` is its snake_case explanation. */
+  /** `noop` quando o Muse não tinha nada para resumir; `reason` é sua explicação em snake_case. */
   compact(sessionId: string): Promise<{ noop: boolean; reason: string | null }>;
-  /** Runs a shell command in the session's workspace; its output arrives as a `userShell` item. */
+  /** Roda um comando de shell na pasta do projeto da sessão; sua saída chega como item `userShell`. */
   runShell(sessionId: string, command: string): Promise<void>;
-  /** Runs a `!` command in the workspace from Helicon itself, for hosts that cannot run one. */
+  /** Roda um comando `!` na pasta do projeto pelo próprio Helicon, para hosts que não conseguem rodar um. */
   runShellProxy(sessionId: string, command: string): Promise<import("./types.js").ShellRun>;
-  /** Branches a thread into a new one carrying every completed turn. */
+  /** Ramifica uma conversa numa nova levando toda mensagem concluída. */
   forkSession(sessionId: string): Promise<SessionSummary>;
-  /** With a loaded session, Muse's own list for it; otherwise the workspace's list from the CLI. */
+  /** Com uma sessão carregada, a lista do próprio Muse para ela; senão, a lista da pasta do projeto via CLI. */
   listSkills(cwd: string, sessionId?: string): Promise<SkillCatalog>;
-  /** The full instructions of a skill, without its frontmatter. */
+  /** As instruções completas de uma skill, sem seu frontmatter. */
   skillBody(cwd: string, skillId: string): Promise<string>;
   openFolder(cwd: string, target: "files" | "editor"): Promise<void>;
-  /** The session's standing reasoning effort, which is what Muse applies to its turns. */
+  /** O esforço de raciocínio vigente da sessão, que é o que o Muse aplica às suas mensagens. */
   setReasoningEffort(sessionId: string, effort: ReasoningEffort): Promise<void>;
-  /** `set` and `edit` need the objective. A verb that wakes a turn returns its id. */
+  /** `set` e `edit` precisam do objetivo. Um verbo que acorda uma mensagem retorna seu id. */
   goal(sessionId: string, action: GoalAction, objective?: string): Promise<{ turnId: string | null }>;
-  /** A control on a `subagent` item. `body` is the message or follow-up task text. */
+  /** Um controle num item `subagent`. `body` é o texto da mensagem ou da tarefa de acompanhamento. */
   subagent(sessionId: string, action: SubagentAction, subagentId: string, options?: { reason?: string; body?: string }): Promise<void>;
-  /** `background` and `stop` take the tool call's item id; `stopAll` stops every background task in the session. */
+  /** `background` e `stop` pegam o id do item da chamada de ferramenta; `stopAll` para toda tarefa de fundo na sessão. */
   task(sessionId: string, action: TaskAction, taskId?: string): Promise<void>;
-  /** `cancel` stops the run; `skip` and `retry` act on one child at its current attempt. */
+  /** `cancel` para a execução; `skip` e `retry` agem num filho na sua tentativa atual. */
   workflow(sessionId: string, action: WorkflowAction, workflowRunId: string, child?: { childId: string; attempt: number }): Promise<void>;
-  /** One page of a tool's full stored output, from `offset` bytes in. */
+  /** Uma página da saída completa guardada de uma ferramenta, de `offset` bytes em diante. */
   readOutput(sessionId: string, itemId: string, outputRef: string, offset?: number): Promise<OutputRange>;
-  /** The subscription window Muse last saw; null until a host has seen one. */
+  /** A janela de assinatura que o Muse viu por último; null até um host ver uma. */
   planUsage(): Promise<PlanUsage | null>;
-  /** One folder of a project, folders first. `path` is relative to the project; "" is its root. */
+  /** Uma pasta de um projeto, pastas primeiro. `path` é relativo ao projeto; "" é sua raiz. */
   listFiles(cwd: string, path: string): Promise<FileListing>;
-  /** A project file: text inline, media described. `path` may also be absolute inside the project. */
+  /** Um arquivo de projeto: texto embutido, mídia descrita. `path` também pode ser absoluto dentro do projeto. */
   readFile(cwd: string, path: string): Promise<FileContent>;
-  /** Saves text back. Refused with kind `fileChanged` when the file moved on since `baseMtimeMs`. */
+  /** Salva o texto de volta. Recusado com tipo `fileChanged` quando o arquivo avançou desde `baseMtimeMs`. */
   writeFile(cwd: string, path: string, content: string, baseMtimeMs: number | null): Promise<{ path: string; size: number; mtimeMs: number }>;
-  /** Files whose path contains every word of `query`. */
+  /** Arquivos cujo caminho contém toda palavra de `query`. */
   searchFiles(cwd: string, query: string): Promise<FileEntry[]>;
-  /** Opens a project file in the OS's default app. */
+  /** Abre um arquivo de projeto no app padrão do SO. */
   openFileExternally(cwd: string, path: string): Promise<void>;
-  /** Where the browser loads a project file's bytes from, for images, video, audio and PDFs. */
+  /** De onde o navegador carrega os bytes de um arquivo de projeto, para imagens, vídeo, áudio e PDFs. */
   fileUrl(cwd: string, path: string): string;
-  /** Subscribe to server events; returns an unsubscribe function. */
+  /** Assina eventos do servidor; retorna uma função de descadastramento. */
   subscribe(handler: EventHandler): () => void;
 }
 
-/** Parse a raw `model/list` result into picker options. */
+/** Interpreta um resultado bruto de `model/list` em opções do seletor. */
 export function parseModelList(value: unknown): ModelOption[] {
   const root = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const list = Array.isArray(root["models"]) ? root["models"] : Array.isArray(value) ? value : [];
@@ -172,7 +172,7 @@ export function parseModelList(value: unknown): ModelOption[] {
       isActive: r["isActive"] === true,
       contextLimit: typeof r["contextLimit"] === "number" ? r["contextLimit"] : null,
       outputLimit: typeof r["outputLimit"] === "number" ? r["outputLimit"] : null,
-      // Muse's catalog carries no prices today, so the published table stands in when it lists none.
+      // O catálogo do Muse não traz preços hoje, então a tabela publicada o substitui quando ele não lista nenhum.
       cost: parseCost(r["cost"]) ?? listedPrice(modelId),
       contributor: /contributor/i.test(modelId) || /product improvement/i.test(description ?? ""),
     });
@@ -180,7 +180,7 @@ export function parseModelList(value: unknown): ModelOption[] {
   return options;
 }
 
-/** Catalog prices arrive as decimal strings per million tokens. */
+/** Preços do catálogo chegam como strings decimais por milhão de tokens. */
 function parseCost(value: unknown): ModelOption["cost"] {
   if (!value || typeof value !== "object") {
     return null;

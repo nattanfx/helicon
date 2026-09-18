@@ -26,17 +26,17 @@ declare global {
 export interface HeliconAppProps {
   client: HeliconClient;
   platform?: Platform;
-  /** Present when a desktop shell wants the UI to draw the window's title bar. */
+  /** Presente quando um shell de desktop quer que a UI desenhe a barra de título da janela. */
   frame?: WindowFrame;
-  /** Present when the shell overlays macOS traffic lights on the UI instead of a title bar. */
+  /** Presente quando o shell sobrepõe os semáforos do macOS à UI em vez de uma barra de título. */
   titlebarOverlay?: boolean;
-  /** Present when the shell can update itself. */
+  /** Presente quando o shell pode se atualizar. */
   updater?: AppUpdater;
-  /** How this shell raises a system notification; absent where it cannot. */
+  /** Como este shell mostra uma notificação de sistema; ausente onde não pode. */
   notifier?: Notifier;
 }
 
-/** The whole Helicon interface. Web and desktop shells mount this with their transport. */
+/** A interface inteira do Helicon. Os shells web e de desktop montam isso com seu transporte. */
 export function HeliconApp(props: HeliconAppProps) {
   const [controller] = useState(() => {
     const created = new HeliconController(props.client, props.platform);
@@ -91,10 +91,10 @@ function ThemeSync() {
 function ZoomSync() {
   const zoom = useApp((s) => s.prefs.zoom);
   useEffect(() => {
-    // CSS `zoom` on <html> breaks Radix `position: fixed` menus in WKWebView (the desktop
-    // shell). The desktop page listens for `helicon-zoom` and uses the webview's own zoom
-    // instead. Browsers keep CSS zoom; engines that lack it fall back to the root font size.
-    // The pre-paint script in index.html applies the same split so a reload never flashes 100%.
+    // O `zoom` do CSS no <html> quebra os menus `position: fixed` do Radix no WKWebView (o shell
+    // de desktop). A página de desktop escuta `helicon-zoom` e usa o zoom da própria webview
+    // em vez disso. Navegadores mantêm o zoom do CSS; mecanismos sem ele usam o tamanho da fonte raiz.
+    // O script pré-pintura no index.html aplica a mesma divisão para um recarregamento nunca piscar 100%.
     const root = document.documentElement;
     const style = root.style as CSSStyleDeclaration & { zoom?: unknown };
     const desktop = "__TAURI_INTERNALS__" in window;
@@ -185,7 +185,7 @@ function Shell() {
   const boot = useApp((s) => s.boot);
   const env = useApp((s) => s.env);
   const collapsed = useApp((s) => s.prefs.sidebarCollapsed);
-  // Boot, setup and error screens fill the window with no header, so they get a bare drag strip.
+  // Telas de boot, configuração e erro enchem a janela sem cabeçalho, então ganham uma faixa de arrasto simples.
   let screen: ReactElement | null = null;
   if (!env) {
     screen = boot === "error" ? <BootError /> : <BootScreen />;
@@ -204,9 +204,9 @@ function Shell() {
   }
   return (
     <div className="flex h-full w-full bg-bg text-fg">
-      {/* The sidebar stays mounted and wipes open/closed via the 0fr/1fr
-          disclosure trick; visibility flips at the end of the close so the
-          clipped panel leaves the tab order only once it is gone. */}
+      {/* A lateral continua montada e abre/fecha pelo truque 0fr/1fr;
+          a visibilidade vira no fim do fechamento para que o
+          painel cortado saia da ordem de tab só quando sumir. */}
       <div
         className={cn(
           "grid h-full transition-[grid-template-columns,visibility] duration-200 ease-drawer motion-reduce:transition-none",

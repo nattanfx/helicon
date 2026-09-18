@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Reads a fast-changing number once a second while `enabled`, so a live readout (a streaming
- * speed, say) settles on steady values instead of flickering with every chunk.
+ * Lê um número que muda rápido uma vez por segundo enquanto `enabled`, para uma leitura ao vivo (uma
+ * velocidade de streaming, digamos) se fixar em valores estáveis em vez de piscar a cada pedaço.
  */
 export function useSampled(read: () => number | null, enabled: boolean): number | null {
   const readRef = useRef(read);
