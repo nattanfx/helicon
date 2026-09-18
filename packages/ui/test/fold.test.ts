@@ -250,3 +250,32 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(applyEvents(fold, []), fold);
   });
 });
+
+describe("subagent children", () => {
+  const child = (i: number): ViewEvent => ({
+    at: 1,
+    method: "item/completed",
+    params: {
+      sessionId: "s1",
+      item: { itemId: `c${i}`, kind: "reminderChild", status: "completed", revision: 1, turnId: "t1", text: "x".repeat(500) },
+    },
+  });
+
+  it("are left out of the fold, since nothing ever renders them", () => {
+    const fold = foldAll([child(1), child(2), child(3)]);
+    assert.deepEqual(Object.keys(fold.items), []);
+    assert.deepEqual(fold.order, []);
+  });
+
+  it("cost a thread nothing as they pile up", () => {
+    // A plan that runs subagents produced tens of thousands of these, and keeping them made every later event in the
+    // thread slower until it stopped updating at all (#32).
+    let fold = emptyFold();
+    const started = Date.now();
+    for (let i = 0; i < 20_000; i += 1) {
+      fold = applyEvent(fold, child(i));
+    }
+    assert.deepEqual(fold.order, []);
+    assert.ok(Date.now() - started < 2_000, `20k subagent children took ${Date.now() - started}ms`);
+  });
+});

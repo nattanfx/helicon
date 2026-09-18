@@ -186,21 +186,55 @@ function isApprovalMode(value: unknown): value is ApprovalMode {
 }
 
 /** Mutable working copy used inside one batch; collections are copied once, on first write. */
+/** Which of the fold's maps a batch of events can write to, so the rest are shared rather than copied. */
+interface Touched {
+  items: boolean;
+  turns: boolean;
+  approvals: boolean;
+  userInputs: boolean;
+}
+
+/** What each event method writes to. An unknown method copies nothing, because it changes nothing here either. */
+function touchedBy(events: readonly ViewEvent[]): Touched {
+  const touches: Touched = { items: false, turns: false, approvals: false, userInputs: false };
+  for (const event of events) {
+    const method = event.method;
+    if (method.startsWith("item/")) {
+      touches.items = true;
+      // A delta's characters count towards its turn's streaming speed.
+      touches.turns = true;
+    } else if (method.startsWith("turn/")) {
+      touches.turns = true;
+      // A retracted prompt is marked on the item as well as the turn.
+      touches.items = true;
+    } else if (method.startsWith("approval/")) {
+      touches.approvals = true;
+    } else if (method.startsWith("userInput/")) {
+      touches.userInputs = true;
+    }
+  }
+  return touches;
+}
+
 class Draft {
   fold: ThreadFold;
   private orderCopied = false;
   private echoesCopied = false;
   private callsCopied = false;
 
-  constructor(base: ThreadFold) {
+  /**
+   * Only the maps this batch can write to are copied. A long thread holds tens of thousands of items, and copying
+   * every map for every batch made applying a stream cost time in the square of the thread's length: a thread with
+   * subagents in it, which produce far more items than anything else, would slow to a stop and never recover.
+   */
+  constructor(base: ThreadFold, touches: Touched) {
     this.fold = {
       ...base,
-      items: { ...base.items },
-      turns: { ...base.turns },
-      approvals: { ...base.approvals },
-      userInputs: { ...base.userInputs },
-      resolved: { ...base.resolved },
-      settled: { ...base.settled },
+      ...(touches.items ? { items: { ...base.items } } : {}),
+      ...(touches.turns ? { turns: { ...base.turns } } : {}),
+      ...(touches.approvals ? { approvals: { ...base.approvals }, resolved: { ...base.resolved } } : {}),
+      ...(touches.userInputs ? { userInputs: { ...base.userInputs }, settled: { ...base.settled } } : {}),
+      // Small, and nearly every event reads or writes something in it.
       meta: { ...base.meta },
     };
   }
@@ -240,6 +274,11 @@ class Draft {
 
 function upsertItem(draft: Draft, incoming: MspItem): void {
   const d = draft.fold;
+  // Subagent children are never rendered, and a plan that runs subagents produces far more of them than of anything
+  // else. Keeping them would grow the fold without ever showing a line of it, and every later event pays for that.
+  if (HIDDEN_KINDS.has(incoming.kind)) {
+    return;
+  }
   const current = d.items[incoming.itemId];
   if (!current) {
     d.items[incoming.itemId] = incoming;
@@ -609,7 +648,7 @@ export function applyEvents(fold: ThreadFold, events: readonly ViewEvent[]): Thr
   if (events.length === 0) {
     return fold;
   }
-  const draft = new Draft(fold);
+  const draft = new Draft(fold, touchedBy(events));
   for (const event of events) {
     applyOne(draft, event);
   }
