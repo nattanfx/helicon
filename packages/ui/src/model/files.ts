@@ -1,11 +1,11 @@
-/** A line or range an agent pointed at, like `app.ts:4` or `app.ts:4-9`. */
+/** Uma linha ou intervalo que um agente apontou, como `app.ts:4` ou `app.ts:4-9`. */
 export interface LineRange {
   start: number;
   end: number;
 }
 
 export interface FileTarget {
-  /** Relative to the project when it was inside it; otherwise as written, and the server decides. */
+  /** Relativo ao projeto quando estava dentro dele; senão como escrito, e o servidor decide. */
   path: string;
   line: LineRange | null;
 }
@@ -22,12 +22,12 @@ function lineOf(start: string | undefined, end: string | undefined): LineRange |
   return { start: from, end: Number.isInteger(to) && to >= from ? to : from };
 }
 
-/** Forward slashes, no trailing slash, so a Windows path and its `/mnt` twin compare the same way. */
+/** Barras normais, sem barra no fim, para um caminho Windows e seu gêmeo `/mnt` compararem igual. */
 function normalize(path: string): string {
   return path.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
-/** `abs` relative to `cwd` when it sits inside it, else null. Case-insensitive for Windows drive paths. */
+/** `abs` relativo a `cwd` quando está dentro dele, senão nulo. Insensível a maiúsculas para caminhos com letra de drive. */
 export function relativeToProject(cwd: string, abs: string): string | null {
   const root = normalize(cwd);
   const path = normalize(abs);
@@ -41,8 +41,8 @@ export function relativeToProject(cwd: string, abs: string): string | null {
 }
 
 /**
- * What a link or path in a reply points at in the project, or null when it is not a file at all: web links, mail,
- * in-page anchors. Relative paths resolve against `baseDir`, the folder of the file the link sits in, if any.
+ * Para onde um link ou caminho numa resposta aponta no projeto, ou nulo quando não é arquivo: links web, e-mail,
+ * âncoras na página. Caminhos relativos resolvem contra `baseDir`, a pasta do arquivo onde o link está, se houver.
  */
 export function fileTarget(raw: string | null | undefined, cwd: string, baseDir = ""): FileTarget | null {
   if (!raw) {
@@ -56,7 +56,7 @@ export function fileTarget(raw: string | null | undefined, cwd: string, baseDir 
   try {
     value = decodeURIComponent(value);
   } catch {
-    /* a stray % stays as written */
+    /* um % perdido fica como escrito */
   }
   let line: LineRange | null = null;
   const hash = HASH_LINE.exec(value);
@@ -65,7 +65,7 @@ export function fileTarget(raw: string | null | undefined, cwd: string, baseDir 
     value = value.slice(0, hash.index);
   } else {
     const suffix = LINE_SUFFIX.exec(value);
-    // `C:` alone is a drive, not a line: only strip a suffix that follows something path-like.
+    // `C:` sozinho é um drive, não uma linha: só remova um sufixo que segue algo parecido com caminho.
     if (suffix && suffix.index > 1) {
       line = lineOf(suffix[1], suffix[2]);
       value = value.slice(0, suffix.index);
@@ -95,8 +95,8 @@ export function fileTarget(raw: string | null | undefined, cwd: string, baseDir 
 }
 
 /**
- * Inline code that names a file, like `src/app.ts`, `app.js:4-5` or `README.md`. Deliberately narrow: a word with a
- * short extension, or a path with a slash and an extension. Commands, identifiers and URLs stay plain code.
+ * Código inline que nomeia um arquivo, como `src/app.ts`, `app.js:4-5` ou `README.md`. Deliberadamente estreito: uma palavra com
+ * extensão curta, ou um caminho com barra e extensão. Comandos, identificadores e URLs ficam como código puro.
  */
 export function looksLikeFilePath(text: string): boolean {
   const value = text.trim();
@@ -104,16 +104,16 @@ export function looksLikeFilePath(text: string): boolean {
     return false;
   }
   const bare = value.replace(LINE_SUFFIX, "");
-  // A dotfile like `.env` or `.gitignore` is a file whatever it ends in.
+  // Um dotfile como `.env` ou `.gitignore` é um arquivo não importa com que termine.
   if (/^\.[A-Za-z0-9_-]+$/.test(bare)) {
     return true;
   }
-  // `a.b()` and `obj.prop` are code; a file extension is letters and digits only, and short.
+  // `a.b()` e `obj.prop` são código; uma extensão de arquivo é só letras e dígitos, e curta.
   if (!/\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(bare) || /[()<>{}=;,"'`$]/.test(bare)) {
     return false;
   }
   const ext = bare.slice(bare.lastIndexOf(".") + 1).toLowerCase();
-  // Dotted identifiers like `process.env` or `this.state` end in words no project names a file with.
+  // Identificadores com ponto como `process.env` ou `this.state` terminam em palavras que nenhum projeto usa para nomear arquivo.
   return bare.includes("/") || KNOWN_EXTENSIONS.has(ext);
 }
 
@@ -125,7 +125,7 @@ export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown|mdx|mdown)$/i.test(path);
 }
 
-/** The folder a project-relative path sits in; "" for the root. */
+/** A pasta onde um caminho relativo ao projeto está; "" para a raiz. */
 export function dirnameOf(path: string): string {
   const index = path.lastIndexOf("/");
   return index < 0 ? "" : path.slice(0, index);
@@ -136,7 +136,7 @@ export function basenameOf(path: string): string {
   return index < 0 ? path : path.slice(index + 1);
 }
 
-/** Where an unsaved edit or a file's version is kept: one project and one path. */
+/** Onde uma edição não salva ou a versão de um arquivo é guardada: um projeto e um caminho. */
 export function fileKey(cwd: string, path: string): string {
   return `${cwd}\n${path}`;
 }

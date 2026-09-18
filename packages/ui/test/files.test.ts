@@ -2,31 +2,31 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { dirnameOf, fileKey, fileTarget, formatFileSize, isMarkdownPath, looksLikeFilePath, relativeToProject } from "../src/model/files.js";
 
-describe("file links", () => {
-  it("resolves relative, absolute and line-suffixed paths against the project", () => {
+describe("links de arquivo", () => {
+  it("resolve caminhos relativos, absolutos e com sufixo de linha contra o projeto", () => {
     assert.deepEqual(fileTarget("registries.md", "/work/app"), { path: "registries.md", line: null });
     assert.deepEqual(fileTarget("src/app.js:4-5", "/work/app"), { path: "src/app.js", line: { start: 4, end: 5 } });
     assert.deepEqual(fileTarget("/work/app/src/app.js:12", "/work/app"), { path: "src/app.js", line: { start: 12, end: 12 } });
     assert.deepEqual(fileTarget("file:///work/app/docs/My%20Guide.md#L3-L9", "/work/app"), { path: "docs/My Guide.md", line: { start: 3, end: 9 } });
-    // A link inside a file resolves from that file's folder, the way a markdown preview reads it.
+    // Um link dentro de um arquivo resolve a partir da pasta do arquivo, como uma prévia de markdown o lê.
     assert.deepEqual(fileTarget("../api/README.md", "/work/app", "docs/guides"), { path: "docs/api/README.md", line: null });
     assert.deepEqual(fileTarget("./notes.md", "/work/app", "docs"), { path: "docs/notes.md", line: null });
   });
 
-  it("matches Windows project paths in either slash style, ignoring drive case", () => {
+  it("combina caminhos Windows de projeto em qualquer estilo de barra, ignorando maiúsculas do drive", () => {
     assert.deepEqual(fileTarget("C:\\Users\\me\\app\\README.md", "c:\\Users\\me\\app"), { path: "README.md", line: null });
     assert.equal(relativeToProject("C:\\work\\app", "C:/work/app/src/x.ts"), "src/x.ts");
-    assert.equal(relativeToProject("/work/app", "/work/application/x.ts"), null, "a sibling folder with a shared prefix is outside");
-    assert.deepEqual(fileTarget("/etc/hosts", "/work/app"), { path: "/etc/hosts", line: null }, "outside paths go to the server as written");
+    assert.equal(relativeToProject("/work/app", "/work/application/x.ts"), null, "uma pasta irmã com prefixo compartilhado está fora");
+    assert.deepEqual(fileTarget("/etc/hosts", "/work/app"), { path: "/etc/hosts", line: null }, "caminhos de fora vão ao servidor como escritos");
   });
 
-  it("leaves web links, anchors and mail alone", () => {
+  it("deixa links web, âncoras e e-mail em paz", () => {
     for (const href of ["https://helicon.sh", "mailto:a@b.c", "#section", "", "javascript:alert(1)"]) {
       assert.equal(fileTarget(href, "/work/app"), null, href);
     }
   });
 
-  it("treats only path-shaped inline code as a file", () => {
+  it("trata só código inline em forma de caminho como arquivo", () => {
     for (const code of [".env", ".gitignore", "registries.md", "src/app.ts", "app.js:4-5", "check.test.js:8", "packages/ui/src/model/plan.ts", "Dockerfile.dev/x.yml"]) {
       assert.equal(looksLikeFilePath(code), true, code);
     }
@@ -35,7 +35,7 @@ describe("file links", () => {
     }
   });
 
-  it("has the small helpers the viewer leans on", () => {
+  it("tem os pequenos ajudantes de que o visualizador precisa", () => {
     assert.equal(isMarkdownPath("docs/README.MD"), true);
     assert.equal(isMarkdownPath("notes.txt"), false);
     assert.equal(dirnameOf("a/b/c.md"), "a/b");
