@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -80,6 +80,10 @@ export interface ServerOptions {
   token?: string | null;
   /** Browser origins allowed to reach this daemon from another site. Empty means same-origin only. */
   allowOrigins?: string[];
+  /** Extra hostnames accepted behind a reverse proxy; never replaces authentication. */
+  allowHosts?: string[];
+  /** Private desktop launch: random token and one-use bootstrap, loopback only. */
+  desktopAuth?: boolean;
   platform?: string;
   distro?: string;
   musePath?: string | null;
@@ -593,6 +597,7 @@ interface PreparedAttachment {
 }
 
 export class HeliconServer {
+  private desktopBootstrap: string | null = null;
   private readonly server: Server;
   private readonly store: HeliconStore;
   private readonly hosts = new Map<string, ManagedHost>();
@@ -632,13 +637,27 @@ export class HeliconServer {
     };
 
   constructor(options: ServerOptions = {}) {
+    const host = options.host ?? "127.0.0.1";
+    const local = ["127.0.0.1", "::1", "localhost"].includes(host.toLowerCase());
+    if (options.desktopAuth && !local) {
+      throw new Error("Desktop authentication requires a loopback address.");
+    }
+    const token = options.desktopAuth ? randomBytes(32).toString("hex") : options.token;
+    if (!local && !token?.trim()) {
+      throw new Error("A token is required when the server listens outside loopback. Use --token.");
+    }
+    if (options.desktopAuth) {
+      this.desktopBootstrap = randomBytes(32).toString("hex");
+    }
     this.options = {
       port: options.port ?? 3127,
-      host: options.host ?? "127.0.0.1",
+      host,
       dataDir: options.dataDir ?? ":memory:",
       staticDir: options.staticDir ? resolve(options.staticDir) : null,
-      token: options.token ?? null,
+      token: token ?? null,
       allowOrigins: options.allowOrigins ?? [],
+      allowHosts: options.allowHosts ?? [],
+      desktopAuth: options.desktopAuth ?? false,
       platform: options.platform ?? process.platform,
       distro: options.distro,
       musePath: options.musePath,
@@ -726,6 +745,37 @@ export class HeliconServer {
   /** What the event stream authenticates with, since EventSource cannot be given a header. */
   private static readonly AUTH_COOKIE = "helicon_token";
 
+  /** Only the desktop's private stdout pipe receives this single-use launch URL. */
+  desktopLaunchUrl(base: string): string {
+    return this.desktopBootstrap ? `${base}/api/desktop-auth?key=${this.desktopBootstrap}` : base;
+  }
+
+  private trustedHost(req: IncomingMessage): boolean {
+    const raw = req.headers.host;
+    if (!raw || /[\s\\/@?#]/.test(raw)) {
+      return false;
+    }
+    let hostname: string;
+    try {
+      hostname = new URL(`http://${raw}`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    } catch {
+      return false;
+    }
+    const local = ["127.0.0.1", "::1", "localhost"];
+    const bind = this.options.host.toLowerCase();
+    const allowed = local.includes(bind) ? local : [bind, req.socket.localAddress?.replace(/^::ffff:/, "")];
+    return [...allowed, ...this.options.allowHosts].some((value) => value?.toLowerCase() === hostname);
+  }
+
+  private matchesSecret(value: string | null | undefined, secret: string): boolean {
+    if (!value) {
+      return false;
+    }
+    const a = Buffer.from(value);
+    const b = Buffer.from(secret);
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
   /**
    * The origin of a request that came from a different site. A browser sends `Origin` on its own
    * writes too, so comparing against `Host` is what separates "another site" from "this one".
@@ -750,7 +800,11 @@ export class HeliconServer {
     for (const part of raw.split(";")) {
       const [key, ...rest] = part.trim().split("=");
       if (key === name) {
-        return decodeURIComponent(rest.join("="));
+        try {
+          return decodeURIComponent(rest.join("="));
+        } catch {
+          return null;
+        }
       }
     }
     return null;
@@ -780,10 +834,10 @@ export class HeliconServer {
     if (!this.options.token) {
       return true;
     }
-    if (this.cookie(req, HeliconServer.AUTH_COOKIE) === this.options.token) {
+    if (this.matchesSecret(this.cookie(req, HeliconServer.AUTH_COOKIE), this.options.token)) {
       return true;
     }
-    if (req.headers["authorization"] === `Bearer ${this.options.token}`) {
+    if (this.matchesSecret(req.headers["authorization"], `Bearer ${this.options.token}`)) {
       return true;
     }
     // A token in the URL leaks through history, server logs and any shared link, so it counts only
@@ -792,7 +846,7 @@ export class HeliconServer {
       return false;
     }
     const url = new URL(req.url ?? "/", "http://localhost");
-    return url.searchParams.get("token") === this.options.token;
+    return !this.options.desktopAuth && this.matchesSecret(url.searchParams.get("token"), this.options.token);
   }
 
   private json(res: ServerResponse, status: number, body: unknown): void {
@@ -827,6 +881,10 @@ export class HeliconServer {
   }
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!this.trustedHost(req)) {
+      this.fail(res, 403, "This daemon does not answer that host.");
+      return;
+    }
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
     const method = (req.method ?? "GET").toUpperCase();
@@ -836,6 +894,24 @@ export class HeliconServer {
     }
     if (method === "OPTIONS") {
       res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (path === "/api/desktop-auth") {
+      if (
+        method !== "GET" || this.foreignOrigin(req) || !this.desktopBootstrap ||
+        !this.matchesSecret(url.searchParams.get("key"), this.desktopBootstrap)
+      ) {
+        this.fail(res, 401, "Invalid or expired desktop launch.");
+        return;
+      }
+      this.desktopBootstrap = null;
+      res.writeHead(303, {
+        "set-cookie": `${HeliconServer.AUTH_COOKIE}=${this.options.token}; Path=/; HttpOnly; SameSite=Lax`,
+        "location": "/",
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+      });
       res.end();
       return;
     }
@@ -879,7 +955,7 @@ export class HeliconServer {
         this.json(res, 200, { ok: true, required: false });
         return true;
       }
-      if (str(body["token"]) !== this.options.token) {
+      if (!this.matchesSecret(str(body["token"]), this.options.token)) {
         throw new HttpError(401, "That token does not match this daemon.");
       }
       // The stream cannot carry a header, so the cookie is what it authenticates with. Cross-site

@@ -14,6 +14,7 @@ function usage(): string {
     "  --static <dir>    serve a built frontend from this directory",
     "  --token <value>   require a token for non-loopback access",
     "  --allow-origin <o>  browser origin allowed to connect from another site (repeatable)",
+    "  --allow-host <h>  extra hostname accepted behind a reverse proxy (repeatable)",
     "  --distro <name>   WSL distro for muse on Windows (default Ubuntu)",
     "  --runtime <mode>  Windows only: native, wsl, or auto (default; native Muse once installed)",
     "  --muse <path>     explicit muse binary path",
@@ -22,7 +23,7 @@ function usage(): string {
 
 function flagValue(argv: string[], name: string): string | null {
   const index = argv.indexOf(name);
-  if (index === -1 || index + 1 >= argv.length) {
+  if (index === -1 || index + 1 >= argv.length || argv[index + 1]?.startsWith("--")) {
     return null;
   }
   return argv[index + 1] as string;
@@ -58,12 +59,15 @@ async function main(): Promise<void> {
     staticDir: flagValue(argv, "--static"),
     token: flagValue(argv, "--token"),
     allowOrigins: flagValues(argv, "--allow-origin"),
+    allowHosts: flagValues(argv, "--allow-host"),
+    desktopAuth: argv.includes("--desktop-auth"),
     distro: flagValue(argv, "--distro") ?? undefined,
     runtime: parseRuntimePreference(flagValue(argv, "--runtime") ?? process.env["HELICON_MUSE_RUNTIME"]),
     musePath: flagValue(argv, "--muse") ?? undefined,
   });
   const bound = await server.listen();
-  process.stdout.write(`helicon-server listening on http://${bound.host}:${bound.port}\n`);
+  const base = `http://${bound.host.includes(":") ? `[${bound.host}]` : bound.host}:${bound.port}`;
+  process.stdout.write(`helicon-server listening on ${server.desktopLaunchUrl(base)}\n`);
   const shutdown = () => {
     void server.close().then(() => process.exit(0));
   };

@@ -376,7 +376,11 @@ fn spawn_server(
     if let Some(path) = augmented_path(node) {
         cmd.env("PATH", path);
     }
-    cmd.arg(server).arg("--port").arg(port.to_string());
+    // O servidor entrega uma URL de uso único pelo pipe privado; a janela recebe seu cookie ao abri-la.
+    cmd.arg(server)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--desktop-auth");
     if let Some(frontend) = frontend {
         cmd.arg("--static").arg(frontend);
     }
@@ -622,6 +626,10 @@ mod tests {
         assert_eq!(
             parse_listening_url("helicon-server listening on http://127.0.0.1:52314\n"),
             Some("http://127.0.0.1:52314".to_string())
+        );
+        assert_eq!(
+            parse_listening_url("helicon-server listening on http://127.0.0.1:52314/api/desktop-auth?key=test-key\n"),
+            Some("http://127.0.0.1:52314/api/desktop-auth?key=test-key".to_string())
         );
         assert_eq!(parse_listening_url("noise without url"), None);
     }

@@ -146,7 +146,9 @@ Two things fail closed deliberately:
 - An origin that was never passed to `--allow-origin` gets no CORS headers and no answer at all.
 - A token in the query string counts only for requests carrying no other site's origin, so a copied link hands over nothing.
 
-Browsers only accept cross-site cookies over HTTPS, so a daemon reached from another origin needs TLS or a tunnel in front of it. On the same machine none of this applies: `#/connect` with an empty address uses the server that served the page, and no token is needed unless one was set.
+Browsers only accept cross-site cookies over HTTPS, so a daemon reached from another origin needs TLS or a tunnel in front of it. A non-loopback bind now requires a nonempty `--token`; startup fails without one. Requests also need a recognized `Host`: the loopback names for a local bind, or the bind/local socket address for a network bind. For a reverse proxy preserving its public hostname, pass `--allow-host helicon.example` separately from `--allow-origin` (which controls browser origins).
+
+The desktop supplies authentication automatically. Each launch creates a random credential in memory and passes a separate single-use URL through the child's private stdout pipe. Opening it sets an `HttpOnly; SameSite=Lax` session cookie and redirects to `/`; the reusable credential never appears in the URL or command line. The same cookie covers the UI, API, file previews and event stream. Restarting replaces it; no manual login is needed. This protects server access, not against a compromised application running as the same OS user. A standalone CLI server bound to loopback still allows use without a token unless one is configured.
 
 ## Legal
 
