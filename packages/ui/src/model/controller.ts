@@ -1222,14 +1222,14 @@ export class HeliconController {
       await this.client.setApprovalMode(route.sessionId, mode);
     } catch (error) {
       this.patchMeta(route.sessionId, { approvalMode: previous });
-      this.toast("error", "Could not change permissions", errorMessage(error));
+      this.toast("error", "Não foi possível alterar as permissões", errorMessage(error));
     }
   }
 
   /**
-   * The effort for new turns. The open thread takes it at once, as its standing default: that is the only effort
-   * `muse serve` applies, and setting it now means the TUI and any other client see the same level. Auto leaves
-   * the thread where it is.
+   * O esforço para novas mensagens. A conversa aberta o assume na hora, como seu padrão permanente: esse é o único esforço
+   * que o `muse serve` aplica, e definir agora significa que o TUI e qualquer outro cliente veem o mesmo nível. Auto deixa
+   * a conversa onde está.
    */
   setEffort(effort: ReasoningEffort | null): void {
     this.setPrefs({ effort });
@@ -1239,17 +1239,17 @@ export class HeliconController {
       return;
     }
     void this.client.setReasoningEffort(route.sessionId, effort).catch((error: unknown) => {
-      // A thread that is not loaded yet takes the effort with its next turn instead.
+      // Uma conversa ainda não carregada assume o esforço com sua próxima mensagem.
       const kind = errorKind(error);
       if (kind !== "sessionNotLoaded" && kind !== "sessionStreamMismatch") {
-        this.toast("error", "Could not change the effort for this thread", errorMessage(error));
+        this.toast("error", "Não foi possível alterar o esforço desta conversa", errorMessage(error));
       }
     });
   }
 
   // ---------------------------------------------------------------- plan usage
 
-  /** The subscription window Muse last saw, from the server; it also arrives as an event whenever it moves. */
+  /** A janela de assinatura que o Muse viu por último, do servidor; ela também chega como evento sempre que se move. */
   async loadPlanUsage(): Promise<void> {
     try {
       const usage = await this.client.planUsage();
@@ -1257,7 +1257,7 @@ export class HeliconController {
         this.takePlanUsage(usage);
       }
     } catch {
-      /* the meter is extra: a server without it leaves the usage page as it was */
+      /* o medidor é extra: um servidor sem ele deixa a página de uso como estava */
     }
   }
 
@@ -1285,7 +1285,7 @@ export class HeliconController {
       }
     } catch (error) {
       this.upsertSession(current);
-      this.toast("error", "Could not rename the thread", errorMessage(error));
+      this.toast("error", "Não foi possível renomear a conversa", errorMessage(error));
     }
   }
 
@@ -1305,17 +1305,17 @@ export class HeliconController {
     }
     try {
       await this.client.updateSession(sessionId, { archived: true });
-      this.toast("info", "Thread archived", current.title, {
+      this.toast("info", "Conversa arquivada", current.title, {
         label: "Undo",
         run: () => void this.unarchive(current),
       });
     } catch (error) {
       this.upsertSession(current);
-      this.toast("error", "Could not archive the thread", errorMessage(error));
+      this.toast("error", "Não foi possível arquivar a conversa", errorMessage(error));
     }
   }
 
-  /** Shelves a thread in its project's Settled list, or brings it back. */
+  /** Guarda uma conversa na lista Resolvidas do projeto, ou a traz de volta. */
   async setSettled(sessionId: string, settled: boolean): Promise<void> {
     const current = this.state.sessions[sessionId];
     if (!current || current.settled === settled) {
@@ -1332,7 +1332,7 @@ export class HeliconController {
       }
     } catch (error) {
       this.upsertSession(current);
-      this.toast("error", settled ? "Could not settle the thread" : "Could not bring the thread back", errorMessage(error));
+      this.toast("error", settled ? "Não foi possível resolver a conversa" : "Não foi possível trazer a conversa de volta", errorMessage(error));
     }
   }
 
@@ -1346,7 +1346,7 @@ export class HeliconController {
       const saved = await this.client.updateSession(session.sessionId, { archived: false });
       this.upsertSession(saved ?? { ...session, archived: false });
     } catch (error) {
-      this.toast("error", "Could not restore the thread", errorMessage(error));
+      this.toast("error", "Não foi possível restaurar a conversa", errorMessage(error));
     }
   }
 
@@ -1358,7 +1358,7 @@ export class HeliconController {
     try {
       await this.client.revealPath(path);
     } catch (error) {
-      this.toast("error", "Could not open the folder", errorMessage(error));
+      this.toast("error", "Não foi possível abrir a pasta", errorMessage(error));
     }
   }
 
@@ -1373,13 +1373,13 @@ export class HeliconController {
       this.setAddProjectOpen(false);
       this.toast(
         "info",
-        "Repository cloned",
-        added.warning ? `Muse could not list its threads yet: ${added.warning}` : added.cwd,
+        "Repositório clonado",
+        added.warning ? `O Muse ainda não pôde listar suas conversas: ${added.warning}` : added.cwd,
       );
       this.newThread(added.cwd);
       return true;
     } catch (error) {
-      this.toast("error", "Could not clone the repository", errorMessage(error));
+      this.toast("error", "Não foi possível clonar o repositório", errorMessage(error));
       return false;
     } finally {
       this.setBusy("cloneProject", false);
@@ -1397,24 +1397,24 @@ export class HeliconController {
       await this.refresh();
       this.setAddProjectOpen(false);
       if (added.warning) {
-        this.toast("info", "Project added", `Muse could not list its threads yet: ${added.warning}`);
+        this.toast("info", "Projeto adicionado", `O Muse ainda não pôde listar suas conversas: ${added.warning}`);
       }
       this.newThread(added.cwd);
       return true;
     } catch (error) {
-      this.toast("error", "Could not add that folder", errorMessage(error));
+      this.toast("error", "Não foi possível adicionar essa pasta", errorMessage(error));
       return false;
     } finally {
       this.setBusy("addProject", false);
     }
   }
 
-  /** Token usage across every thread the server knows, for the usage page. */
+  /** Uso de tokens em todas as conversas que o servidor conhece, para a página de uso. */
   usageReport(days: number): Promise<import("../types.js").UsageReport> {
     return this.client.usage(days);
   }
 
-  /** Moves a project in the sidebar, taking the new order from the row it was dropped on. */
+  /** Move um projeto na lateral, tirando a nova ordem da linha em que foi solto. */
   async reorderProjects(cwd: string, beforeCwd: string | null): Promise<void> {
     const current = this.state.projects;
     const moving = current.find((p) => p.cwd === cwd);
@@ -1429,7 +1429,7 @@ export class HeliconController {
       await this.client.setProjectOrder(next.map((p) => p.cwd));
     } catch (error) {
       this.update((s) => ({ ...s, projects: current }));
-      this.toast("error", "Could not reorder the projects", errorMessage(error));
+      this.toast("error", "Não foi possível reordenar os projetos", errorMessage(error));
     }
   }
 
@@ -1446,13 +1446,13 @@ export class HeliconController {
     }
     try {
       await this.client.hideProject(cwd);
-      this.toast("info", `Removed ${project.displayName} from the sidebar`, "Its Muse threads are untouched.", {
+      this.toast("info", `Removeu ${project.displayName} da lateral`, "Suas conversas do Muse estão intactas.", {
         label: "Undo",
         run: () => void this.addProject(cwd),
       });
     } catch (error) {
       void this.refresh();
-      this.toast("error", "Could not remove the project", errorMessage(error));
+      this.toast("error", "Não foi possível remover o projeto", errorMessage(error));
     }
   }
 
@@ -1461,7 +1461,7 @@ export class HeliconController {
       await this.client.discover(cwd);
       await this.refresh();
     } catch (error) {
-      this.toast("error", "Could not refresh that project", errorMessage(error));
+      this.toast("error", "Não foi possível atualizar esse projeto", errorMessage(error));
     }
   }
 
@@ -1474,13 +1474,13 @@ export class HeliconController {
       await this.client.setPinned(cwd, !project.pinned);
       await this.refresh();
     } catch (error) {
-      this.toast("error", "Could not update the project", errorMessage(error));
+      this.toast("error", "Não foi possível atualizar o projeto", errorMessage(error));
     }
   }
 
   // ---------------------------------------------------------------- slash commands, skills and shell
 
-  /** The workspace the composer's commands act on: the open thread's, or where a new thread would start. */
+  /** A pasta em que os comandos do composer agem: a da conversa aberta, ou onde uma nova conversa começaria. */
   composerCwd(): string | null {
     const route = this.state.route;
     if (route.kind === "thread") {
@@ -1492,8 +1492,8 @@ export class HeliconController {
   private readonly skillLoads = new Map<string, Promise<void>>();
 
   /**
-   * Loads a workspace's skills for the slash menu. A loaded list is reused for a minute and a failed load
-   * retries after ten seconds; a load already running is shared, so a command sent mid-load waits for it.
+   * Carrega as skills de uma pasta para o menu de barra. Uma lista carregada é reusada por um minuto e um carregamento falho
+   * tenta de novo após dez segundos; um carregamento já rodando é compartilhado, para um comando enviado no meio esperar por ele.
    */
   loadSkills(cwd: string): Promise<void> {
     const running = this.skillLoads.get(cwd);
@@ -1510,7 +1510,7 @@ export class HeliconController {
     return load;
   }
 
-  /** Muse said a thread's skills changed: its workspace's list is stale, and the open composer should see the new one. */
+  /** O Muse disse que as skills de uma conversa mudaram: a lista de sua pasta está velha, e o composer aberto deve ver a nova. */
   private refreshSkillsFor(sessionId: string): void {
     const cwd = this.state.sessions[sessionId]?.cwd;
     const current = cwd ? this.state.skills[cwd] : undefined;
@@ -1521,7 +1521,7 @@ export class HeliconController {
     void this.loadSkills(cwd);
   }
 
-  /** The open thread, when it is in `cwd`: Muse's own skill list for it is the one to show. */
+  /** A conversa aberta, quando está em `cwd`: a lista de skills do próprio Muse para ela é a que se mostra. */
   private skillSession(cwd: string): string | undefined {
     const route = this.state.route;
     return route.kind === "thread" && this.state.sessions[route.sessionId]?.cwd === cwd ? route.sessionId : undefined;
@@ -1550,12 +1550,12 @@ export class HeliconController {
     this.update((s) => (s.picker === picker ? s : { ...s, picker }));
   }
 
-  /** Closes `picker` only if it is still the open one, so a menu closing after it hands off to a dialog leaves the dialog open. */
+  /** Fecha `picker` só se ainda for o aberto, para um menu fechando após passar para um diálogo deixar o diálogo aberto. */
   closePicker(picker: ComposerPicker): void {
     this.update((s) => (s.picker === picker ? { ...s, picker: null } : s));
   }
 
-  /** `!command` runs in the thread's workspace shell; on the new-thread screen it starts the thread first. */
+  /** `!comando` roda no shell da pasta da conversa; na tela de nova conversa ele começa a conversa primeiro. */
   private async runShell(command: string): Promise<boolean> {
     const run = async (sessionId: string): Promise<boolean> => {
       const thread = this.state.threads[sessionId];
@@ -1569,11 +1569,11 @@ export class HeliconController {
       }
       this.setBusy(key, true);
       try {
-        // Helicon runs `!` itself: Muse's own host has no sandbox for these, so it never runs them at all.
+        // O Helicon roda `!` sozinho: o host do próprio Muse não tem sandbox para estes, então nunca os roda.
         this.addShellRun(sessionId, await this.client.runShellProxy(sessionId, command));
         return true;
       } catch (error) {
-        this.toast("error", "Command not run", errorMessage(error));
+        this.toast("error", "Comando não executado", errorMessage(error));
         return false;
       } finally {
         this.setBusy(key, false);
@@ -1588,15 +1588,15 @@ export class HeliconController {
   }
 
   /**
-   * The server returns a relative URL for each saved file. The browser loads these on its own, outside the
-   * client's calls, so a token-protected server would refuse every one of them: the image in the transcript
-   * and the bytes a retry reads back alike. They carry the same credentials as everything else from here on.
+   * O servidor retorna uma URL relativa para cada arquivo salvo. O navegador as carrega sozinho, fora das
+   * chamadas do cliente, então um servidor protegido por token recusaria todas elas: a imagem na transcrição
+   * e os bytes que uma repetição relê. Elas carregam as mesmas credenciais que todo o resto daqui em diante.
    */
   private stamp(file: AttachmentView): AttachmentView {
     return { ...file, url: this.client.assetUrl(file.url) };
   }
 
-  /** Adds files the server has just saved to the open thread, skipping any it already has. */
+  /** Adiciona arquivos que o servidor acabou de salvar à conversa aberta, pulando os que ela já tem. */
   private keepAttachments(sessionId: string, saved: AttachmentView[]): void {
     if (saved.length === 0) {
       return;
@@ -1615,7 +1615,7 @@ export class HeliconController {
     });
   }
 
-  /** Keeps a command Helicon ran in the thread it belongs to, whoever started it. */
+  /** Guarda um comando que o Helicon rodou na conversa a que pertence, quem quer que o tenha iniciado. */
   private addShellRun(sessionId: string, run: import("../types.js").ShellRun): void {
     this.update((s) => {
       const thread = s.threads[sessionId];
@@ -1626,30 +1626,30 @@ export class HeliconController {
     });
   }
 
-  /** Hands a command's output to Muse as the next prompt, since Muse never saw it run. */
+  /** Entrega a saída de um comando ao Muse como próximo prompt, já que o Muse nunca o viu rodar. */
   sendShellOutput(sessionId: string, run: import("../types.js").ShellRun): Promise<boolean> {
     const fence = "`".repeat(Math.max(3, ...(run.output.match(/`+/g) ?? []).map((mark) => mark.length + 1)));
     const status = run.exitCode === 0 ? "" : ` (exit ${run.exitCode ?? "unknown"})`;
     const text = `I ran this in the workspace${status}:\n\n${fence}sh\n${run.command}\n${fence}\n\nIts output:\n\n${fence}\n${run.output.trim() || "(no output)"}\n${fence}`;
-    return this.sendToThread(sessionId, text, { displayText: `Shared the output of \`${run.command}\`` }, false);
+    return this.sendToThread(sessionId, text, { displayText: `Compartilhou a saída de \`${run.command}\`` }, false);
   }
 
   private async runSlash(typed: string, parsed: ParsedSlash, options: TurnDelivery): Promise<boolean> {
     const route = this.state.route;
-    // A retry names the thread the command belongs to; a typed command acts wherever the user is.
+    // Uma repetição nomeia a conversa a que o comando pertence; um comando digitado age onde o usuário está.
     const bound = options.sessionId ?? null;
     const cwd = bound ? (this.state.sessions[bound]?.cwd ?? null) : this.composerCwd();
-    // A skill typed before the workspace's skills arrived waits for them instead of reading as unknown;
-    // built-ins other than `/skill` never wait on a slow skills list.
+    // Uma skill digitada antes das skills da pasta chegarem espera por elas em vez de ler como desconhecida;
+    // nativos além de `/skill` nunca esperam por uma lista lenta de skills.
     const builtin = slashCommands([], { inThread: true }).find((c) => c.name === parsed.name || c.aliases.includes(parsed.name));
     if (cwd && (!builtin || builtin.action === "skill")) {
       await this.loadSkills(cwd);
     }
     const skills = cwd ? (this.state.skills[cwd]?.skills ?? []) : [];
-    // Resolve against every built-in, so a thread-only command typed outside a thread gets a useful answer.
+    // Resolve contra todo nativo, para um comando só-de-conversa digitado fora de uma conversa ganhar uma resposta útil.
     const resolved = resolveSlash(parsed, slashCommands(skills, { inThread: true }), skills);
     if (resolved.kind === "unknown") {
-      this.toast("info", `No command named /${resolved.name}`, "Pick one from the list, or send the text as a prompt from the menu.");
+      this.toast("info", `Nenhum comando chamado /${resolved.name}`, "Escolha um da lista, ou envie o texto como prompt pelo menu.");
       return false;
     }
     if (resolved.kind === "skill") {
@@ -1658,7 +1658,7 @@ export class HeliconController {
     const { command, args } = resolved;
     const sessionId = bound ?? (route.kind === "thread" ? route.sessionId : null);
     if (command.needsThread && !sessionId) {
-      this.toast("info", `Open a thread to use /${command.name}`);
+      this.toast("info", `Abra uma conversa para usar /${command.name}`);
       return false;
     }
     switch (command.action) {
@@ -1677,13 +1677,13 @@ export class HeliconController {
         return this.deliver(INIT_PROMPT, { ...options, displayText: typed });
       case "goal": {
         if (!args) {
-          this.toast("info", "Add the goal after /goal", "For example: /goal get the test suite passing");
+          this.toast("info", "Adicione a meta depois de /goal", "Por exemplo: /goal fazer a suíte de testes passar");
           return false;
         }
         const verb = /^(pause|resume|clear)$/i.exec(args.trim())?.[1]?.toLowerCase() as GoalAction | undefined;
         if (verb) {
           if (!sessionId) {
-            this.toast("info", `Open a thread to ${verb} its goal`);
+            this.toast("info", `Abra uma conversa para ${verb === "pause" ? "pausar" : verb === "resume" ? "continuar" : "limpar"} sua meta`);
             return false;
           }
           return this.goalAction(sessionId, verb);
@@ -1704,7 +1704,7 @@ export class HeliconController {
         }
         const model = findModel(this.state.models, args, modelDisplayName);
         if (!model) {
-          this.toast("info", `No model named ${args}`, "Type /model to pick from the list.");
+          this.toast("info", `Nenhum modelo chamado ${args}`, "Digite /model para escolher da lista.");
           return false;
         }
         await this.setModel(model.modelId);
@@ -1717,7 +1717,7 @@ export class HeliconController {
         }
         const effort = parseEffort(args);
         if (effort === undefined) {
-          this.toast("info", `Unknown effort level: ${args}`, "Use off, minimal, low, medium, high, xhigh, max or auto.");
+          this.toast("info", `Nível de esforço desconhecido: ${args}`, "Use off, minimal, low, medium, high, xhigh, max ou auto.");
           return false;
         }
         this.setEffort(effort);
@@ -1730,11 +1730,11 @@ export class HeliconController {
         }
         const mode = parseMode(args);
         if (!mode) {
-          this.toast("info", `Unknown permission mode: ${args}`, "Use ask, unlisted, deny or full.");
+          this.toast("info", `Modo de permissão desconhecido: ${args}`, "Use ask, unlisted, deny ou full.");
           return false;
         }
         if (mode === "allowAll") {
-          // Full access always goes through its confirmation.
+          // Acesso total sempre passa pela sua confirmação.
           this.setPicker("confirmFullAccess");
           return true;
         }
@@ -1746,7 +1746,7 @@ export class HeliconController {
     }
   }
 
-  /** A skill turn: the model loads the skill itself, or gets the body inline when only users may invoke it. */
+  /** Uma mensagem de skill: o modelo carrega a skill sozinho, ou recebe o corpo embutido quando só usuários podem invocá-la. */
   private async runSkill(
     skill: SkillEntry,
     args: string,
@@ -1759,7 +1759,7 @@ export class HeliconController {
       try {
         body = await this.client.skillBody(cwd ?? "", skill.id);
       } catch (error) {
-        this.toast("error", `Could not load /${skill.name}`, errorMessage(error));
+        this.toast("error", `Não foi possível carregar /${skill.name}`, errorMessage(error));
         return false;
       }
     }
@@ -1768,19 +1768,19 @@ export class HeliconController {
   }
 
   /**
-   * Picks a goal back up. A paused goal resumes through Muse's own goal command; a blocked one, which that command
-   * does not cover, gets a prompt asking the model to keep going.
+   * Retoma uma meta. Uma meta pausada continua pelo comando de meta do próprio Muse; uma bloqueada, que esse comando
+   * não cobre, ganha um prompt pedindo ao modelo para continuar.
    */
   async continueGoal(sessionId: string, objective: string, status?: string): Promise<boolean> {
     if (status === "paused" && (await this.goalAction(sessionId, "resume", undefined, { quiet: true }))) {
       return true;
     }
-    return this.sendToThread(sessionId, `Keep working toward the goal: ${objective}`, { displayText: "Keep working on the goal" }, false);
+    return this.sendToThread(sessionId, `Keep working toward the goal: ${objective}`, { displayText: "Continuar trabalhando na meta" }, false);
   }
 
   /**
-   * Sets the thread's goal through `goal/set`, which also starts work on it when the thread is idle. A host without
-   * the goal commands gets the old route: a prompt asking the model to set it with its own tool.
+   * Define a meta da conversa via `goal/set`, que também começa o trabalho nela quando a conversa está ociosa. Um host sem
+   * os comandos de meta pega a rota antiga: um prompt pedindo ao modelo para defini-la com sua própria ferramenta.
    */
   private async setGoal(sessionId: string, objective: string, typed: string, options: TurnDelivery): Promise<boolean> {
     const thread = this.state.threads[sessionId];
@@ -1795,7 +1795,7 @@ export class HeliconController {
       if (errorKind(error) === "methodNotFound") {
         return this.sendToThread(sessionId, goalPrompt(objective), { ...options, displayText: typed }, false);
       }
-      this.toast("error", "Could not set the goal", errorMessage(error));
+      this.toast("error", "Não foi possível definir a meta", errorMessage(error));
       return false;
     }
   }

@@ -606,7 +606,7 @@ describe("HeliconController", () => {
 
     const before = client.sent.length;
     assert.equal(await controller.send("/deploy now"), false);
-    assert.equal(controller.store.get().toasts.at(-1)?.title, "No command named /deploy");
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Nenhum comando chamado /deploy");
     assert.equal(client.sent.length, before);
     assert.equal(await controller.send("/deploy now", { raw: true }), true);
     assert.equal(client.sent.at(-1)?.text, "/deploy now");
@@ -640,13 +640,13 @@ describe("HeliconController", () => {
     assert.equal(client.actions.at(-1), "goal:s1:clear");
 
     assert.equal(await controller.send("/goal"), false);
-    assert.equal(controller.store.get().toasts.at(-1)?.title, "Add the goal after /goal");
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Adicione a meta depois de /goal");
 
     // A paused goal resumes through goal/resume; a blocked one still gets a prompt to keep going.
     assert.equal(await controller.continueGoal("s1", "Ship the release", "paused"), true);
     assert.equal(client.actions.at(-1), "goal:s1:resume");
     assert.equal(await controller.continueGoal("s1", "Ship the release", "blocked"), true);
-    assert.equal(client.sent.at(-1)?.displayText, "Keep working on the goal");
+    assert.equal(client.sent.at(-1)?.displayText, "Continuar trabalhando na meta");
 
     assert.equal(await controller.goalAction("s1", "edit", "Ship 0.11"), true);
     assert.equal(client.actions.at(-1), "goal:s1:edit:Ship 0.11");
