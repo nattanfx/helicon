@@ -4,16 +4,16 @@ import { cn } from "./primitives.js";
 const PITCH = 4;
 const SIZE = 2;
 
-/** A stable 0..1 value per cell and tick, so every pixel keeps its own rhythm. */
+/** Um valor 0..1 estável por célula e tick, para cada pixel manter seu próprio ritmo. */
 function hash(col: number, row: number, tick = 0): number {
   const s = Math.sin(col * 127.1 + row * 311.7 + tick * 74.7) * 43758.5453;
   return s - Math.floor(s);
 }
 
 /**
- * A field of pixels in the current text color that drift toward the right edge and thicken
- * as they go, like the Claude desktop "Ultracode" effort fill. Draws one still frame under
- * reduced motion.
+ * Um campo de pixels na cor atual do texto que derivam para a borda direita e engrossam
+ * no caminho, como o preenchimento de esforço "Ultracode" do Claude desktop. Desenha um quadro parado sob
+ * movimento reduzido.
  */
 export function PixelFlow(props: { className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -47,16 +47,16 @@ export function PixelFlow(props: { className?: string }) {
       const t = time / 1000;
       for (let c = 0; c < cols; c++) {
         const x = cols > 1 ? c / (cols - 1) : 1;
-        // Sparse at the slow end, dense by the thumb.
+        // Esparso na ponta lenta, denso junto ao polegar.
         const ramp = 0.12 + 0.88 * x ** 1.5;
-        // A brighter band travelling toward the thumb raises the odds a pixel is lit.
+        // Uma faixa mais brilhante viajando para o polegar aumenta as chances de um pixel acender.
         const flow = 0.5 + 0.5 * Math.sin(x * 8 - t * 1.33);
         const chance = Math.min(1, 0.05 + ramp * (0.45 + 0.55 * flow));
-        // Fully visible at the thumb, gone at the slow end.
+        // Totalmente visível no polegar, sumido na ponta lenta.
         const fade = x * x * (3 - 2 * x);
         for (let r = 0; r < rows; r++) {
           const seed = hash(c, r);
-          // Each pixel re-rolls on its own clock, roughly two to four times a second: the flicker.
+          // Cada pixel sorteia de novo no seu próprio relógio, umas duas a quatro vezes por segundo: o tremeluzir.
           const tick = Math.floor(t * ((5 + seed * 7) / 3) + seed * 50);
           const lit = hash(c, r, tick) < chance;
           ctx.globalAlpha = fade * (lit ? 0.35 + 0.65 * ramp : 0.06 + 0.08 * ramp);
@@ -76,7 +76,7 @@ export function PixelFlow(props: { className?: string }) {
       }
     });
     resize.observe(canvas);
-    // Theme switches change the text color the pixels are drawn in.
+    // Trocas de tema mudam a cor do texto com que os pixels são desenhados.
     const theme = new MutationObserver(() => {
       color = getComputedStyle(canvas).color;
       if (reduce) {

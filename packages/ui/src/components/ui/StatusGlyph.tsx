@@ -2,7 +2,7 @@ import { CircleAlert, MessageCircleQuestion, ShieldAlert } from "lucide-react";
 import type { ThreadStatus } from "../../model/status.js";
 import { Spinner, cn } from "./primitives.js";
 
-/** The one-glance status mark for a thread. Always paired with text elsewhere; never color alone. */
+/** A marca de status de relance para uma conversa. Sempre acompanhada de texto em outro lugar; nunca só cor. */
 export function StatusGlyph(props: { status: ThreadStatus; className?: string }) {
   switch (props.status) {
     case "running":
