@@ -9,6 +9,7 @@ import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
 import { CODE_THEME_LABELS, updateSummary } from "../sidebar/Sidebar.js";
 import { Modal } from "../ui/overlays.js";
+import { TopBar } from "../chrome.js";
 import { Button, IconButton, MOD, cn } from "../ui/primitives.js";
 
 /** O controle de uma linha: uma escolha entre poucas. Rola de lado quando a linha é estreita demais. */
@@ -106,10 +107,13 @@ export function SettingsPage() {
   const [confirmBypass, setConfirmBypass] = useState(false);
   const now = useNow(60_000);
   const busy = updates?.status === "checking" || updates?.status === "downloading" || updates?.status === "installing";
+  const collapsed = useApp((s) => s.prefs.sidebarCollapsed);
   const drag = useOverlayDragProps();
 
   return (
-    <div className="@container flex h-full min-w-0 flex-col overflow-x-hidden overflow-y-auto">
+    <div className="@container flex h-full min-w-0 flex-col">
+      {collapsed ? <TopBar /> : null}
+      <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
       <header {...drag} className="mx-auto flex w-full max-w-[720px] shrink-0 items-center gap-3 px-4 pt-8 pb-1 @min-[520px]:px-6">
         <Button size="sm" variant="ghost" onClick={() => controller.navigate({ kind: "home" })}>
           <ArrowLeft size={14} /> Voltar
@@ -300,6 +304,7 @@ export function SettingsPage() {
           </Button>
         </div>
       </Modal>
+      </div>
     </div>
   );
 }
