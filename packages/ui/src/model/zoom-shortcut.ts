@@ -1,6 +1,6 @@
 export type ZoomStep = "in" | "out" | "reset";
 
-/** Cmd/Ctrl zoom from a key event. Prefer `code` so WKWebView layouts that don't emit `+` still match. */
+/** Zoom de Cmd/Ctrl a partir de um evento de tecla. Prefira `code` para layouts WKWebView que não emitem `+` combinarem. */
 export function zoomStepFromKey(
   event: { metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; key: string; code: string },
   mac: boolean,
