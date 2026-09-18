@@ -830,7 +830,7 @@ describe("HeliconController", () => {
     const sent = client.sent.at(-1);
     assert.match(sent?.text ?? "", /I ran this in the workspace/);
     assert.match(sent?.text ?? "", /ran ls -la/);
-    assert.equal(sent?.displayText, "Shared the output of `ls -la`");
+    assert.equal(sent?.displayText, "Compartilhou a saída de `ls -la`");
     stop();
   });
 
