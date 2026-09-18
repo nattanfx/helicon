@@ -14,7 +14,7 @@ import type {
 import type { EchoAttachment, ThreadFold } from "./fold.js";
 import type { UpdateState } from "./updates.js";
 
-/** A tiny external store: immutable snapshots plus change listeners, read through useSyncExternalStore-style hooks. */
+/** Um store externo minúsculo: snapshots imutáveis mais ouvintes de mudança, lidos via hooks estilo useSyncExternalStore. */
 export class Store<T> {
   private state: T;
   private readonly listeners = new Set<() => void>();
@@ -46,11 +46,11 @@ export class Store<T> {
 
 export type GroupBy = "project" | "status";
 export type ThemePref = "system" | "light" | "dark";
-/** Syntax colours for code blocks, independent of the app's own light or dark theme. */
+/** Cores de sintaxe para blocos de código, independentes do tema claro ou escuro do próprio app. */
 export const CODE_THEMES = ["helicon", "ayu", "github", "vercel", "cursor", "catppuccin"] as const;
 export type CodeTheme = (typeof CODE_THEMES)[number];
 
-/** Interface zoom as a factor of 1, in fixed steps from 70% to 200%. */
+/** Zoom da interface como fator de 1, em passos fixos de 70% a 200%. */
 export const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.35, 1.5, 1.75, 2] as const;
 export const ZOOM_MIN = ZOOM_STEPS[0];
 export const ZOOM_MAX = ZOOM_STEPS[ZOOM_STEPS.length - 1];
@@ -62,40 +62,40 @@ export interface Prefs {
   sidebarWidth: number;
   sidebarCollapsed: boolean;
   collapsedProjects: string[];
-  /** Settled shelves the user opened: `project:<cwd>`, or `status` for the by-status view. */
+  /** Prateleiras resolvidas que o usuário abriu: `project:<cwd>`, ou `status` para a visão por status. */
   openShelves: string[];
   /**
-   * Dock cards the user collapsed, as `goal:<sessionId>` or `plan:<sessionId>`. Only the closed ones are
-   * kept, so a card opens by default and a thread the user has never touched costs nothing to remember.
+   * Cards do dock que o usuário recolheu, como `goal:<sessionId>` ou `plan:<sessionId>`. Só os fechados são
+   * guardados, então um card abre por padrão e uma conversa que o usuário nunca tocou não custa nada para lembrar.
    */
   collapsedCards: string[];
   /**
-   * Dock cards the user closed, with the same keys (plus `tasks:<sessionId>`). A closed card stays out of the dock
-   * until the user brings it back from the thread's top bar.
+   * Cards do dock que o usuário fechou, com as mesmas chaves (mais `tasks:<sessionId>`). Um card fechado fica fora do dock
+   * até o usuário trazê-lo de volta da barra do topo da conversa.
    */
   hiddenCards: string[];
-  /** Failed-turn notices the user closed, as `<sessionId>:<turnId>`, so a reloaded thread keeps them closed. */
+  /** Avisos de mensagem falha que o usuário fechou, como `<sessionId>:<turnId>`, para uma conversa recarregada mantê-los fechados. */
   dismissedTurnErrors: string[];
-  /** Raise a system notification when a thread needs attention while the window does not have it. */
+  /** Levantar uma notificação de sistema quando uma conversa precisa de atenção e a janela não a tem. */
   notifications: boolean;
-  /** When the user last viewed each thread (ISO). */
+  /** Quando o usuário viu cada conversa pela última vez (ISO). */
   lastSeen: Record<string, string>;
-  /** Activity before the first launch is treated as already seen. */
+  /** Atividade antes do primeiro lançamento é tratada como já vista. */
   baseline: string;
   defaultMode: ApprovalMode;
   defaultModelId: string | null;
   effort: ReasoningEffort | null;
-  /** The last project a new thread was started in. */
+  /** O último projeto em que uma nova conversa foi iniciada. */
   lastProject: string | null;
-  /** Contributor-tier data use was acknowledged. */
+  /** O uso de dados do nível de colaborador foi reconhecido. */
   contributorAck: boolean;
-  /** Desktop app: download new versions as they appear and install them on close. */
+  /** App desktop: baixar novas versões conforme aparecem e instalá-las ao fechar. */
   autoUpdate: boolean;
-  /** Desktop app: no checking, downloading or installing updates until resumed. */
+  /** App desktop: sem checar, baixar ou instalar atualizações até retomar. */
   updatesPaused: boolean;
-  /** Interface zoom as a factor of 1; the desktop shell has no browser chrome to do this. */
+  /** Zoom da interface como fator de 1; o shell desktop não tem chrome de navegador para isso. */
   zoom: number;
-  /** The file viewer beside a thread is open. */
+  /** O visualizador de arquivos ao lado de uma conversa está aberto. */
   filesOpen: boolean;
   filesWidth: number;
 }
@@ -104,16 +104,16 @@ export const DEFAULT_FILES_WIDTH = 480;
 export const FILES_WIDTH_MIN = 320;
 export const FILES_WIDTH_MAX = 1200;
 
-/** One thread's file viewer: the files it has open as tabs, which one shows, and whether the tree is up instead. */
+/** O visualizador de arquivos de uma conversa: os arquivos abertos como abas, qual aparece, e se a árvore está no lugar. */
 export interface FilePanel {
   tabs: string[];
   active: string | null;
   tree: boolean;
-  /** Lines a link pointed at in the active file, to scroll to and mark. */
+  /** Linhas que um link apontou no arquivo ativo, para rolar até elas e marcá-las. */
   line: import("./files.js").LineRange | null;
 }
 
-/** An edit not yet saved, with the version of the file it started from. */
+/** Uma edição ainda não salva, com a versão do arquivo de onde começou. */
 export interface FileDraft {
   content: string;
   baseMtimeMs: number | null;
@@ -133,7 +133,7 @@ export function defaultPrefs(now = new Date().toISOString()): Prefs {
     collapsedCards: [],
     hiddenCards: [],
     dismissedTurnErrors: [],
-    // Off until asked for: nobody should be interrupted by something they never turned on.
+    // Desligado até pedirem: ninguém deve ser interrompido por algo que nunca ligou.
     notifications: false,
     lastSeen: {},
     baseline: now,
@@ -164,9 +164,9 @@ export interface ThreadState {
   readOnlyReason: string | null;
   truncated: boolean;
   fold: ThreadFold;
-  /** Files sent with this thread's prompts; Muse's own view keeps metadata only. */
+  /** Arquivos enviados com os prompts desta conversa; a visão própria do Muse guarda só metadados. */
   attachments: AttachmentView[];
-  /** `!` commands Helicon ran itself, which Muse's transcript never sees. */
+  /** Comandos `!` que o Helicon rodou sozinho, que a transcrição do Muse nunca vê. */
   shellRuns: ShellRun[];
 }
 
@@ -194,45 +194,45 @@ export interface AppState {
   toasts: Toast[];
   paletteOpen: boolean;
   addProjectOpen: boolean;
-  /** Keys of in-flight user actions, for disabling buttons: `send:<id>`, `approval:<id>`... */
+  /** Chaves de ações do usuário em voo, para desabilitar botões: `send:<id>`, `approval:<id>`... */
   busy: Record<string, true>;
   /**
-   * Approvals Helicon answers for you rather than showing. Muse asks whenever it cannot resolve a
-   * command's argv, whatever its own mode says, so this is the only way to stop being asked. It is
-   * deliberately not a preference: a bypass lasts as long as the app is open and no longer.
+   * Aprovações que o Helicon responde por você em vez de mostrar. O Muse pergunta sempre que não consegue resolver o
+   * argv de um comando, não importa o que seu próprio modo diga, então este é o único jeito de parar de ser perguntado.
+   * Deliberadamente não é uma preferência: um bypass dura enquanto o app está aberto e nada além.
    */
   bypassAll: boolean;
-  /** Threads armed one at a time, for letting a single unattended run through. */
+  /** Conversas armadas uma de cada vez, para deixar uma única execução desacompanhada passar. */
   bypassThreads: string[];
   hostError: string | null;
-  /** A prompt that could not be sent, waiting for the composer showing `key` to take it back, files and all. */
+  /** Um prompt que não pôde ser enviado, esperando o composer que mostra `key` recebê-lo de volta, arquivos e tudo. */
   draftHandoff: { key: string; text: string; attachments?: OutgoingAttachment[]; previews?: EchoAttachment[] } | null;
-  /** App updates; null when the shell cannot update itself, as in a browser. */
+  /** Atualizações do app; nulo quando o shell não pode se atualizar, como num navegador. */
   updates: UpdateState | null;
-  /** Each workspace's skills for the composer's slash menu, loaded when first needed. */
+  /** As skills de cada pasta de projeto para o menu de barra do composer, carregadas quando preciso pela primeira vez. */
   skills: Record<string, SkillsState>;
-  /** A composer picker a slash command opened, like `/model`. */
+  /** Um seletor do composer que um comando de barra abriu, como `/model`. */
   picker: ComposerPicker | null;
-  /** The subscription window Muse last reported; null until a host has seen one. */
+  /** A janela de assinatura que o Muse informou por último; nulo até um host ver uma. */
   planUsage: PlanUsage | null;
-  /** Each thread's file viewer. */
+  /** O visualizador de arquivos de cada conversa. */
   filePanels: Record<string, FilePanel>;
-  /** Unsaved edits, by `fileKey(cwd, path)`. */
+  /** Edições não salvas, por `fileKey(cwd, path)`. */
   fileDrafts: Record<string, FileDraft>;
-  /** Bumped when Muse edits a file, so an open view of it reloads. By `fileKey(cwd, path)`. */
+  /** Incrementado quando o Muse edita um arquivo, para uma visão aberta dele recarregar. Por `fileKey(cwd, path)`. */
   fileVersions: Record<string, number>;
-  /** Folders open in each project's file tree. */
+  /** Pastas abertas na árvore de arquivos de cada projeto. */
   fileTreeOpen: Record<string, string[]>;
 }
 
-/** `confirmFullAccess` is the full-access confirmation, which `/permissions full` must still pass through. */
+/** `confirmFullAccess` é a confirmação de acesso total, pela qual `/permissions full` ainda precisa passar. */
 export type ComposerPicker = "model" | "effort" | "permissions" | "confirmFullAccess" | "confirmBypass";
 
 export interface SkillsState {
   status: "loading" | "ready" | "error";
   skills: SkillEntry[];
   error: string | null;
-  /** When the last load finished, in platform time. */
+  /** Quando o último carregamento terminou, em tempo da plataforma. */
   loadedAt: number;
 }
 
@@ -269,13 +269,13 @@ export function initialState(prefs: Prefs): AppState {
   };
 }
 
-/** Merge persisted prefs over defaults, dropping anything malformed. */
+/** Mescla prefs persistidas sobre os padrões, descartando qualquer coisa malformada. */
 export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
   if (!raw || typeof raw !== "object") {
     return fallback;
   }
   const r = { ...(raw as Record<string, unknown>) };
-  // Ultra left the picker (Muse runs it as Max), so a saved Ultra carries on as Max.
+  // Ultra saiu do seletor (o Muse o roda como Max), então um Ultra salvo continua como Max.
   if (r["effort"] === "ultra") {
     r["effort"] = "max";
   }
