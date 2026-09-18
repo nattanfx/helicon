@@ -230,6 +230,8 @@ export class HeliconController {
   private refreshing: Promise<void> | null = null;
   private refreshQueued = false;
   private toastSeq = 0;
+  /** A rota principal para a qual o Voltar sai das páginas de configurações/uso; limpa ao voltar para uma rota principal. */
+  private returnRoute: Route | null = null;
 
   private updates: UpdateManager | null = null;
   private notifications: NotificationManager | null = null;
@@ -455,6 +457,11 @@ export class HeliconController {
     this.applyRoute(route, true);
   }
 
+  /** Sai das páginas de configurações/uso para onde o usuário estava antes de abri-las. */
+  goBack(): void {
+    this.navigate(this.returnRoute ?? { kind: "home" });
+  }
+
   openThread(sessionId: string): void {
     this.navigate({ kind: "thread", sessionId });
   }
@@ -473,6 +480,15 @@ export class HeliconController {
     }
     if (route.kind === "thread" && this.state.sessionsLoaded && !this.state.sessions[route.sessionId]) {
       route = { kind: "home" };
+    }
+    const overlay = route.kind === "usage" || route.kind === "settings";
+    const wasOverlay = previous.kind === "usage" || previous.kind === "settings";
+    if (overlay) {
+      if (!wasOverlay) {
+        this.returnRoute = previous;
+      }
+    } else {
+      this.returnRoute = null;
     }
     this.update((s) => ({ ...s, route }));
     if (push) {

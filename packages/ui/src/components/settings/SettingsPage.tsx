@@ -115,7 +115,7 @@ export function SettingsPage() {
       {collapsed ? <TopBar /> : null}
       <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
       <header {...drag} className="mx-auto flex w-full max-w-[720px] shrink-0 items-center gap-3 px-4 pt-8 pb-1 @min-[520px]:px-6">
-        <Button size="sm" variant="ghost" onClick={() => controller.navigate({ kind: "home" })}>
+        <Button size="sm" variant="ghost" onClick={() => controller.goBack()}>
           <ArrowLeft size={14} /> Voltar
         </Button>
         <div className="min-w-0 flex-1">

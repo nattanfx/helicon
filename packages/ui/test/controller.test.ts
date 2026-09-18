@@ -1003,4 +1003,49 @@ describe("HeliconController", () => {
     const revived = new HeliconController(client, { ...platform(), loadPrefs: () => ({ zoom: 99 }) });
     assert.equal(revived.store.get().prefs.zoom, 1);
   });
+
+  it("returns from settings and usage to the thread they were opened from", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    controller.navigate({ kind: "settings" });
+    assert.deepEqual(controller.store.get().route, { kind: "settings" });
+    controller.goBack();
+    assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+    controller.navigate({ kind: "usage" });
+    // Moving between the two pages keeps the thread as the way back, not the other page.
+    controller.navigate({ kind: "settings" });
+    controller.goBack();
+    assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+    stop();
+  });
+
+  it("returns from settings to a fresh-thread route", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client, "");
+    controller.newThread();
+    assert.deepEqual(controller.store.get().route, { kind: "new", cwd: "/work/app" });
+    controller.navigate({ kind: "settings" });
+    controller.goBack();
+    assert.deepEqual(controller.store.get().route, { kind: "new", cwd: "/work/app" });
+    stop();
+  });
+
+  it("falls back to home when there is nowhere to go back to", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client, "#/settings");
+    assert.deepEqual(controller.store.get().route, { kind: "settings" });
+    controller.goBack();
+    assert.deepEqual(controller.store.get().route, { kind: "home" });
+    stop();
+  });
+
+  it("falls back to home when the return thread is gone", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    controller.navigate({ kind: "settings" });
+    await controller.archive("s1");
+    controller.goBack();
+    assert.deepEqual(controller.store.get().route, { kind: "home" });
+    stop();
+  });
 });
