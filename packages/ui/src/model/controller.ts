@@ -1306,7 +1306,7 @@ export class HeliconController {
     try {
       await this.client.updateSession(sessionId, { archived: true });
       this.toast("info", "Conversa arquivada", current.title, {
-        label: "Undo",
+        label: "Desfazer",
         run: () => void this.unarchive(current),
       });
     } catch (error) {
@@ -1447,7 +1447,7 @@ export class HeliconController {
     try {
       await this.client.hideProject(cwd);
       this.toast("info", `Removeu ${project.displayName} da lateral`, "Suas conversas do Muse estão intactas.", {
-        label: "Undo",
+        label: "Desfazer",
         run: () => void this.addProject(cwd),
       });
     } catch (error) {
