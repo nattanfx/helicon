@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/** A web or mail link that belongs outside Helicon: not the local server this page came from. */
+/** Um link web ou de e-mail que pertence fora do Helicon: não o servidor local de onde esta página veio. */
 export function externalHref(href: string, origin: string): string | null {
   let url: URL;
   try {
@@ -18,8 +18,8 @@ export function externalHref(href: string, origin: string): string | null {
 }
 
 /**
- * In the desktop app, a plain click on a `target="_blank"` link never reaches the shell's new-window handler on
- * macOS, so nothing opens. Clicks on outside links go straight to the default browser instead.
+ * No app do desktop, um clique simples num link `target="_blank"` nunca chega ao manipulador de nova janela do shell no
+ * macOS, então nada abre. Cliques em links externos vão direto para o navegador padrão.
  */
 export function bindDesktopLinks(): void {
   if (!("__TAURI_INTERNALS__" in window)) {

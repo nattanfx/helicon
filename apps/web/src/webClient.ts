@@ -30,7 +30,7 @@ import {
   type WorkflowAction,
 } from "@helicon/ui";
 
-/** Which daemon this page talks to. An empty base is the origin that served the page. */
+/** Com qual servidor esta página fala. Uma base vazia é a origem que serviu a página. */
 export interface Daemon {
   base: string;
   token: string | null;
@@ -55,14 +55,14 @@ function remember(next: Daemon): void {
   try {
     window.localStorage.setItem(DAEMON_KEY, JSON.stringify(next));
   } catch {
-    /* a browser with storage switched off still works for this session */
+    /* um navegador com armazenamento desligado ainda funciona nesta sessão */
   }
 }
 
 /**
- * The token used to ride in the query string, which put it in history and in every shared link.
- * One is still accepted there, because that is how local links were handed out, but it is taken
- * out of the address bar immediately and kept here instead.
+ * O token costumava ir na query string, o que o colocava no histórico e em todo link compartilhado.
+ * Um ainda é aceito lá, porque era assim que links locais eram distribuídos, mas ele é tirado
+ * da barra de endereço na hora e guardado aqui.
  */
 function initial(): Daemon {
   const params = new URLSearchParams(window.location.search);
@@ -84,7 +84,7 @@ export function currentDaemon(): Daemon {
   return daemon;
 }
 
-/** Points this page at another daemon; the caller reloads so every open stream starts again. */
+/** Aponta esta página para outro servidor; quem chama recarrega para todo stream aberto recomeçar. */
 export function setDaemon(next: Daemon): void {
   daemon = { base: next.base.replace(/\/$/, ""), token: next.token };
   remember(daemon);
@@ -94,11 +94,11 @@ function url(path: string): string {
   return daemon.base ? `${daemon.base}${path}` : path;
 }
 
-/** Long enough for a slow local call, short enough that a wedged one never leaves the UI waiting forever. */
+/** Longo o bastante para uma chamada local lenta, curto o bastante para uma travada nunca deixar a interface esperando para sempre. */
 const CALL_TIMEOUT_MS = 60_000;
-/** A `!` command may run for two minutes on the server; the wait here has to outlast that. */
+/** Um comando `!` pode rodar por dois minutos no servidor; a espera aqui tem que durar mais que isso. */
 const SHELL_TIMEOUT_MS = 150_000;
-/** Two missed heartbeats. The server sends one every 25s, so silence this long means the stream is gone. */
+/** Dois heartbeats perdidos. O servidor envia um a cada 25s, então silêncio por tanto tempo quer dizer que o stream caiu. */
 const STREAM_IDLE_MS = 70_000;
 
 async function call<T>(method: string, path: string, body?: unknown, timeoutMs = CALL_TIMEOUT_MS): Promise<T> {
@@ -110,7 +110,7 @@ async function call<T>(method: string, path: string, body?: unknown, timeoutMs =
       method,
       headers: {
         ...(body === undefined ? {} : { "content-type": "application/json" }),
-        // In a header rather than the URL, so it stays out of history, logs and shared links.
+        // Num cabeçalho em vez da URL, para ficar fora do histórico, dos logs e dos links compartilhados.
         ...(daemon.token ? { authorization: `Bearer ${daemon.token}` } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -120,8 +120,8 @@ async function call<T>(method: string, path: string, body?: unknown, timeoutMs =
   } catch {
     throw new HeliconError(
       abort.signal.aborted
-        ? "The local Helicon server took too long to answer."
-        : "The local Helicon server is not reachable. Is it still running?",
+        ? "O servidor Helicon local demorou demais para responder."
+        : "O servidor Helicon local não está acessível. Ele ainda está rodando?",
       0,
     );
   } finally {
@@ -137,7 +137,7 @@ async function call<T>(method: string, path: string, body?: unknown, timeoutMs =
   if (!response.ok) {
     const failure = (data ?? {}) as { error?: unknown; kind?: unknown };
     throw new HeliconError(
-      typeof failure.error === "string" ? failure.error : `${method} ${path} failed with ${response.status}.`,
+      typeof failure.error === "string" ? failure.error : `${method} ${path} falhou com ${response.status}.`,
       response.status,
       typeof failure.kind === "string" ? failure.kind : null,
     );
@@ -147,12 +147,12 @@ async function call<T>(method: string, path: string, body?: unknown, timeoutMs =
 
 const enc = encodeURIComponent;
 
-/** The Helicon client over the local server's REST API and server-sent events. */
+/** O cliente Helicon sobre a API REST do servidor local e server-sent events. */
 export class WebHeliconClient implements HeliconClient {
   private readonly handlers = new Set<EventHandler>();
   private source: EventSource | null = null;
   private watchdog: ReturnType<typeof setTimeout> | null = null;
-  /** The handshake is awaited before the stream opens; this stops a second subscriber racing it. */
+  /** O handshake é aguardado antes do stream abrir; isto impede um segundo inscrito de disputar com ele. */
   private connecting = false;
 
   probeEnvironment(refresh = false): Promise<EnvironmentStatus> {
@@ -201,7 +201,7 @@ export class WebHeliconClient implements HeliconClient {
   }
 
   async runShellProxy(sessionId: string, command: string): Promise<ShellRun> {
-    // The server lets a command run for two minutes, so this must outlast that rather than abandon it early.
+    // O servidor deixa um comando rodar por dois minutos, então isto tem que durar mais que isso em vez de abandonar cedo.
     const result = await call<{ run: ShellRun }>("POST", `/api/sessions/${enc(sessionId)}/shell-proxy`, { command }, SHELL_TIMEOUT_MS);
     return result.run;
   }
@@ -372,8 +372,8 @@ export class WebHeliconClient implements HeliconClient {
   }
 
   /**
-   * A server path the browser loads by itself, like an attachment's bytes. It carries no token: the
-   * cookie from the handshake is what lets these through, so nothing secret ends up in an `img` tag.
+   * Um caminho do servidor que o navegador carrega sozinho, como os bytes de um anexo. Não leva token: o
+   * cookie do handshake é o que deixa estes passar, então nada secreto termina numa tag `img`.
    */
   assetUrl(path: string): string {
     return url(path);
@@ -398,13 +398,13 @@ export class WebHeliconClient implements HeliconClient {
     }
     this.connecting = true;
     try {
-      // EventSource cannot send a header, so the token buys a cookie first and the stream uses that.
+      // O EventSource não consegue enviar cabeçalho, então o token compra um cookie primeiro e o stream usa esse.
       if (daemon.token) {
         await call("POST", "/api/auth", { token: daemon.token });
       }
     } catch {
-      // Let the stream try anyway: an unauthenticated daemon needs no handshake, and a real refusal
-      // surfaces as a lost connection rather than a silent nothing.
+      // Deixa o stream tentar mesmo assim: um servidor sem autenticação não precisa de handshake, e uma recusa real
+      // aparece como conexão perdida em vez de um nada silencioso.
     } finally {
       this.connecting = false;
     }
@@ -417,10 +417,10 @@ export class WebHeliconClient implements HeliconClient {
       try {
         this.dispatch(JSON.parse((message as MessageEvent<string>).data) as HeliconEvent);
       } catch {
-        /* ignore malformed frames */
+        /* ignora frames malformados */
       }
     });
-    // The server's heartbeat: proof the stream is still carrying, and nothing else.
+    // O heartbeat do servidor: prova de que o stream ainda está transmitindo, e nada mais.
     source.addEventListener("ping", () => this.touch());
     source.addEventListener("open", () => this.touch());
     source.addEventListener("error", () => this.dispatch({ type: "connection", state: "lost" }));
@@ -428,7 +428,7 @@ export class WebHeliconClient implements HeliconClient {
     this.touch();
   }
 
-  /** Restarts the idle timer. A stream that says nothing for two missed heartbeats is treated as dead. */
+  /** Reinicia o temporizador de ociosidade. Um stream que não diz nada por dois heartbeats perdidos é tratado como morto. */
   private touch(): void {
     this.stopWatchdog();
     this.watchdog = setTimeout(() => this.revive(), STREAM_IDLE_MS);
@@ -442,9 +442,9 @@ export class WebHeliconClient implements HeliconClient {
   }
 
   /**
-   * A dead stream the browser cannot see: a proxy can hold the connection open long after its upstream has
-   * gone, so no `error` ever fires and the app sits on a transcript that stopped moving. Tearing it down by
-   * hand and opening a new one brings back `hello`, which is what makes the app reload what it missed.
+   * Um stream morto que o navegador não consegue ver: um proxy pode segurar a conexão aberta muito depois de o upstream
+   * ter caído, então nenhum `error` dispara e o app fica sobre uma transcrição que parou de se mover. Derrubá-lo à mão
+   * e abrir um novo traz de volta o `hello`, que é o que faz o app recarregar o que perdeu.
    */
   private revive(): void {
     this.stopWatchdog();

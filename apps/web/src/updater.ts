@@ -4,11 +4,11 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import type { AppUpdater } from "@helicon/ui";
 
-// The plugin waits forever by default, and a stalled download would hold every later update action behind it.
+// O plug-in espera para sempre por padrão, e um download travado seguraria toda ação de atualização posterior.
 const CHECK_TIMEOUT_MS = 30_000;
 const DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 
-/** The desktop shell's updater, through Tauri's updater plugin; undefined in a browser. */
+/** O atualizador do shell do desktop, pelo plug-in de atualização do Tauri; indefinido no navegador. */
 export function desktopUpdater(): AppUpdater | undefined {
   if (!("__TAURI_INTERNALS__" in window)) {
     return undefined;
@@ -26,7 +26,7 @@ export function desktopUpdater(): AppUpdater | undefined {
     },
     async download(onProgress) {
       if (!pending) {
-        throw new Error("There is no update to download.");
+        throw new Error("Não há atualização para baixar.");
       }
       let total: number | null = null;
       let received = 0;
@@ -47,13 +47,13 @@ export function desktopUpdater(): AppUpdater | undefined {
     },
     async install({ restart }) {
       if (!pending) {
-        throw new Error("There is no downloaded update to install.");
+        throw new Error("Não há atualização baixada para instalar.");
       }
       await pending.install({ restartAfterInstall: restart });
     },
     relaunch: () => relaunch(),
     onClose(handler) {
-      // The window waits for the handler, then closes; installing on Windows quits the app first.
+      // A janela espera o manipulador e fecha; instalar no Windows sai do app primeiro.
       const unlisten = getCurrentWindow().onCloseRequested(async () => {
         await handler();
       });

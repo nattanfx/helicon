@@ -6,9 +6,9 @@ function asPermission(value: string): NotifyPermission {
 }
 
 /**
- * Notifications through the browser's own API. Every engine that matters supports it, and each is
- * particular about it: permission is only granted from a real press, and Safari additionally wants a
- * secure context. Nothing here ever asks by itself for that reason.
+ * Notificações pela API do próprio navegador. Todo mecanismo relevante a suporta, e cada um é
+ * particular a respeito: a permissão só é concedida a partir de um clique real, e o Safari ainda exige um
+ * contexto seguro. Nada aqui jamais pergunta por conta própria por esse motivo.
  */
 function browserNotifier(): Notifier | undefined {
   if (typeof Notification === "undefined") {
@@ -18,7 +18,7 @@ function browserNotifier(): Notifier | undefined {
   return {
     permission: async () => read(),
     async request() {
-      // Every browser refuses a second ask, and the answer is already known by then anyway.
+      // Todo navegador recusa uma segunda pergunta, e a resposta já é conhecida nessa altura mesmo.
       if (read() !== "default") {
         return read();
       }
@@ -29,15 +29,15 @@ function browserNotifier(): Notifier | undefined {
       }
     },
     async show({ title, body, tag }) {
-      // `tag` replaces an earlier notice about the same thread instead of stacking another one up.
+      // A `tag` substitui um aviso anterior sobre a mesma conversa em vez de empilhar mais um.
       new Notification(title, { body, tag });
     },
   };
 }
 
 /**
- * The desktop shell's, through Tauri's notification plugin. A webview does not reliably carry the
- * browser API, so on the desktop this is the one that actually reaches the OS.
+ * A do shell do desktop, pelo plug-in de notificações do Tauri. Uma webview não carrega a
+ * API do navegador de forma confiável, então no desktop é esta que de fato alcança o SO.
  */
 function desktopNotifier(): Notifier {
   return {
@@ -56,14 +56,14 @@ function desktopNotifier(): Notifier {
       }
     },
     async show({ title, body }) {
-      // The plugin has no notion of replacing an earlier notice, so the manager's own repeat window
-      // is the only thing keeping one thread from stacking up.
+      // O plug-in não tem noção de substituir um aviso anterior, então a janela de repetição do próprio gerenciador
+      // é a única coisa impedindo uma conversa de empilhar.
       sendNotification({ title, body });
     },
   };
 }
 
-/** Whichever of the two this shell actually has. */
+/** Qualquer um dos dois que este shell de fato tenha. */
 export function appNotifier(): Notifier | undefined {
   return "__TAURI_INTERNALS__" in window ? desktopNotifier() : browserNotifier();
 }

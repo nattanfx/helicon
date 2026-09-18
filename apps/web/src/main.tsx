@@ -18,8 +18,8 @@ if (!root) {
 }
 
 /**
- * `#/connect` picks the daemon this page talks to. It is read before the app mounts, because the
- * client reads its address once at module load and every open stream belongs to that address.
+ * `#/connect` escolhe o servidor com quem esta página fala. É lido antes do app montar, porque o
+ * cliente lê seu endereço uma vez no carregamento do módulo e todo stream aberto pertence a esse endereço.
  */
 function Root() {
   const [connecting, setConnecting] = useState(window.location.hash === "#/connect");
@@ -28,7 +28,7 @@ function Root() {
       <Connect
         onDone={() => {
           setConnecting(false);
-          // A reload, not a re-render: the client keeps its address and its stream from load time.
+          // Um recarregamento, não uma nova renderização: o cliente mantém seu endereço e seu stream desde o carregamento.
           window.location.replace(window.location.pathname);
         }}
       />

@@ -5,9 +5,9 @@ import type { WindowFrame } from "@helicon/ui";
 
 declare global {
   interface Window {
-    /** Set by the desktop shell before the page loads when the window has no native title bar. */
+    /** Definido pelo shell do desktop antes da página carregar quando a janela não tem barra de título nativa. */
     __HELICON_FRAME__?: string;
-    /** Set by the desktop shell before the page loads when macOS traffic lights float over the UI. */
+    /** Definido pelo shell do desktop antes da página carregar quando os semáforos do macOS flutuam sobre a interface. */
     __HELICON_TITLEBAR__?: string;
   }
   interface WindowEventMap {
@@ -16,14 +16,14 @@ declare global {
   }
 }
 
-/** True on macOS, where the desktop shell overlays the traffic lights on the sidebar. */
+/** Verdadeiro no macOS, onde o shell do desktop sobrepõe os semáforos à barra lateral. */
 export function titlebarOverlay(): boolean {
   return window.__HELICON_TITLEBAR__ === "overlay";
 }
 
 /**
- * Desktop zoom must go through the webview, not CSS `zoom` on <html>: WKWebView then mis-places
- * every Radix `position: fixed` menu. No-op in a browser. Call once at startup.
+ * O zoom do desktop tem que passar pela webview, não pelo `zoom` do CSS no <html>: senão a WKWebView desloca
+ * todo menu Radix com `position: fixed`. Não faz nada num navegador. Chamar uma vez na inicialização.
  */
 export function bindDesktopZoom(): void {
   if (!("__TAURI_INTERNALS__" in window)) {
@@ -40,7 +40,7 @@ export function bindDesktopZoom(): void {
   }).catch((error: unknown) => console.error("Helicon: zoom menu listen failed", error));
 }
 
-/** Window controls for the desktop shell's frameless window; undefined in a browser. */
+/** Controles de janela para a janela sem moldura do shell do desktop; indefinido num navegador. */
 export function desktopFrame(): WindowFrame | undefined {
   if (window.__HELICON_FRAME__ !== "custom") {
     return undefined;

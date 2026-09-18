@@ -1,5 +1,5 @@
-// GUI subsystem in every build: a debug build would otherwise open a stray console window.
-// Nothing is lost, the server's output goes to server.log.
+// Subsistema GUI em todo build: um build de depuração abriria senão uma janela de console perdida.
+// Nada se perde, a saída do servidor vai para o server.log.
 #![windows_subsystem = "windows"]
 
 use std::ffi::{OsStr, OsString};
@@ -16,8 +16,8 @@ use tauri::Emitter;
 
 struct ServerChild(Arc<Mutex<Option<Child>>>);
 
-/// Stops the local server when Tauri clears its resources, which the updater does right before it
-/// quits the app to run the installer; a normal close stops it in the window's Destroyed handler.
+/// Para o servidor local quando o Tauri limpa seus recursos, o que o atualizador faz logo antes de
+/// sair do app para rodar o instalador; um fechamento normal o para no manipulador Destroyed da janela.
 struct ServerGuard(Arc<Mutex<Option<Child>>>);
 
 impl tauri::Resource for ServerGuard {}
@@ -32,29 +32,29 @@ impl Drop for ServerGuard {
     }
 }
 
-/// Windows gets Helicon's own title bar, drawn by the UI; macOS keeps the native traffic
-/// lights overlaid on the UI, so the sidebar runs the full height of the window; other
-/// platforms keep the native frame.
+/// O Windows ganha a barra de título própria do Helicon, desenhada pela interface; o macOS mantém os
+/// semáforos nativos sobrepostos à interface, para a barra lateral ocupar a altura toda da janela; outras
+/// plataformas mantêm a moldura nativa.
 const CUSTOM_FRAME: bool = cfg!(windows);
 
-/// Tells the UI, before it loads, to draw the window controls and drag regions.
+/// Diz à interface, antes de carregar, para desenhar os controles de janela e as regiões de arrasto.
 const FRAME_SCRIPT: &str = "window.__HELICON_FRAME__ = 'custom';";
 
-/// Tells the UI, before it loads, that the macOS traffic lights float over the sidebar.
+/// Diz à interface, antes de carregar, que os semáforos do macOS flutuam sobre a barra lateral.
 #[cfg(target_os = "macos")]
 const OVERLAY_SCRIPT: &str = "window.__HELICON_TITLEBAR__ = 'overlay';";
 
-/// Where the server's port is remembered between launches, inside the app's data folder.
+/// Onde a porta do servidor é lembrada entre aberturas, dentro da pasta de dados do app.
 const PORT_FILE: &str = "server-port";
 
-/// Shown the instant the window opens, while the local server starts. System colors follow the OS theme.
-const SPLASH_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:GrayText;font:13px system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}</style><body>Starting Helicon</body>";
+/// Mostrado no instante em que a janela abre, enquanto o servidor local inicia. As cores do sistema seguem o tema do SO.
+const SPLASH_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:GrayText;font:13px system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}</style><body>Iniciando o Helicon</body>";
 
-const MISSING_NODE_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:CanvasText;font:14px/1.5 system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}main{max-width:420px;padding:24px}p{color:GrayText}</style><main><h1 style=font-size:20px>Helicon needs Node.js</h1><p>Helicon could not start its local server because its bundled Node.js is missing and Node.js 22 or newer was not found on this computer. Reinstall Helicon, or install Node.js 22 or newer, then open Helicon again.</p></main>";
+const MISSING_NODE_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:CanvasText;font:14px/1.5 system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}main{max-width:420px;padding:24px}p{color:GrayText}</style><main><h1 style=font-size:20px>O Helicon precisa do Node.js</h1><p>O Helicon não conseguiu iniciar seu servidor local porque o Node.js embutido está ausente e não foi encontrado Node.js 22 ou mais novo neste computador. Reinstale o Helicon ou instale o Node.js 22 ou mais novo e abra o Helicon de novo.</p></main>";
 
-const MISSING_SERVER_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:CanvasText;font:14px/1.5 system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}main{max-width:420px;padding:24px}p{color:GrayText}</style><main><h1 style=font-size:20px>Helicon is missing files</h1><p>The bundled Helicon server was not found next to the app. Reinstall Helicon to restore it.</p></main>";
+const MISSING_SERVER_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:CanvasText;font:14px/1.5 system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}main{max-width:420px;padding:24px}p{color:GrayText}</style><main><h1 style=font-size:20px>Faltam arquivos no Helicon</h1><p>O servidor Helicon embutido não foi encontrado ao lado do app. Reinstale o Helicon para restaurá-lo.</p></main>";
 
-const SERVER_FAILED_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:CanvasText;font:14px/1.5 system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}main{max-width:420px;padding:24px}p{color:GrayText}</style><main><h1 style=font-size:20px>Helicon could not start</h1><p>Its local server did not come up. The server log in the Helicon app log folder has the details. Close Helicon and open it again to retry.</p></main>";
+const SERVER_FAILED_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:CanvasText;font:14px/1.5 system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}main{max-width:420px;padding:24px}p{color:GrayText}</style><main><h1 style=font-size:20px>O Helicon não conseguiu iniciar</h1><p>O servidor local não subiu. O log do servidor na pasta de logs do app Helicon tem os detalhes. Feche o Helicon e abra de novo para tentar outra vez.</p></main>";
 
 enum BootError {
     NodeMissing,
@@ -72,15 +72,15 @@ impl BootError {
     }
 }
 
-/// Why one server start produced no URL. A server that exits at once may have lost its port to another
-/// process between the check and its own bind; one that never answers or never spawned would not be
-/// helped by another port.
+/// Por que uma inicialização do servidor não produziu URL. Um servidor que sai de imediato pode ter perdido sua porta para outro
+/// processo entre a verificação e seu próprio bind; um que nunca responde ou nunca nasceu não seria
+/// ajudado por outra porta.
 enum StartFailure {
     Exited,
     Failed,
 }
 
-/// Tauri hands out `\\?\` verbatim paths on Windows; Node cannot load a main module from one.
+/// O Tauri entrega caminhos literais `\\?\` no Windows; o Node não consegue carregar um módulo principal de um.
 fn plain_path(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
@@ -92,7 +92,7 @@ fn plain_path(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
-/// Bundled resources keep their relative path (`resources/server.cjs`); older layouts put them at the root.
+/// Recursos embutidos mantêm seu caminho relativo (`resources/server.cjs`); layouts antigos os punham na raiz.
 fn find_resource(resource_dir: &Path, name: &str) -> Option<PathBuf> {
     [resource_dir.join("resources").join(name), resource_dir.join(name)]
         .into_iter()
@@ -104,9 +104,9 @@ fn port_free(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
-/// The port the local server had last time, while it is still free. The window's origin includes the
-/// port and the UI keeps its settings in that origin's storage, so a new port each launch would forget
-/// them, automatic updates switched off included.
+/// A porta que o servidor local tinha da última vez, enquanto ainda estiver livre. A origem da janela inclui a
+/// porta e a interface guarda suas configurações no armazenamento dessa origem, então uma porta nova a cada abertura as esqueceria,
+/// inclusive atualizações automáticas desligadas.
 fn stable_port(data_dir: Option<&Path>) -> u16 {
     let saved = data_dir
         .and_then(|dir| std::fs::read_to_string(dir.join(PORT_FILE)).ok())
@@ -118,8 +118,8 @@ fn stable_port(data_dir: Option<&Path>) -> u16 {
     }
 }
 
-/// A port nothing is using right now, remembered for the next launch. Returns 0, any free port, only
-/// when none can be found.
+/// Uma porta que nada está usando agora, lembrada para a próxima abertura. Retorna 0, qualquer porta livre, só
+/// quando nenhuma pode ser encontrada.
 fn fresh_port(data_dir: Option<&Path>) -> u16 {
     let port = TcpListener::bind(("127.0.0.1", 0))
         .and_then(|listener| listener.local_addr())
@@ -133,7 +133,7 @@ fn fresh_port(data_dir: Option<&Path>) -> u16 {
     port
 }
 
-/// Starts the server on `port`, and once more on a fresh port if it exits at once.
+/// Inicia o servidor na `port` e, mais uma vez, numa porta nova se ele sair de imediato.
 fn start_with_retry<T>(
     port: u16,
     fresh: impl FnOnce() -> u16,
@@ -146,7 +146,7 @@ fn start_with_retry<T>(
     }
 }
 
-/// A child process that never flashes a console window on Windows.
+/// Um processo filho que nunca pisca uma janela de console no Windows.
 fn command<S: AsRef<OsStr>>(program: S) -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
@@ -169,7 +169,7 @@ fn node_runs(program: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// The Node.js runtime that ships next to the app executable as a Tauri sidecar, when this build has one.
+/// O runtime Node.js que acompanha o executável do app como sidecar do Tauri, quando este build tem um.
 fn bundled_node() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     bundled_node_in(exe.parent()?)
@@ -180,10 +180,10 @@ fn bundled_node_in(dir: &Path) -> Option<PathBuf> {
     Some(dir.join(name)).filter(|path| path.is_file()).map(|path| plain_path(&path))
 }
 
-/// The bundled Node.js first, so users need nothing installed. Without it (a source build, or a damaged
-/// install), Node.js the way a terminal sees it. GUI apps on macOS start with a minimal PATH that misses
-/// Homebrew, ~/.local/bin and everything a version manager adds through the shell's rc files, so
-/// plain `node` fails for most users when Helicon is opened from the Finder rather than a terminal.
+/// O Node.js embutido primeiro, para os usuários não precisarem instalar nada. Sem ele (um build de código-fonte ou uma instalação
+/// danificada), o Node.js como um terminal o vê. Apps GUI no macOS iniciam com um PATH mínimo que perde o
+/// Homebrew, o ~/.local/bin e tudo que um gerenciador de versões adiciona pelos arquivos rc do shell, então
+/// o `node` puro falha para a maioria quando o Helicon é aberto pelo Finder em vez de um terminal.
 fn find_node() -> Option<PathBuf> {
     if let Some(bundled) = bundled_node().filter(|node| node_runs(node)) {
         return Some(bundled);
@@ -196,8 +196,8 @@ fn find_node() -> Option<PathBuf> {
         }
         if let Ok(shell) = std::env::var("SHELL") {
             if shell != "/bin/sh" {
-                // Login plus interactive, so .zshrc-style rc files run and managers like fnm, nvm,
-                // volta and mise put their node on PATH.
+                // Login mais interativo, para os arquivos rc estilo .zshrc rodarem e gerenciadores como fnm, nvm,
+                // volta e mise colocarem seu node no PATH.
                 let probe = if shell.ends_with("csh") {
                     "which node"
                 } else {
@@ -213,7 +213,7 @@ fn find_node() -> Option<PathBuf> {
     candidates.into_iter().find(|candidate| node_runs(candidate))
 }
 
-/// Runs one shell probe with a timeout: rc files can hang, and boot must not hang with them.
+/// Roda uma sonda de shell com timeout: arquivos rc podem travar, e o boot não pode travar com eles.
 #[cfg(unix)]
 fn shell_probe(shell: &str, args: &[&str]) -> Option<PathBuf> {
     let shell = shell.to_string();
@@ -227,8 +227,8 @@ fn shell_probe(shell: &str, args: &[&str]) -> Option<PathBuf> {
     if !output.status.success() {
         return None;
     }
-    // The probe runs after the rc files, so its answer is the last path-like line; anything the
-    // rc files printed above it is ignored.
+    // A sonda roda depois dos arquivos rc, então sua resposta é a última linha parecida com caminho; qualquer coisa que os
+    // arquivos rc imprimiram acima dela é ignorado.
     select_probe_path(&String::from_utf8_lossy(&output.stdout))
 }
 
@@ -243,7 +243,7 @@ fn select_probe_path(output: &str) -> Option<PathBuf> {
         .find(|path| path.is_absolute() && path.is_file())
 }
 
-/// Node binaries in their usual homes, for when the shells above do not know them.
+/// Binários do Node em suas casas usuais, para quando os shells acima não os conhecem.
 #[cfg(unix)]
 fn well_known_nodes() -> Vec<PathBuf> {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
@@ -270,7 +270,7 @@ fn well_known_nodes_in(home: &Path) -> Vec<PathBuf> {
     nodes.into_iter().filter(|node| node.is_file()).collect()
 }
 
-/// The newest node nvm has installed, by version number.
+/// O node mais novo que o nvm instalou, por número de versão.
 #[cfg(unix)]
 fn latest_nvm_node(home: &Path) -> Option<PathBuf> {
     let entries = std::fs::read_dir(home.join(".nvm/versions/node")).ok()?;
@@ -290,15 +290,15 @@ fn latest_nvm_node(home: &Path) -> Option<PathBuf> {
     versions.pop().map(|(_, node)| node)
 }
 
-/// A PATH for the server that sees what a terminal sees: the node that was found, plus the user
-/// bin folders, in front of whatever the app inherited. The server's own probes (`muse`, skills)
-/// and the user's `!` commands all run under it.
+/// Um PATH para o servidor que vê o que um terminal vê: o node encontrado, mais as pastas bin do
+/// usuário, na frente do que o app herdou. As sondas do próprio servidor (`muse`, skills)
+/// e os comandos `!` do usuário rodam todos sob ele.
 #[cfg(unix)]
 fn augmented_path(node: &Path) -> Option<OsString> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let mut prepend: Vec<PathBuf> = Vec::new();
-    // The bundled node sits beside the app executable; putting that folder first would shadow the
-    // user's own node for their `!` commands.
+    // O node embutido fica ao lado do executável do app; colocar essa pasta primeiro sombrearia o
+    // node do próprio usuário para seus comandos `!`.
     if node.is_absolute() && bundled_node().as_deref() != Some(node) {
         if let Some(dir) = node.parent() {
             prepend.push(dir.to_path_buf());
@@ -361,7 +361,7 @@ fn parse_listening_url(line: &str) -> Option<String> {
     Some(format!("http://{}", rest.trim()))
 }
 
-/// One attempt to run the bundled server on `port`, returning it with the URL it announced.
+/// Uma tentativa de rodar o servidor embutido na `port`, retornando-o com a URL que anunciou.
 #[allow(clippy::too_many_arguments)]
 fn spawn_server(
     app: &tauri::AppHandle,
@@ -396,7 +396,7 @@ fn spawn_server(
     if let Some(url) = wait_for_url(&mut child) {
         return Ok((child, url));
     }
-    // Its output can end a moment before the exit is reported, so give the exit up to a second to show.
+    // Sua saída pode terminar um instante antes de a saída ser relatada, então dê até um segundo para ela aparecer.
     let exited = (0..20).any(|_| {
         let done = matches!(child.try_wait(), Ok(Some(_)));
         if !done {
@@ -414,7 +414,7 @@ fn boot_server(app: &tauri::AppHandle) -> Result<String, BootError> {
     let resource_dir = app.path().resource_dir().map_err(|_| BootError::ServerMissing)?;
     let server = find_resource(&resource_dir, "server.cjs").ok_or(BootError::ServerMissing)?;
     let frontend = find_resource(&resource_dir, "frontend");
-    // Projects, pins and thread titles persist per user, next to the app's other data.
+    // Projetos, fixações e títulos de conversas persistem por usuário, ao lado dos outros dados do app.
     let data = app
         .path()
         .app_data_dir()
@@ -435,19 +435,19 @@ fn boot_server(app: &tauri::AppHandle) -> Result<String, BootError> {
     Ok(url)
 }
 
-/// WKWebView swallows Cmd+/− for its own page zoom before JS sees them. A native View menu
-/// takes those keys and emits `helicon://zoom` so the UI can step Helicon's zoom instead.
+/// A WKWebView engole Cmd+/− para seu próprio zoom de página antes de o JS vê-los. Um menu Visualizar nativo
+/// pega essas teclas e emite `helicon://zoom` para a interface escalonar o zoom do Helicon.
 #[cfg(target_os = "macos")]
 fn install_zoom_menu(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
-    let zoom_in = MenuItemBuilder::with_id("zoom-in", "Zoom In")
+    let zoom_in = MenuItemBuilder::with_id("zoom-in", "Ampliar")
         .accelerator("CmdOrCtrl+=")
         .build(app)?;
-    let zoom_out = MenuItemBuilder::with_id("zoom-out", "Zoom Out")
+    let zoom_out = MenuItemBuilder::with_id("zoom-out", "Reduzir")
         .accelerator("CmdOrCtrl+-")
         .build(app)?;
-    let zoom_reset = MenuItemBuilder::with_id("zoom-reset", "Actual Size")
+    let zoom_reset = MenuItemBuilder::with_id("zoom-reset", "Tamanho Real")
         .accelerator("CmdOrCtrl+0")
         .build(app)?;
     let app_menu = SubmenuBuilder::new(app, "Helicon")
@@ -459,7 +459,7 @@ fn install_zoom_menu(app: &tauri::App) -> tauri::Result<()> {
         .separator()
         .quit()
         .build()?;
-    let edit = SubmenuBuilder::new(app, "Edit")
+    let edit = SubmenuBuilder::new(app, "Editar")
         .undo()
         .redo()
         .separator()
@@ -468,12 +468,12 @@ fn install_zoom_menu(app: &tauri::App) -> tauri::Result<()> {
         .paste()
         .select_all()
         .build()?;
-    let view = SubmenuBuilder::new(app, "View")
+    let view = SubmenuBuilder::new(app, "Visualizar")
         .item(&zoom_in)
         .item(&zoom_out)
         .item(&zoom_reset)
         .build()?;
-    let window = SubmenuBuilder::new(app, "Window")
+    let window = SubmenuBuilder::new(app, "Janela")
         .minimize()
         .separator()
         .close_window()
@@ -497,8 +497,8 @@ fn install_zoom_menu(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Web and mail links that belong in the user's browser or mail app. Helicon's own local server, the inline
-/// splash and error pages, and Tauri's internal schemes stay in the window.
+/// Links web e de e-mail que pertencem ao navegador ou app de e-mail do usuário. O servidor local do próprio Helicon, as páginas
+/// de splash e de erro embutidas e os esquemas internos do Tauri ficam na janela.
 fn is_external_link(url: &Url) -> bool {
     match url.scheme() {
         "mailto" => true,
@@ -516,15 +516,15 @@ fn main() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             install_zoom_menu(app)?;
-            // Open the window at once on a splash page; the server can take a few seconds to probe WSL.
+            // Abre a janela de imediato numa página de splash; o servidor pode levar alguns segundos sondando o WSL.
             let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(SPLASH_PAGE.parse()?))
                 .title("Helicon")
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(880.0, 560.0)
-                // Native file-drop consumes HTML5 DnD (sidebar reorder, composer attach) on Windows.
+                // O arrastar-arquivo nativo consome o DnD do HTML5 (reordenar barra lateral, anexar no composer) no Windows.
                 .disable_drag_drop_handler()
-                // A link meant for the browser (`target="_blank"`, or one that would navigate the app away)
-                // opens in the user's default browser instead of doing nothing or replacing Helicon.
+                // Um link destinado ao navegador (`target="_blank"`, ou um que levaria o app para longe)
+                // abre no navegador padrão do usuário em vez de não fazer nada ou substituir o Helicon.
                 .on_new_window(|url, _features| {
                     if is_external_link(&url) {
                         let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
@@ -541,8 +541,8 @@ fn main() {
             if CUSTOM_FRAME {
                 builder = builder.decorations(false).initialization_script(FRAME_SCRIPT);
             }
-            // The traffic lights float over the sidebar's top-left corner; the UI leaves room
-            // for them and marks its headers as drag regions, like T3 Code.
+            // Os semáforos flutuam sobre o canto superior esquerdo da barra lateral; a interface deixa espaço
+            // para eles e marca seus cabeçalhos como regiões de arrasto, como o T3 Code.
             #[cfg(target_os = "macos")]
             {
                 builder = builder
@@ -557,7 +557,7 @@ fn main() {
                 let target = match boot_server(&handle) {
                     Ok(url) => url,
                     Err(error) => {
-                        // Error pages draw no window controls, so they get the native frame back.
+                        // Páginas de erro não desenham controles de janela, então ganham a moldura nativa de volta.
                         if CUSTOM_FRAME {
                             let _ = window.set_decorations(true);
                         }
@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn retries_on_a_fresh_port_only_when_the_server_exits_at_once() {
-        // Another process took the checked port before the server bound it: the server exits, the retry lands.
+        // Outro processo pegou a porta verificada antes de o servidor ligá-la: o servidor sai, a nova tentativa pousa.
         let mut tried = Vec::new();
         let started = start_with_retry(4100, || 4200, |port| {
             tried.push(port);
@@ -688,7 +688,7 @@ mod tests {
         assert_eq!(started.ok(), Some(4200));
         assert_eq!(tried, vec![4100, 4200]);
 
-        // A server that never answers is not helped by another port.
+        // Um servidor que nunca responde não é ajudado por outra porta.
         let mut tried = Vec::new();
         let hung = start_with_retry(4100, || 4200, |port| {
             tried.push(port);
@@ -697,7 +697,7 @@ mod tests {
         assert!(matches!(hung, Err(BootError::ServerFailed)));
         assert_eq!(tried, vec![4100]);
 
-        // Two exits in a row give up rather than looping.
+        // Duas saídas seguidas desistem em vez de entrar em loop.
         let mut tried = Vec::new();
         let gone = start_with_retry(4100, || 4200, |port| {
             tried.push(port);
@@ -714,7 +714,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let node = root.join("node");
         std::fs::write(&node, "").unwrap();
-        // rc files print above the answer; a removed install may linger below nothing.
+        // Arquivos rc imprimem acima da resposta; uma instalação removida pode restar abaixo de nada.
         let output = format!("Welcome back\n{}\n", node.display());
         assert_eq!(select_probe_path(&output), Some(node.clone()));
         assert_eq!(select_probe_path("Welcome back\n"), None);
