@@ -67,7 +67,7 @@ import {
 import { NotificationManager, type Notifier } from "./notify.js";
 import { UpdateManager, type AppUpdater } from "./updates.js";
 
-/** The environment the controller runs in; injectable so the logic stays testable without a DOM. */
+/** O ambiente em que o controller roda; injetável para a lógica continuar testável sem DOM. */
 export interface Platform {
   loadPrefs(): unknown;
   savePrefs(prefs: Prefs): void;
@@ -77,7 +77,7 @@ export interface Platform {
   now(): number;
   schedule(fn: () => void, ms: number): unknown;
   cancel(handle: unknown): void;
-  /** Whether the window has the user's attention; nothing is announced to someone already watching. */
+  /** Se a janela tem a atenção do usuário; nada é anunciado para quem já está olhando. */
   focused(): boolean;
 }
 
@@ -97,7 +97,7 @@ export function browserPlatform(): Platform {
       try {
         window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
       } catch {
-        /* storage unavailable: prefs stay in memory */
+        /* armazenamento indisponível: prefs ficam na memória */
       }
     },
     readHash: () => window.location.hash,
@@ -119,7 +119,7 @@ export function browserPlatform(): Platform {
     now: () => Date.now(),
     schedule: (fn, ms) => window.setTimeout(fn, ms),
     cancel: (handle) => window.clearTimeout(handle as number),
-    // A window with no document at all is not one anybody is looking at.
+    // Uma janela sem documento algum não é uma que alguém esteja olhando.
     focused: () => typeof document !== "undefined" && document.hasFocus(),
   };
 }
@@ -177,20 +177,20 @@ function nextLocalId(): string {
   return `local-${Date.now().toString(36)}-${localSeq}`;
 }
 
-/** What a prompt carries beyond its text: files for the model, and their local previews for the echo. */
+/** O que um prompt carrega além do texto: arquivos para o modelo, e suas prévias locais para o eco. */
 interface TurnDelivery {
   steer?: boolean;
-  /** Queue behind whatever is running even if this client has not seen the turn start yet. */
+  /** Enfileira atrás do que estiver rodando mesmo que este cliente ainda não tenha visto a mensagem começar. */
   queue?: boolean;
   displayText?: string;
   attachments?: OutgoingAttachment[];
   previews?: EchoAttachment[];
-  /** Deliver to this thread rather than wherever the user is standing now: a retry belongs to the turn that failed. */
+  /** Entrega nesta conversa em vez de onde o usuário está agora: uma repetição pertence à mensagem que falhou. */
   sessionId?: string;
 }
 
 export interface SendOptions extends TurnDelivery {
-  /** Send the text as a prompt even when it looks like a slash command. */
+  /** Envia o texto como prompt mesmo quando parece um comando de barra. */
   raw?: boolean;
 }
 
@@ -200,28 +200,28 @@ const SKILLS_FRESH_MS = 60_000;
 const SKILLS_RETRY_MS = 10_000;
 
 /**
- * Owns app state and every side effect: server calls, the event stream, routing and prefs.
- * Components read state through hooks and call these methods; they never talk to the client.
+ * É dono do estado do app e de todo efeito colateral: chamadas ao servidor, o stream de eventos, roteamento e prefs.
+ * Componentes leem o estado via hooks e chamam estes métodos; nunca falam com o cliente.
  */
 const GOAL_FAILURES: Record<GoalAction, string> = {
-  set: "Could not set the goal",
-  edit: "Could not change the goal",
-  pause: "Could not pause the goal",
-  resume: "Could not resume the goal",
-  clear: "Could not clear the goal",
+  set: "Não foi possível definir a meta",
+  edit: "Não foi possível alterar a meta",
+  pause: "Não foi possível pausar a meta",
+  resume: "Não foi possível continuar a meta",
+  clear: "Não foi possível limpar a meta",
 };
 
 const TASK_FAILURES: Record<TaskAction, string> = {
-  background: "Could not move that to the background",
-  stop: "Could not stop that task",
-  stopAll: "Could not stop the background tasks",
+  background: "Não foi possível mover isso para o fundo",
+  stop: "Não foi possível parar essa tarefa",
+  stopAll: "Não foi possível parar as tarefas de fundo",
 };
 
 export class HeliconController {
   readonly store: Store<AppState>;
   private readonly pending = new Map<string, ViewEvent[]>();
   private readonly loading = new Map<string, ViewEvent[]>();
-  /** Keys of prompt deliveries still waiting for the server, so a double-sent draft turns once. */
+  /** Chaves de entregas de prompt ainda esperando o servidor, para um rascunho enviado duas vezes virar uma. */
   private readonly inflightSends = new Set<string>();
   private readonly disposers: (() => void)[] = [];
   private flushHandle: unknown = null;
@@ -233,7 +233,7 @@ export class HeliconController {
 
   private updates: UpdateManager | null = null;
   private notifications: NotificationManager | null = null;
-  /** Kept as well as the manager, because asking for permission is the shell's job, not the manager's. */
+  /** Guardado junto com o manager, porque pedir permissão é trabalho do shell, não do manager. */
   private notifier: Notifier | null = null;
 
   constructor(
@@ -271,9 +271,9 @@ export class HeliconController {
   }
 
   /**
-   * How this shell tells the user something happened: the browser's own notifications, or whatever
-   * the desktop OS ships. Call before `start`. Both settings are read per announcement, so turning
-   * the switch off or coming back to the window takes effect at once.
+   * Como este shell conta ao usuário que algo aconteceu: as notificações do próprio navegador, ou o que
+   * o SO do desktop oferece. Chame antes de `start`. Ambas as configurações são lidas por anúncio, então desligar
+   * o interruptor ou voltar à janela vale na hora.
    */
   attachNotifier(notifier: Notifier): void {
     this.notifier = notifier;
@@ -284,17 +284,17 @@ export class HeliconController {
     );
   }
 
-  /** Asks for permission, which browsers only grant from a real gesture, so a button has to call this. */
+  /** Pede permissão, que navegadores só concedem a partir de um gesto real, então um botão precisa chamar isso. */
   async askToNotify(): Promise<void> {
     const granted = (await this.notifier?.request()) ?? "denied";
     if (granted !== "granted") {
-      this.toast("info", "Notifications are off", "Your browser or system refused them, so nothing will be raised.");
+      this.toast("info", "Notificações desligadas", "Seu navegador ou sistema as recusou, então nada será mostrado.");
       return;
     }
     this.setPrefs({ notifications: true });
   }
 
-  /** The desktop shell's updater. Call before `start`; a browser never has one. */
+  /** O atualizador do shell desktop. Chame antes de `start`; um navegador nunca tem um. */
   attachUpdater(updater: AppUpdater): void {
     this.updates = new UpdateManager(
       updater,
@@ -305,9 +305,9 @@ export class HeliconController {
         if (next.status === "ready" && previous !== "ready") {
           this.toast(
             "info",
-            `Helicon ${next.update?.version ?? ""} is ready`,
-            this.state.prefs.autoUpdate && !this.state.prefs.updatesPaused ? "It installs when you close Helicon." : "Restart Helicon to install it.",
-            { label: "Restart now", run: () => this.restartToUpdate() },
+            `Helicon ${next.update?.version ?? ""} está pronto`,
+            this.state.prefs.autoUpdate && !this.state.prefs.updatesPaused ? "Instala quando você fechar o Helicon." : "Reinicie o Helicon para instalá-lo.",
+            { label: "Reiniciar agora", run: () => this.restartToUpdate() },
           );
         }
       },
@@ -429,11 +429,11 @@ export class HeliconController {
       await this.client.discover();
       await this.refresh();
       if (!silent) {
-        this.toast("success", "Threads refreshed");
+        this.toast("success", "Conversas atualizadas");
       }
     } catch (error) {
       if (!silent) {
-        this.toast("error", "Could not refresh threads from Muse", errorMessage(error));
+        this.toast("error", "Não foi possível atualizar as conversas a partir do Muse", errorMessage(error));
       }
     } finally {
       this.update((s) => ({ ...s, discovering: false }));
@@ -445,7 +445,7 @@ export class HeliconController {
       const models = await this.client.listModels();
       this.update((s) => ({ ...s, models }));
     } catch {
-      /* the picker falls back to the session's model */
+      /* o seletor recorre ao modelo da sessão */
     }
   }
 
@@ -518,7 +518,7 @@ export class HeliconController {
         },
         sessions: load.session ? { ...s.sessions, [sessionId]: load.session } : s.sessions,
       }));
-      // Whatever was already waiting when the thread opened counts too, not only what arrives next.
+      // O que já estava esperando quando a conversa abriu conta também, não só o que chega depois.
       this.autoAllow([sessionId]);
     } catch (error) {
       this.loading.delete(sessionId);
@@ -538,8 +538,8 @@ export class HeliconController {
         const wasLost = this.state.connection === "lost";
         this.update((s) => ({ ...s, connection: "open" }));
         if (wasLost && this.state.boot === "ready") {
-          // Goals could have moved while the stream was down, and only the open thread is reloaded. Let every
-          // other thread take the server's goal again rather than the last one it saw streamed.
+          // Metas podem ter mudado enquanto o stream estava fora, e só a conversa aberta é recarregada. Deixe cada
+          // outra conversa pegar a meta do servidor de novo em vez da última que viu via stream.
           for (const id of Object.keys(this.state.threads)) {
             this.patchFold(id, (f) => (f.meta.goalSeen ? { ...f, meta: { ...f.meta, goalSeen: false } } : f));
           }
@@ -569,14 +569,14 @@ export class HeliconController {
           this.scheduleRefresh();
           break;
         }
-        // Held onto before the update overwrites it: what changed is the entire question.
+        // Guardado antes da atualização sobrescrevê-lo: o que mudou é toda a questão.
         const before = known.live;
         this.update((s) => {
           const current = s.sessions[event.sessionId];
           return current ? { ...s, sessions: { ...s.sessions, [event.sessionId]: { ...current, live: event.live } } } : s;
         });
         this.announce(event.sessionId, known.title, before, event.live);
-        // The only word we get about a thread this app has never opened: it is waiting on someone.
+        // A única notícia que temos sobre uma conversa que este app nunca abriu: ela está esperando alguém.
         if (this.state.bypassAll && (event.live?.pendingApprovals ?? 0) > 0) {
           this.loadForBypass(event.sessionId);
         }
@@ -591,7 +591,7 @@ export class HeliconController {
       case "host":
         if (event.state === "failed" || event.state === "exited") {
           this.update((s) => ({ ...s, hostError: event.message }));
-          this.toast("error", event.state === "failed" ? "Muse could not start" : "Muse stopped unexpectedly", event.message);
+          this.toast("error", event.state === "failed" ? "Muse não pôde iniciar" : "Muse parou de repente", event.message);
         }
         break;
     }

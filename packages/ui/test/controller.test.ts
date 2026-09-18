@@ -663,7 +663,7 @@ describe("HeliconController", () => {
 
     client.goalError = new HeliconError("goal is finished", 409, "goalNotPaused");
     assert.equal(await controller.goalAction("s1", "pause"), false);
-    assert.equal(controller.store.get().toasts.at(-1)?.title, "Could not pause the goal");
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Não foi possível pausar a meta");
     stop();
   });
 
