@@ -3,12 +3,12 @@ import { HIDDEN_KINDS, type CallUsage, type ThreadFold, type TurnInfo } from "./
 import { diffStats, extractDiff } from "./format.js";
 
 /**
- * Context and session usage for the composer's context panel. Muse reports the context total,
- * every model call's token counts and the catalog prices; how the context splits between
- * prompts, replies and tool output is estimated here from the thread's own text.
+ * Uso de contexto e de sessão para o painel de contexto do composer. O Muse informa o total de contexto,
+ * as contagens de tokens de cada chamada ao modelo e os preços do catálogo; como o contexto se divide entre
+ * prompts, respostas e saída de ferramentas é estimado aqui a partir do texto da própria conversa.
  */
 
-/** About four characters per token for English and code. Only feeds the estimated split. */
+/** Cerca de quatro caracteres por token para inglês e código. Só alimenta a divisão estimada. */
 const CHARS_PER_TOKEN = 4;
 
 export type SliceKey = "prompts" | "replies" | "tools" | "subagents" | "summary" | "system";
@@ -20,29 +20,29 @@ export interface ContextSlice {
 }
 
 export interface ContextBreakdown {
-  /** Muse's own count of the tokens in context. */
+  /** A contagem própria do Muse dos tokens no contexto. */
   used: number;
   window: number | null;
   pressure: string;
-  /** How `used` splits, in a fixed order so the bar keeps its colors as it grows. */
+  /** Como `used` se divide, numa ordem fixa para a barra manter suas cores conforme cresce. */
   slices: ContextSlice[];
   free: number | null;
 }
 
 const SLICE_LABELS: Record<SliceKey, string> = {
-  prompts: "Your messages",
-  replies: "Muse's replies",
-  tools: "Tool calls and results",
-  subagents: "Subagent results",
-  summary: "Compacted summary",
-  system: "System prompt and tools",
+  prompts: "Suas mensagens",
+  replies: "Respostas do Muse",
+  tools: "Chamadas e resultados de ferramentas",
+  subagents: "Resultados de subagentes",
+  summary: "Resumo compactado",
+  system: "Prompt de sistema e ferramentas",
 };
 
 function estimate(text: string | null | undefined): number {
   return text ? Math.ceil(text.length / CHARS_PER_TOKEN) : 0;
 }
 
-/** The items still in the model's context: everything after the latest installed compaction. */
+/** Os itens ainda no contexto do modelo: tudo depois da última compactação instalada. */
 function inContext(fold: ThreadFold): { items: MspItem[]; summary: MspItem | null } {
   let start = 0;
   let summary: MspItem | null = null;
@@ -64,8 +64,8 @@ function inContext(fold: ThreadFold): { items: MspItem[]; summary: MspItem | nul
 }
 
 /**
- * The context reading to show. Live streams report it directly; a thread opened from history
- * only has its model calls, so the latest call's occupancy stands in, sized by the model's limit.
+ * A leitura de contexto a mostrar. Streams ao vivo a informam direto; uma conversa aberta do histórico
+ * só tem suas chamadas ao modelo, então a ocupação da última chamada a substitui, dimensionada pelo limite do modelo.
  */
 export function contextUsageOf(fold: ThreadFold, models: readonly ModelOption[]): ContextUsage | null {
   if (fold.meta.contextUsage) {
@@ -109,7 +109,7 @@ export function contextBreakdown(fold: ThreadFold, models: readonly ModelOption[
   }
   const used = usage.usedTokens;
   const counted = Object.values(raw).reduce((total, value) => total + value, 0);
-  // The estimate can overshoot what Muse counted (text the model never saw in full); shrink it to fit.
+  // A estimativa pode passar do que o Muse contou (texto que o modelo nunca viu por inteiro); encolha para caber.
   const scale = counted > used && counted > 0 ? used / counted : 1;
   const slices: ContextSlice[] = [];
   let explained = 0;
@@ -120,7 +120,7 @@ export function contextBreakdown(fold: ThreadFold, models: readonly ModelOption[
       explained += tokens;
     }
   }
-  // Whatever the thread's text does not explain is the system prompt, tool definitions and memory.
+  // O que o texto da conversa não explica é o prompt de sistema, definições de ferramentas e memória.
   const system = Math.max(0, used - explained);
   if (system > 0) {
     slices.push({ key: "system", label: SLICE_LABELS.system, tokens: system });
@@ -129,9 +129,9 @@ export function contextBreakdown(fold: ThreadFold, models: readonly ModelOption[
   return { used, window, pressure: usage.pressure, slices, free: window === null ? null : Math.max(0, window - used) };
 }
 
-/** Calls with this few output tokens say nothing about speed, as in opencode's gateway. */
+/** Chamadas com tão poucos tokens de saída não dizem nada sobre velocidade, como no gateway do opencode. */
 const MIN_SPEED_TOKENS = 10;
-/** Shorter generation windows are too noisy to report. */
+/** Janelas de geração mais curtas são barulhentas demais para informar. */
 const MIN_SPEED_MS = 100;
 
 export interface TurnSpeed {
@@ -141,11 +141,11 @@ export interface TurnSpeed {
 }
 
 /**
- * A finished turn's output speed, measured the way opencode's gateway measures each model call:
- * output tokens (reasoning included, as Muse counts it) over the time the model spent producing
- * them, ignoring calls of ten tokens or fewer. The time is each counted call's own wall time, so
- * tool runs between calls never count. Muse's time to first token cannot be taken off: it runs from
- * the turn's start to its first visible text, across calls and tool runs, not per call.
+ * A velocidade de saída de uma mensagem terminada, medida como o gateway do opencode mede cada chamada ao modelo:
+ * tokens de saída (raciocínio incluído, como o Muse conta) sobre o tempo que o modelo gastou produzindo-
+ * os, ignorando chamadas de dez tokens ou menos. O tempo é o tempo de relógio de cada chamada contada, então
+ * execuções de ferramentas entre chamadas nunca contam. O tempo do Muse até o primeiro token não pode ser descontado: ele vai
+ * do início da mensagem até seu primeiro texto visível, através de chamadas e execuções de ferramentas, não por chamada.
  */
 export function turnSpeed(fold: ThreadFold, turnId: string): TurnSpeed | null {
   let tokens = 0;
@@ -162,7 +162,7 @@ export function turnSpeed(fold: ThreadFold, turnId: string): TurnSpeed | null {
   return { tokensPerSecond: (tokens / generation) * 1000, outputTokens: tokens, generationMs: generation };
 }
 
-/** Every finished turn's speed, by turn id. */
+/** A velocidade de cada mensagem terminada, por id da mensagem. */
 export function turnSpeeds(fold: ThreadFold): Record<string, TurnSpeed> {
   const speeds: Record<string, TurnSpeed> = {};
   for (const turnId of new Set(Object.values(fold.meta.calls).map((call) => call.turnId))) {
@@ -176,7 +176,7 @@ export function turnSpeeds(fold: ThreadFold): Record<string, TurnSpeed> {
   return speeds;
 }
 
-/** The most recent finished turn that has a speed. */
+/** A mensagem terminada mais recente que tem uma velocidade. */
 export function lastTurnSpeed(fold: ThreadFold): TurnSpeed | null {
   const calls = Object.values(fold.meta.calls);
   const seen = new Set<string>();
@@ -197,7 +197,7 @@ export function lastTurnSpeed(fold: ThreadFold): TurnSpeed | null {
 export interface TurnCost {
   cost: number;
   currency: string | null;
-  /** False when a call ran on a model with no listed price, so the total undercounts. */
+  /** Falso quando uma chamada rodou num modelo sem preço listado, então o total subconta. */
   complete: boolean;
   promptTokens: number;
   cachedTokens: number;
@@ -205,7 +205,7 @@ export interface TurnCost {
   reasoningTokens: number;
 }
 
-/** What one turn would have cost at API rates, from the calls it made. */
+/** Quanto uma mensagem teria custado nas tarifas de API, a partir das chamadas que fez. */
 export function turnCost(fold: ThreadFold, turnId: string, models: readonly ModelOption[]): TurnCost | null {
   let cost = 0;
   let priced = 0;
@@ -238,7 +238,7 @@ export function turnCost(fold: ThreadFold, turnId: string, models: readonly Mode
   return { cost, currency, complete: priced === calls, promptTokens, cachedTokens, outputTokens, reasoningTokens };
 }
 
-/** Every turn's cost, by turn id. */
+/** O custo de cada mensagem, por id da mensagem. */
 export function turnCosts(fold: ThreadFold, models: readonly ModelOption[]): Record<string, TurnCost> {
   const costs: Record<string, TurnCost> = {};
   for (const turnId of new Set(Object.values(fold.meta.calls).map((call) => call.turnId))) {
@@ -253,7 +253,7 @@ export function turnCosts(fold: ThreadFold, models: readonly ModelOption[]): Rec
   return costs;
 }
 
-/** A rough live speed for the text streaming right now: characters over four, per second of the burst. */
+/** Uma velocidade ao vivo aproximada para o texto chegando agora: caracteres sobre quatro, por segundo da rajada. */
 export function streamingSpeed(info: TurnInfo | null | undefined): number | null {
   const stream = info?.stream;
   if (!stream) {
@@ -272,14 +272,14 @@ export interface ModelUsage {
   calls: number;
   promptTokens: number;
   outputTokens: number;
-  /** Null when the catalog lists no price for this model. */
+  /** Nulo quando o catálogo não lista preço para este modelo. */
   cost: number | null;
 }
 
 export interface ToolUsage {
   tool: string;
   calls: number;
-  /** Estimated from the call's arguments and visible output. */
+  /** Estimado a partir dos argumentos e da saída visível da chamada. */
   tokens: number;
 }
 
@@ -299,24 +299,24 @@ export interface CompactionRecord {
 
 export interface SessionUsage {
   calls: number;
-  /** Counted-once session totals, as Muse reports them. */
+  /** Totais da sessão contados uma vez, como o Muse os informa. */
   promptTokens: number;
   outputTokens: number;
   totalTokens: number;
-  /** Raw per-call counters, summed. */
+  /** Contadores brutos por chamada, somados. */
   inputTokens: number;
   cachedTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
   reasoningTokens: number;
-  /** Share of prompt tokens served from the provider's cache; null before any call. */
+  /** Fração dos tokens de prompt servidos do cache do provedor; nulo antes de qualquer chamada. */
   cacheHit: number | null;
   modelMs: number;
   models: ModelUsage[];
-  /** Estimated from catalog prices; null when no model used here lists one. */
+  /** Estimado a partir dos preços do catálogo; nulo quando nenhum modelo usado aqui lista um. */
   cost: number | null;
   currency: string | null;
-  /** False when some calls ran on a model without a price, so `cost` undercounts. */
+  /** Falso quando algumas chamadas rodaram num modelo sem preço, então `cost` subconta. */
   costComplete: boolean;
   lines: { added: number; removed: number; files: number };
   turns: number;
@@ -327,7 +327,7 @@ export interface SessionUsage {
   compactions: CompactionRecord[];
 }
 
-/** Cached prompt tokens for one call, whichever counter the provider fills. */
+/** Tokens de prompt em cache para uma chamada, qualquer que seja o contador que o provedor preenche. */
 function cacheReads(call: CallUsage): number {
   return Math.min(call.promptTokens, call.cacheReadTokens || call.cachedTokens);
 }
@@ -342,7 +342,7 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
   let priced = 0;
   let currency: string | null = null;
   for (const call of calls) {
-    const id = call.modelId ?? "unknown";
+    const id = call.modelId ?? "desconhecido";
     const entry = byModel.get(id) ?? { modelId: id, calls: 0, promptTokens: 0, outputTokens: 0, cost: null };
     entry.calls += 1;
     entry.promptTokens += call.promptTokens;
@@ -378,14 +378,14 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
         removed += stats.removed;
         files.add(diff.path ?? item.itemId);
       }
-      const name = item.tool ?? "tool";
+      const name = item.tool ?? "ferramenta";
       const entry = tools.get(name) ?? { tool: name, calls: 0, tokens: 0 };
       entry.calls += 1;
       entry.tokens += estimate(item.args) + estimate(item.visibleOutput);
       tools.set(name, entry);
     } else if (item.kind === "subagent" && item.usage) {
       const tokens = (item.usage.inputTokens ?? 0) + (item.usage.outputTokens ?? 0);
-      subagents.push({ itemId: item.itemId, label: item.role ?? item.objective ?? "Subagent", tokens });
+      subagents.push({ itemId: item.itemId, label: item.role ?? item.objective ?? "Subagente", tokens });
     } else if (item.kind === "compaction" && item.status !== "inProgress") {
       compactions.push({
         itemId: item.itemId,
