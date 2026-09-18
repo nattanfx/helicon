@@ -56,7 +56,7 @@ export function PlanMeter() {
         <h2 className="text-sm font-medium text-fg">Uso do plano</h2>
         {view.tier ? <span className="rounded-md bg-active px-1.5 py-px text-2xs font-medium text-muted">{view.tier}</span> : null}
         <span className="flex-1" />
-        <span className="text-2xs text-subtle">{updatedLabel(view, now)}</span>
+        <span className={cn("text-2xs", view.stale ? "text-warn-text" : "text-subtle")}>{updatedLabel(view, now)}</span>
       </div>
       <div className="mt-3 grid gap-3 @min-[520px]:grid-cols-2">
         {view.rows.map((row) => (
@@ -65,6 +65,7 @@ export function PlanMeter() {
               <span className="text-muted">{row.label}</span>
               <span className="flex-1" />
               <span className={cn("font-medium tabular-nums", TEXT[row.tone])}>{row.percent}% usados</span>
+              <span className="shrink-0 text-2xs text-subtle">{view.age === "agora" ? "agora" : `há ${view.age}`}</span>
             </div>
             <div
               role="progressbar"
@@ -80,16 +81,21 @@ export function PlanMeter() {
           </div>
         ))}
       </div>
+      <p className="mt-2.5 text-2xs leading-4 text-pretty text-subtle">
+        Estes números vêm do Muse a cada chamada ao modelo, então só mudam quando você envia um pedido em uma conversa aqui.
+        O trabalho feito no terminal consome seu plano sem aparecer neste cartão.
+      </p>
     </section>
   );
 }
 
+/** O Muse informa estes números a cada chamada ao modelo; a idade indica quando a leitura foi feita. */
 function updatedLabel(view: PlanView, now: number): string {
   const age = relativeTime(new Date(view.observedAtMs).toISOString(), now);
   if (age === "agora") {
-    return "Atualizado agora";
+    return "Informado pelo Muse agora";
   }
-  return `${view.stale ? "Último informe" : "Atualizado"} há ${age}`;
+  return `Informado pelo Muse há ${age}`;
 }
 
 /** A porcentagem da janela móvel, pequena para o rodapé da barra; abre a página de uso. */
