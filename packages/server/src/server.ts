@@ -42,6 +42,7 @@ import {
 } from "@helicon/daemon";
 import { FileError, listFolder, readProjectFile, resolveInRoot, searchProjectFiles, serveProjectFile, writeProjectFile } from "./files.js";
 import { PathError, createDirectory, listDirectory, resolveUserPath, type PathContext } from "./paths.js";
+import { buildThreadTitlePrompt, deriveTitle, parseExecTitle, sanitizeThreadTitle } from "./threadTitles.js";
 
 export const HELICON_VERSION = "0.12.4";
 
@@ -165,7 +166,9 @@ type SseSink = (event: string, data: unknown) => void;
 const MAX_HISTORY_PAGES = 4;
 const HISTORY_PAGE_SIZE = 1000;
 const DISCOVER_LIMIT = 200;
-const TITLE_BACKFILL_LIMIT = 60;
+/** Echo-titled threads one discovery may hand to the titler. Each is a model call on the user's plan, so it is a
+ * handful of recent threads rather than a whole history. */
+const TITLE_BACKFILL_LIMIT = 30;
 const ENV_CACHE_MS = 30_000;
 const CLONE_TIMEOUT_MS = 10 * 60_000;
 const AUTO_SETTLE_SWEEP_MS = 60_000;
@@ -329,33 +332,7 @@ export function safeFileName(raw: string | null): string {
   return clean.length > 0 ? clean : "file";
 }
 
-/** First meaningful line of the opening prompt, capped for the sidebar. */
-export function deriveTitle(text: string): string | null {
-  let line: string | undefined;
-  for (const raw of text.split(/\r?\n/)) {
-    // Skip code fences: a bare ``` line, a ```lang info line, or a fence
-    // sharing its line with the start of the prompt. Inline code (one or
-    // two backticks) is left alone.
-    const fenceFree = raw.trim().replace(/^```[^\s]*\s*/, "");
-    if (fenceFree.length > 0) {
-      line = fenceFree;
-      break;
-    }
-  }
-  if (!line) {
-    return null;
-  }
-  const clean = line.replace(/^[#>*\-\s]+/, "").replace(/\s+/g, " ").trim();
-  if (!clean) {
-    return null;
-  }
-  if (clean.length <= 72) {
-    return clean;
-  }
-  const cut = clean.slice(0, 72);
-  const space = cut.lastIndexOf(" ");
-  return `${(space > 40 ? cut.slice(0, space) : cut).trimEnd()}...`;
-}
+export { deriveTitle };
 
 function errorInfo(error: unknown): { status: number; message: string; kind: string | null } {
   if (error instanceof HttpError) {
@@ -627,6 +604,10 @@ export class HeliconServer {
   private readonly opener: Opener;
   private readonly titleQueue: string[] = [];
   private titleWorker: Promise<void> | null = null;
+  /** Echo-titled sessions still owed one LLM title attempt; user-named and Muse-named threads never land here. */
+  private readonly titleUpgradePending = new Set<string>();
+  /** Upgrades with a model call in flight, so discovery cannot queue a second one for the same thread. */
+  private readonly titleUpgradeActive = new Set<string>();
   private changeTimer: ReturnType<typeof setTimeout> | null = null;
   private settleTimer: ReturnType<typeof setInterval> | null = null;
   private envCache: { at: number; value: EnvView } | null = null;
@@ -1286,6 +1267,36 @@ export class HeliconServer {
 
     if (method === "GET" && path === "/api/plan-usage") {
       this.json(res, 200, { usage: await this.readPlanUsage() });
+      return true;
+    }
+    if (method === "GET" && path === "/api/title-settings") {
+      this.json(res, 200, this.store.getTitleSettings());
+      return true;
+    }
+    if (method === "PATCH" && path === "/api/title-settings") {
+      const body = await this.readBody(req);
+      const patch: { enabled?: boolean; modelId?: string | null } = {};
+      if ("enabled" in body) {
+        if (typeof body["enabled"] !== "boolean") {
+          throw new HttpError(400, "enabled must be a boolean.");
+        }
+        patch.enabled = body["enabled"];
+      }
+      if ("modelId" in body) {
+        const modelId = body["modelId"];
+        if (modelId !== null && (typeof modelId !== "string" || modelId.trim().length === 0 || modelId.length > 200)) {
+          throw new HttpError(400, "modelId must be null or a non-empty string.");
+        }
+        patch.modelId = modelId === null ? null : (modelId as string).trim();
+      }
+      const wasEnabled = this.store.getTitleSettings().enabled;
+      const next = this.store.setTitleSettings(patch);
+      if (!wasEnabled && next.enabled) {
+        for (const sessionId of this.titleUpgradePending) {
+          this.queueTitle(sessionId);
+        }
+      }
+      this.json(res, 200, next);
       return true;
     }
     if (method === "GET" && path === "/api/usage") {
@@ -2279,6 +2290,9 @@ export class HeliconServer {
         const title = titleFromEvents(events);
         if (title) {
           this.store.updateSession(sessionId, { title, titleSource: "auto" });
+          this.titleUpgradePending.add(sessionId);
+          // The history is in hand, so no queue and no re-page; the upgrade never throws.
+          void this.maybeUpgradeThreadTitle(sessionId, firstUserText(events) ?? "");
           this.sessionsChanged();
         }
       }
@@ -2344,7 +2358,11 @@ export class HeliconServer {
       const keepOurs = existing?.titleSource === "user";
       const mspName = keepOurs ? null : firstString(session, ["name"]);
       const mspTitle = keepOurs ? null : firstString(session, ["title"]);
-      const title = mspName ?? (mspTitle ? deriveTitle(mspTitle) : null);
+      const echoTitle = mspName ? null : mspTitle ? deriveTitle(mspTitle) : null;
+      // The echo is a fallback for threads seen here first, never an update: it must not clobber
+      // a title a past upgrade wrote, or every discovery would revert it and spend another call.
+      const takeEcho = echoTitle !== null && (!existing || existing.titleSource === "placeholder" || existing.title === echoTitle);
+      const title = mspName ?? (takeEcho ? echoTitle : null);
       const stored = this.store.recordSession({
         id: sessionId,
         projectId: project.id,
@@ -2369,8 +2387,19 @@ export class HeliconServer {
         this.wake(sessionId);
         current = this.store.getSession(sessionId) ?? stored;
       }
-      if (stored.titleSource === "placeholder" && backfill < TITLE_BACKFILL_LIMIT) {
+      if (mspName) {
+        // A Muse-selected name is never upgraded, even if an echo here owed an attempt.
+        this.titleUpgradePending.delete(sessionId);
+      }
+      // A stored echo still owes one LLM attempt; anything Muse named, the user typed, with a call
+      // already in flight, or a past upgrade already replaced no longer qualifies, even across restarts.
+      const needsUpgrade =
+        !this.titleUpgradeActive.has(sessionId) &&
+        (stored.titleSource === "placeholder" ||
+          (stored.titleSource === "auto" && echoTitle !== null && stored.title === echoTitle));
+      if (needsUpgrade && backfill < TITLE_BACKFILL_LIMIT) {
         backfill += 1;
+        this.titleUpgradePending.add(sessionId);
         this.queueTitle(sessionId);
       }
       views.push(this.summary(current, project.cwd));
@@ -2396,7 +2425,11 @@ export class HeliconServer {
       const sessionId = this.titleQueue.shift() as string;
       try {
         const current = this.store.getSession(sessionId);
-        if (!current || current.titleSource !== "placeholder") {
+        if (!current || current.titleSource === "user") {
+          this.titleUpgradePending.delete(sessionId);
+          continue;
+        }
+        if (current.titleSource !== "placeholder" && !this.titleUpgradePending.has(sessionId)) {
           continue;
         }
         const host = await this.hostFor("");
@@ -2404,15 +2437,95 @@ export class HeliconServer {
         if (this.closed) {
           return;
         }
-        const title = titleFromEvents(page.events.map(stripEvent).filter((e): e is NonNullable<typeof e> => e !== null));
-        if (title) {
+        const events = page.events.map(stripEvent).filter((e): e is NonNullable<typeof e> => e !== null);
+        if (current.titleSource === "placeholder") {
+          const title = titleFromEvents(events);
+          if (!title) {
+            this.titleUpgradePending.delete(sessionId);
+            continue;
+          }
           this.store.updateSession(sessionId, { title, titleSource: "auto" });
+          this.titleUpgradePending.add(sessionId);
           this.sessionsChanged();
         }
+        await this.maybeUpgradeThreadTitle(sessionId, firstUserText(events) ?? "");
       } catch {
         /* a title is a nicety; the placeholder stays */
       }
     }
+  }
+
+  /**
+   * One LLM title attempt for an echo-titled thread. Nothing happens on failure; the echo stays.
+   * The claim happens before the first await, so a live upgrade and a queued one cannot both run.
+   * Never throws, so live paths can fire it without awaiting it.
+   */
+  private async maybeUpgradeThreadTitle(sessionId: string, firstText: string): Promise<void> {
+    if (!this.titleUpgradePending.has(sessionId) || this.titleUpgradeActive.has(sessionId)) {
+      return;
+    }
+    try {
+      const settings = this.store.getTitleSettings();
+      if (!settings.enabled) {
+        return;
+      }
+      const before = this.store.getSession(sessionId);
+      if (!before || before.titleSource !== "auto" || !firstText.trim()) {
+        this.titleUpgradePending.delete(sessionId);
+        return;
+      }
+      this.titleUpgradePending.delete(sessionId);
+      this.titleUpgradeActive.add(sessionId);
+      try {
+        await this.runThreadTitleUpgrade(sessionId, firstText, before.title, settings.modelId);
+      } finally {
+        this.titleUpgradeActive.delete(sessionId);
+      }
+    } catch {
+      /* a title is a nicety; the echo stays */
+    }
+  }
+
+  private async runThreadTitleUpgrade(
+    sessionId: string,
+    firstText: string,
+    expectedTitle: string,
+    modelId: string | null,
+  ): Promise<void> {
+    const musePath = await this.cliMusePath();
+    const plan = planMuseCli({
+      platform: this.options.platform,
+      distro: this.options.distro,
+      musePath,
+      args: [
+        "exec",
+        "--json",
+        "--no-session-log",
+        "--disable-web-tools",
+        "--reasoning-effort",
+        "minimal",
+        "--max-model-steps",
+        "1",
+        ...(modelId ? ["--model", modelId] : []),
+        buildThreadTitlePrompt(firstText),
+      ],
+      runtime: await this.museRuntime(),
+    });
+    const result = await this.options.exec(plan.command, plan.args);
+    if (this.closed || result.exitCode !== 0) {
+      return;
+    }
+    const title = sanitizeThreadTitle(parseExecTitle(result.stdout) ?? "", firstText);
+    if (!title || title === expectedTitle) {
+      return;
+    }
+    const current = this.store.getSession(sessionId);
+    if (!current || current.titleSource !== "auto" || current.title !== expectedTitle) {
+      return;
+    }
+    this.store.updateSession(sessionId, { title, titleSource: "auto" });
+    await this.renameInMuse(sessionId, title);
+    this.sessionsChanged();
   }
 
   private async managerForSession(sessionId: string): Promise<SessionManager> {
@@ -2779,6 +2892,8 @@ export class HeliconServer {
     if (!title || !record || record.title === title) {
       return;
     }
+    // A Muse-selected name is never upgraded, even if an echo here owed an attempt.
+    this.titleUpgradePending.delete(sessionId);
     this.store.updateSession(sessionId, { title, titleSource: record.titleSource === "user" ? "user" : "auto" });
     this.sessionsChanged();
   }
@@ -2808,9 +2923,13 @@ export class HeliconServer {
     if (!record || record.titleSource !== "placeholder") {
       return;
     }
-    const title = deriveTitle(str(item["displayText"]) ?? str(item["text"]) ?? "");
+    const raw = str(item["displayText"]) ?? str(item["text"]) ?? "";
+    const title = deriveTitle(raw);
     if (title) {
       this.store.updateSession(sessionId, { title, titleSource: "auto" });
+      this.titleUpgradePending.add(sessionId);
+      // The text is in hand, so no queue and no re-page; the upgrade never throws.
+      void this.maybeUpgradeThreadTitle(sessionId, raw);
       this.sessionsChanged();
     }
   }
@@ -2823,6 +2942,20 @@ function titleFromEvents(events: { method: string; params: Record<string, unknow
       const title = deriveTitle(str(item["displayText"]) ?? str(item["text"]) ?? "");
       if (title) {
         return title;
+      }
+    }
+  }
+  return null;
+}
+
+/** The raw opening prompt behind an echo title, for asking Muse for a better one. */
+function firstUserText(events: { method: string; params: Record<string, unknown> }[]): string | null {
+  for (const event of events) {
+    const item = asRecord(event.params["item"]);
+    if (item && item["kind"] === "userMessage") {
+      const text = str(item["displayText"]) ?? str(item["text"]) ?? "";
+      if (text.trim()) {
+        return text;
       }
     }
   }

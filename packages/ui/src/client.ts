@@ -17,6 +17,7 @@ import type {
   SkillCatalog,
   SubagentAction,
   TaskAction,
+  TitleSettings,
   TranscriptLoad,
   UserInputAnswer,
   WorkflowAction,
@@ -104,6 +105,8 @@ export interface HeliconClient {
   cancelUserInput(sessionId: string, userInputId: string): Promise<void>;
   clarifyUserInput(sessionId: string, userInputId: string, content: string): Promise<void>;
   listModels(sessionId?: string): Promise<ModelOption[]>;
+  getTitleSettings(): Promise<TitleSettings>;
+  setTitleSettings(patch: { enabled?: boolean; modelId?: string | null }): Promise<TitleSettings>;
   setSessionModel(sessionId: string, modelId: string): Promise<void>;
   setApprovalMode(sessionId: string, mode: ApprovalMode): Promise<void>;
   /** `noop` quando o Muse não tinha nada para resumir; `reason` é sua explicação em snake_case. */
@@ -147,6 +150,15 @@ export interface HeliconClient {
   fileUrl(cwd: string, path: string): string;
   /** Assina eventos do servidor; retorna uma função de descadastramento. */
   subscribe(handler: EventHandler): () => void;
+}
+
+/** Interpreta as configurações de títulos; respostas inválidas usam o padrão ativado, sem modelo escolhido. */
+export function parseTitleSettings(value: unknown): TitleSettings {
+  const r = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  return {
+    enabled: typeof r["enabled"] === "boolean" ? r["enabled"] : true,
+    modelId: typeof r["modelId"] === "string" && r["modelId"].trim() ? r["modelId"] : null,
+  };
 }
 
 /** Interpreta um resultado bruto de `model/list` em opções do seletor. */

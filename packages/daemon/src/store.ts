@@ -73,6 +73,14 @@ export interface SessionPatch {
 
 export const PLACEHOLDER_TITLE = "New thread";
 
+/** Server-owned thread-title generation: the switch and the model, kept where the worker can read them. */
+export interface TitleSettings {
+  enabled: boolean;
+  modelId: string | null;
+}
+
+export const DEFAULT_TITLE_SETTINGS: TitleSettings = { enabled: true, modelId: null };
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -151,6 +159,10 @@ CREATE TABLE IF NOT EXISTS usage (
   reasoning_tokens INTEGER NOT NULL DEFAULT 0,
   duration_ms INTEGER,
   at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_shell_runs_session ON shell_runs(session_id, at);
@@ -270,6 +282,35 @@ export class HeliconStore {
         this.db.exec(migration.ddl);
       }
     }
+  }
+
+  /** Malformed rows fall back to defaults rather than breaking the worker that reads them. */
+  getTitleSettings(): TitleSettings {
+    const row = this.db.prepare(`SELECT value FROM settings WHERE key = 'title'`).get() as Row | undefined;
+    if (!row) {
+      return { ...DEFAULT_TITLE_SETTINGS };
+    }
+    try {
+      const parsed = JSON.parse(String(row["value"])) as Partial<TitleSettings>;
+      return {
+        enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : DEFAULT_TITLE_SETTINGS.enabled,
+        modelId: typeof parsed.modelId === "string" && parsed.modelId.trim().length > 0 ? parsed.modelId : null,
+      };
+    } catch {
+      return { ...DEFAULT_TITLE_SETTINGS };
+    }
+  }
+
+  setTitleSettings(patch: Partial<TitleSettings>): TitleSettings {
+    const current = this.getTitleSettings();
+    const next: TitleSettings = {
+      enabled: patch.enabled ?? current.enabled,
+      modelId: patch.modelId !== undefined ? patch.modelId : current.modelId,
+    };
+    this.db
+      .prepare(`INSERT INTO settings (key, value) VALUES ('title', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .run(JSON.stringify(next));
+    return next;
   }
 
   upsertProject(cwd: string): Project {

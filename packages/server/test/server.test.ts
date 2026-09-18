@@ -94,6 +94,8 @@ async function start(connection: FakeConnection, extra: Partial<ConstructorParam
     platform: "linux",
     musePath: "muse",
     hostFactory: fakeFactory(connection),
+    // No test spawns the real CLI by accident; title upgrades see a failed call.
+    exec: async () => ({ stdout: "", exitCode: 127 }),
     ...extra,
   });
   after(() => server.close());
@@ -117,6 +119,19 @@ async function send(
 
 async function get(base: string, path: string): Promise<any> {
   return (await fetch(`${base}${path}`)).json();
+}
+
+async function waitFor(cond: () => boolean | Promise<boolean>, what: string): Promise<void> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    if (await cond()) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for ${what}`);
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
 }
 
 const RANGE = { first: { id: "r", sequence: 1 }, last: { id: "r", sequence: 1 }, stream: { id: "s", kind: "session" } };
@@ -359,7 +374,7 @@ describe("HeliconServer", () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
     connection.replies.set("session/list", {
-      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", title: "Wire up the updater" }],
+      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", name: "Wire up the updater", title: "fix the updater please" }],
       nextCursor: null,
     });
     const { base } = await start(connection);
@@ -738,6 +753,144 @@ describe("HeliconServer", () => {
     assert.equal(session.title, "Local only");
   });
 
+  it("keeps thread-title settings behind a switch and a model choice", async () => {
+    const connection = new FakeConnection();
+    const { base } = await start(connection);
+    assert.deepEqual(await get(base, "/api/title-settings"), { enabled: true, modelId: null });
+
+    const patched = await send(base, "/api/title-settings", { enabled: false, modelId: "m1" }, "PATCH");
+    assert.equal(patched.status, 200);
+    assert.deepEqual(patched.json, { enabled: false, modelId: "m1" });
+    assert.deepEqual(await get(base, "/api/title-settings"), { enabled: false, modelId: "m1" });
+
+    const merged = await send(base, "/api/title-settings", { enabled: true }, "PATCH");
+    assert.deepEqual(merged.json, { enabled: true, modelId: "m1" });
+
+    const badEnabled = await send(base, "/api/title-settings", { enabled: "yes" }, "PATCH");
+    assert.equal(badEnabled.status, 400);
+    const badModel = await send(base, "/api/title-settings", { modelId: "" }, "PATCH");
+    assert.equal(badModel.status, 400);
+    assert.deepEqual(await get(base, "/api/title-settings"), { enabled: true, modelId: "m1" }, "a rejected patch changes nothing");
+  });
+
+  it("upgrades an echo title with one muse exec call, and pushes the name back", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const calls: string[][] = [];
+    const exec: ExecFn = async (command, args) => {
+      calls.push([command, ...args]);
+      await gate;
+      return {
+        stdout: JSON.stringify({ payload_type: "run.terminal.completed", payload: { kind: "run_terminal", terminal: "completed", text: "Fix login redirect" } }),
+        exitCode: 0,
+      };
+    };
+    const { base } = await start(connection, { exec });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const titleOf = async () => (await get(base, "/api/sessions")).sessions[0].title;
+    connection.notify("item/completed", {
+      sessionId: "s1",
+      item: { itemId: "i1", kind: "userMessage", revision: 1, status: "completed", text: "please fix the login redirect bug in the web app when sessions expire" },
+    });
+    await waitFor(() => calls.length > 0, "the title call to start");
+    assert.equal(await titleOf(), "please fix the login redirect bug in the web app when sessions expire");
+    release();
+    await waitFor(async () => (await titleOf()) === "Fix login redirect", "the upgraded title");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.[0], "muse");
+    assert.equal(calls[0]?.[1], "exec");
+    assert.ok(!calls[0]?.includes("--model"), "no model flag without a chosen model");
+    assert.match(calls[0]?.at(-1) ?? "", /please fix the login redirect bug/);
+    assert.deepEqual(connection.calls.at(-1), { method: "session/rename", params: { sessionId: "s1", name: "Fix login redirect" } });
+  });
+
+  it("passes the chosen model to the title call", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const calls: string[][] = [];
+    const exec: ExecFn = async (command, args) => {
+      calls.push([command, ...args]);
+      return { stdout: "not json", exitCode: 0 };
+    };
+    const { base } = await start(connection, { exec });
+    await send(base, "/api/title-settings", { modelId: "m9" }, "PATCH");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("item/completed", {
+      sessionId: "s1",
+      item: { itemId: "i1", kind: "userMessage", revision: 1, status: "completed", text: "Add dark mode everywhere" },
+    });
+    await waitFor(() => calls.length > 0, "the title call");
+    const modelFlag = calls[0]?.indexOf("--model") ?? -1;
+    assert.deepEqual(calls[0]?.slice(modelFlag, modelFlag + 2), ["--model", "m9"]);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal((await get(base, "/api/sessions")).sessions[0].title, "Add dark mode everywhere", "garbage output keeps the echo");
+  });
+
+  it("stays silent while switched off, and upgrades on re-enable", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("view/page", {
+      events: [{ method: "item/completed", params: { item: { itemId: "u1", kind: "userMessage", text: "Add dark mode everywhere" } } }],
+      nextCursor: null,
+    });
+    const calls: string[][] = [];
+    const exec: ExecFn = async (command, args) => {
+      calls.push([command, ...args]);
+      return {
+        stdout: JSON.stringify({ payload_type: "run.terminal.completed", payload: { kind: "run_terminal", terminal: "completed", text: "Add dark mode" } }),
+        exitCode: 0,
+      };
+    };
+    const { base } = await start(connection, { exec });
+    await send(base, "/api/title-settings", { enabled: false }, "PATCH");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const titleOf = async () => (await get(base, "/api/sessions")).sessions[0].title;
+    connection.notify("item/completed", {
+      sessionId: "s1",
+      item: { itemId: "i1", kind: "userMessage", revision: 1, status: "completed", text: "Add dark mode everywhere" },
+    });
+    assert.equal(await titleOf(), "Add dark mode everywhere");
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(calls.length, 0, "no model call while switched off");
+    await send(base, "/api/title-settings", { enabled: true }, "PATCH");
+    await waitFor(async () => (await titleOf()) === "Add dark mode", "the upgrade after re-enable");
+    assert.equal(calls.length, 1);
+  });
+
+  it("lets a rename typed mid-upgrade win over the generated title", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    let release!: (result: { stdout: string; exitCode: number }) => void;
+    const gate = new Promise<{ stdout: string; exitCode: number }>((resolve) => {
+      release = resolve;
+    });
+    const calls: string[][] = [];
+    const exec: ExecFn = async (command, args) => {
+      calls.push([command, ...args]);
+      return gate;
+    };
+    const { base } = await start(connection, { exec });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("item/completed", {
+      sessionId: "s1",
+      item: { itemId: "i1", kind: "userMessage", revision: 1, status: "completed", text: "Add dark mode everywhere" },
+    });
+    await waitFor(() => calls.length > 0, "the title call to start");
+    await send(base, "/api/sessions/s1", { title: "Mine" }, "PATCH");
+    release({
+      stdout: JSON.stringify({ payload_type: "run.terminal.completed", payload: { kind: "run_terminal", terminal: "completed", text: "Add dark mode" } }),
+      exitCode: 0,
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const session = (await get(base, "/api/sessions")).sessions[0];
+    assert.equal(session.title, "Mine");
+    assert.equal(session.titleSource, "user");
+  });
+
   it("spawns one host per workspace under concurrency and respawns after a crash", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
@@ -1087,7 +1240,7 @@ describe("slash commands, skills and shell", () => {
     assert.equal(await titleOf(), "/plan tidy the API", "until Muse has named it, the thread shows what the user typed");
     // Muse names the session itself, and that name is what its own CLI shows, so discovery takes it.
     connection.replies.set("session/list", {
-      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", title: "Tidy the API surface" }],
+      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", name: "Tidy the API surface", title: "Use skill bundled:plan: call read_skill" }],
       nextCursor: null,
     });
     assert.equal((await send(base, "/api/discover", {})).status, 200);
@@ -1111,6 +1264,84 @@ describe("slash commands, skills and shell", () => {
     const byId = (id: string) => sessions.find((s: { sessionId: string }) => s.sessionId === id)?.title;
     assert.equal(byId("s1"), "pebble-caliban");
     assert.equal(byId("s2"), "Set up this Mac from my private repo");
+  });
+
+  it("never lets a discovery echo clobber a generated title", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/list", {
+      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", title: "fix the updater please" }],
+      nextCursor: null,
+    });
+    const calls: string[][] = [];
+    const exec: ExecFn = async (command, args) => {
+      calls.push([command, ...args]);
+      return {
+        stdout: JSON.stringify({ payload_type: "run.terminal.completed", payload: { kind: "run_terminal", terminal: "completed", text: "Fix the updater" } }),
+        exitCode: 0,
+      };
+    };
+    const { base } = await start(connection, { exec });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const titleOf = async () => (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === "s1").title;
+    connection.notify("item/completed", {
+      sessionId: "s1",
+      item: { itemId: "i1", kind: "userMessage", revision: 1, status: "completed", text: "fix the updater please" },
+    });
+    await waitFor(async () => (await titleOf()) === "Fix the updater", "the upgraded title");
+    await send(base, "/api/discover", {});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(await titleOf(), "Fix the updater", "the echo is a fallback, never an update");
+    assert.equal(calls.length, 1, "and no second model call is spent");
+  });
+
+  it("never upgrades a thread Muse named itself", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const calls: string[][] = [];
+    const exec: ExecFn = async (command, args) => {
+      calls.push([command, ...args]);
+      return {
+        stdout: JSON.stringify({ payload_type: "run.terminal.completed", payload: { kind: "run_terminal", terminal: "completed", text: "Fix the updater" } }),
+        exitCode: 0,
+      };
+    };
+    const { base } = await start(connection, { exec });
+    await send(base, "/api/title-settings", { enabled: false }, "PATCH");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const titleOf = async () => (await get(base, "/api/sessions")).sessions[0].title;
+    connection.notify("item/completed", {
+      sessionId: "s1",
+      item: { itemId: "i1", kind: "userMessage", revision: 1, status: "completed", text: "fix the updater please" },
+    });
+    connection.notify("session/nameChanged", { sessionId: "s1", name: "Muse One", viewCursor: "c", sourceRange: RANGE });
+    assert.equal(await titleOf(), "Muse One");
+    await send(base, "/api/title-settings", { enabled: true }, "PATCH");
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(await titleOf(), "Muse One", "a live rename cancels the owed attempt");
+    assert.equal(calls.length, 0);
+
+    const second = new FakeConnection();
+    second.replies.set("session/start", { session: { sessionId: "s1" } });
+    second.replies.set("session/list", {
+      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", title: "fix the updater please" }],
+      nextCursor: null,
+    });
+    const { base: base2 } = await start(second, { exec });
+    await send(base2, "/api/title-settings", { enabled: false }, "PATCH");
+    await send(base2, "/api/sessions", { cwd: "/work/proj" });
+    await send(base2, "/api/discover", {});
+    second.replies.set("session/list", {
+      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", name: "Muse Two", title: "fix the updater please" }],
+      nextCursor: null,
+    });
+    await send(base2, "/api/discover", {});
+    const titleOf2 = async () => (await get(base2, "/api/sessions")).sessions[0].title;
+    assert.equal(await titleOf2(), "Muse Two");
+    await send(base2, "/api/title-settings", { enabled: true }, "PATCH");
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(await titleOf2(), "Muse Two", "a discovered name cancels the owed attempt");
+    assert.equal(calls.length, 0);
   });
 
   it("keeps each session's goal in its live view for the sidebar", async () => {

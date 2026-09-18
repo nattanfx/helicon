@@ -1,6 +1,7 @@
 import {
   HeliconError,
   parseModelList,
+  parseTitleSettings,
   type ApprovalDecisionInput,
   type ApprovalMode,
   type AttachmentView,
@@ -23,6 +24,7 @@ import {
   type SkillCatalog,
   type SubagentAction,
   type TaskAction,
+  type TitleSettings,
   type TranscriptLoad,
   type TurnOptions,
   type UsageReport,
@@ -278,6 +280,14 @@ export class WebHeliconClient implements HeliconClient {
   async listModels(sessionId?: string): Promise<ModelOption[]> {
     const result = await call<{ models: unknown }>("GET", `/api/models${sessionId ? `?sessionId=${enc(sessionId)}` : ""}`);
     return parseModelList(result.models);
+  }
+
+  async getTitleSettings(): Promise<TitleSettings> {
+    return parseTitleSettings(await call<unknown>("GET", "/api/title-settings"));
+  }
+
+  async setTitleSettings(patch: { enabled?: boolean; modelId?: string | null }): Promise<TitleSettings> {
+    return parseTitleSettings(await call<unknown>("PATCH", "/api/title-settings", patch));
   }
 
   async setSessionModel(sessionId: string, modelId: string): Promise<void> {

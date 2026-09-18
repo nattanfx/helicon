@@ -230,6 +230,8 @@ export class HeliconController {
   private refreshing: Promise<void> | null = null;
   private refreshQueued = false;
   private toastSeq = 0;
+  /** Incrementada a cada pedido de configuração de títulos, para aplicar apenas a resposta ou reversão mais recente. */
+  private titleSettingsRev = 0;
   /** A rota principal para a qual o Voltar sai das páginas de configurações/uso; limpa ao voltar para uma rota principal. */
   private returnRoute: Route | null = null;
 
@@ -370,6 +372,7 @@ export class HeliconController {
       this.applyRoute(hashToRoute(this.platform.readHash()), false);
       void this.discoverAll(true);
       void this.loadModels();
+      void this.loadTitleSettings();
       void this.loadPlanUsage();
     } catch (error) {
       this.update((s) => ({ ...s, boot: "error", bootError: errorMessage(error) }));
@@ -451,6 +454,18 @@ export class HeliconController {
     }
   }
 
+  private async loadTitleSettings(): Promise<void> {
+    const rev = ++this.titleSettingsRev;
+    try {
+      const titleSettings = await this.client.getTitleSettings();
+      if (rev === this.titleSettingsRev) {
+        this.update((s) => ({ ...s, titleSettings }));
+      }
+    } catch {
+      /* abrir Configurações tenta carregar novamente */
+    }
+  }
+
   // ---------------------------------------------------------------- routing
 
   navigate(route: Route): void {
@@ -505,6 +520,8 @@ export class HeliconController {
       }
     } else if (route.kind === "new" && route.cwd) {
       this.setPrefs({ lastProject: route.cwd });
+    } else if (route.kind === "settings" && this.state.titleSettings === null) {
+      void this.loadTitleSettings();
     }
   }
 
@@ -1239,6 +1256,40 @@ export class HeliconController {
     } catch (error) {
       this.patchMeta(route.sessionId, { approvalMode: previous });
       this.toast("error", "Não foi possível alterar as permissões", errorMessage(error));
+    }
+  }
+
+  async setTitleEnabled(enabled: boolean): Promise<void> {
+    const previous = this.state.titleSettings;
+    const rev = ++this.titleSettingsRev;
+    this.update((s) => ({ ...s, titleSettings: { enabled, modelId: previous?.modelId ?? null } }));
+    try {
+      const titleSettings = await this.client.setTitleSettings({ enabled });
+      if (rev === this.titleSettingsRev) {
+        this.update((s) => ({ ...s, titleSettings }));
+      }
+    } catch (error) {
+      if (rev === this.titleSettingsRev) {
+        this.update((s) => ({ ...s, titleSettings: previous }));
+        this.toast("error", "Não foi possível alterar os títulos das conversas", errorMessage(error));
+      }
+    }
+  }
+
+  async setTitleModel(modelId: string | null): Promise<void> {
+    const previous = this.state.titleSettings;
+    const rev = ++this.titleSettingsRev;
+    this.update((s) => ({ ...s, titleSettings: { enabled: previous?.enabled ?? true, modelId } }));
+    try {
+      const titleSettings = await this.client.setTitleSettings({ modelId });
+      if (rev === this.titleSettingsRev) {
+        this.update((s) => ({ ...s, titleSettings }));
+      }
+    } catch (error) {
+      if (rev === this.titleSettingsRev) {
+        this.update((s) => ({ ...s, titleSettings: previous }));
+        this.toast("error", "Não foi possível alterar o modelo dos títulos", errorMessage(error));
+      }
     }
   }
 

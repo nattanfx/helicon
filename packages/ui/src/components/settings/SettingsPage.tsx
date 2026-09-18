@@ -100,6 +100,7 @@ export function SettingsPage() {
   const controller = useController();
   const prefs = useApp((s) => s.prefs);
   const models = useApp((s) => s.models);
+  const titleSettings = useApp((s) => s.titleSettings);
   const env = useApp((s) => s.env);
   const updates = useApp((s) => s.updates);
   const bypassAll = useApp((s) => s.bypassAll);
@@ -200,6 +201,43 @@ export function SettingsPage() {
           <Row label="Agrupar por" description="Como a barra lateral organiza as conversas.">
             <Pick value={prefs.groupBy} options={GROUPS} onChange={(value) => controller.setGroupBy(value)} />
           </Row>
+        </Section>
+
+        <Section title="Títulos das conversas">
+          <Row
+            label="Gerar títulos"
+            description="Gera nomes para novas conversas com uma chamada ao modelo, em vez de repetir o primeiro pedido, e renomeia até 30 conversas recentes que ainda repetem o pedido. As chamadas consomem seu plano do Muse Code. Desativado, mantém o primeiro pedido como título e não faz chamadas para gerar títulos."
+          >
+            {titleSettings ? (
+              <Toggle
+                checked={titleSettings.enabled}
+                label="Gerar títulos"
+                onChange={(on) => void controller.setTitleEnabled(on)}
+              />
+            ) : (
+              <p className="text-xs text-subtle">Carregando…</p>
+            )}
+          </Row>
+          {titleSettings?.enabled ? (
+            <Row label="Modelo para os títulos" description="Qual modelo gera os títulos. Padrão do Muse deixa a escolha para a CLI.">
+              {models.length === 0 ? (
+                <p className="text-xs text-subtle">Nenhum modelo carregado</p>
+              ) : (
+                <Pick<string | null>
+                  value={titleSettings.modelId}
+                  options={[
+                    { value: null, label: "Padrão do Muse" },
+                    ...models.map((model) => ({
+                      value: model.modelId as string | null,
+                      label: model.contributor ? `${modelDisplayName(model.modelId)} · Colaborador` : modelDisplayName(model.modelId),
+                      hint: model.contributor ? "Nível de colaborador: pedidos e respostas podem ser usados para melhoria do produto." : undefined,
+                    })),
+                  ]}
+                  onChange={(value) => void controller.setTitleModel(value)}
+                />
+              )}
+            </Row>
+          ) : null}
         </Section>
 
         <Section title="Aprovações">

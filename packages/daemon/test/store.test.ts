@@ -155,4 +155,14 @@ describe("HeliconStore", () => {
     assert.equal(projects[0]?.cwd, "D:\\work\\a");
     assert.equal(projects[0]?.pinned, true);
   });
+
+  it("keeps thread-title settings, defaulting on and merging patches", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    assert.deepEqual(store.getTitleSettings(), { enabled: true, modelId: null });
+    assert.deepEqual(store.setTitleSettings({ modelId: "m1" }), { enabled: true, modelId: "m1" });
+    assert.deepEqual(store.setTitleSettings({ enabled: false }), { enabled: false, modelId: "m1" });
+    assert.deepEqual(store.getTitleSettings(), { enabled: false, modelId: "m1" });
+    assert.deepEqual(store.setTitleSettings({ enabled: true, modelId: null }), { enabled: true, modelId: null });
+  });
 });

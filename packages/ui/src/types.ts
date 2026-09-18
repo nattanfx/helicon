@@ -263,6 +263,12 @@ export interface ModelOption {
   contributor: boolean;
 }
 
+/** Geração de títulos mantida pelo servidor: ativação e modelo, quando escolhido. */
+export interface TitleSettings {
+  enabled: boolean;
+  modelId: string | null;
+}
+
 /** A skill Muse can load in a workspace, from `muse skills list`. Skills switched off are left out. */
 export interface SkillEntry {
   id: string;

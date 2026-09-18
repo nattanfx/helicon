@@ -132,6 +132,21 @@ describe("web client", () => {
     stop();
   });
 
+  it("reads and writes the thread-title switch", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+    const client = new WebHeliconClient();
+
+    assert.deepEqual(await client.getTitleSettings(), { enabled: true, modelId: null });
+    assert.equal(world.calls.at(-1)?.url, "/api/title-settings");
+
+    await client.setTitleSettings({ enabled: false, modelId: "m9" });
+    const patch = world.calls.at(-1);
+    assert.equal(patch?.url, "/api/title-settings");
+    assert.equal(patch?.init?.method, "PATCH");
+    assert.deepEqual(JSON.parse(String(patch?.init?.body)), { enabled: false, modelId: "m9" });
+  });
+
   it("rebuilds a stream that has gone quiet", async () => {
     browser();
     const { WebHeliconClient } = await freshClient();

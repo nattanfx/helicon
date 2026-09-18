@@ -10,6 +10,7 @@ import type {
   SessionSummary,
   ShellRun,
   SkillEntry,
+  TitleSettings,
 } from "../types.js";
 import type { EchoAttachment, ThreadFold } from "./fold.js";
 import type { UpdateState } from "./updates.js";
@@ -190,6 +191,8 @@ export interface AppState {
   route: Route;
   threads: Record<string, ThreadState>;
   models: ModelOption[];
+  /** Ativação e modelo dos títulos, mantidos pelo servidor; null até a resposta do carregamento inicial. */
+  titleSettings: TitleSettings | null;
   prefs: Prefs;
   toasts: Toast[];
   paletteOpen: boolean;
@@ -249,6 +252,7 @@ export function initialState(prefs: Prefs): AppState {
     route: { kind: "home" },
     threads: {},
     models: [],
+    titleSettings: null,
     prefs,
     toasts: [],
     paletteOpen: false,
