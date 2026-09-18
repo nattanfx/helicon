@@ -617,7 +617,7 @@ export class HeliconController {
     }
   }
 
-  /** Apply queued stream events once per frame-ish, so fast deltas cost one render. */
+  /** Aplica eventos de stream enfileirados uma vez por quadro, para deltas rápidos custarem uma renderização. */
   flush(): void {
     this.flushHandle = null;
     if (this.pending.size === 0) {
@@ -643,7 +643,7 @@ export class HeliconController {
     }
   }
 
-  /** Files Muse just wrote or edited, so a view of one reloads instead of showing what was there before. */
+  /** Arquivos que o Muse acabou de escrever ou editar, para uma visão de um deles recarregar em vez de mostrar o que havia antes. */
   private noteEditedFiles(batches: [string, ViewEvent[]][]): void {
     const touched: string[] = [];
     for (const [sessionId, events] of batches) {
@@ -677,8 +677,8 @@ export class HeliconController {
   // ---------------------------------------------------------------- turns
 
   /**
-   * Send from the composer. `/commands` and `!shell` lines run as themselves; `raw` sends the text as a plain prompt.
-   * Returns false when the sending composer should put the text back.
+   * Envia do composer. Linhas `/comandos` e `!shell` rodam como elas mesmas; `raw` envia o texto como prompt puro.
+   * Retorna falso quando o composer que enviou deve devolver o texto.
    */
   async send(text: string, options: SendOptions = {}): Promise<boolean> {
     const trimmed = text.trim();
@@ -693,11 +693,11 @@ export class HeliconController {
       }
       const parsed = parseSlash(trimmed);
       if (parsed) {
-        // `queue` rides along: a retry after compaction has to wait for it, slash command or not.
+        // `queue` vai junto: uma repetição após compactação precisa esperar por ela, comando de barra ou não.
         return this.runSlash(trimmed, parsed, {
           steer: options.steer,
           queue: options.queue,
-          // A command that sends a prompt takes the files along; one that opens a picker has none to take.
+          // Um comando que envia um prompt leva os arquivos junto; um que abre um seletor não tem o que levar.
           attachments: files,
           previews: options.previews,
         });
@@ -706,19 +706,19 @@ export class HeliconController {
     return this.deliver(trimmed, { steer: options.steer, queue: options.queue, attachments: files, previews: options.previews });
   }
 
-  /** The project a new thread starts in: the new-thread screen's, else the last one used. */
+  /** O projeto em que uma nova conversa começa: o da tela de nova conversa, senão o último usado. */
   private newThreadTarget(): string | null {
     const route = this.state.route;
     const target =
       (route.kind === "new" ? route.cwd : null) ?? this.state.prefs.lastProject ?? this.state.projects[0]?.cwd ?? null;
     if (!target) {
-      this.toast("info", "Add a project first", "Pick the folder Muse should work in.");
+      this.toast("info", "Adicione um projeto primeiro", "Escolha a pasta em que o Muse deve trabalhar.");
       this.setAddProjectOpen(true);
     }
     return target;
   }
 
-  /** Sends a prompt to the open thread, or starts a thread with it. */
+  /** Envia um prompt para a conversa aberta, ou começa uma conversa com ele. */
   private deliver(text: string, options: TurnDelivery): Promise<boolean> {
     const route = this.state.route;
     const bound = options.sessionId ?? (route.kind === "thread" ? route.sessionId : null);
@@ -737,7 +737,7 @@ export class HeliconController {
     );
   }
 
-  /** Called by the composer showing `key`: takes back a prompt that failed to send from elsewhere. */
+  /** Chamado pelo composer que mostra `key`: recebe de volta um prompt que falhou ao enviar de outro lugar. */
   takeDraftHandoff(key: string): { text: string; attachments?: OutgoingAttachment[]; previews?: EchoAttachment[] } | null {
     const handoff = this.state.draftHandoff;
     if (!handoff || handoff.key !== key) {
@@ -748,12 +748,12 @@ export class HeliconController {
     return draft;
   }
 
-  /** Puts text in a thread's composer as if the user typed it, like `/goal ` for a new objective. */
+  /** Põe texto no composer de uma conversa como se o usuário tivesse digitado, como `/goal ` para um novo objetivo. */
   prefillComposer(sessionId: string, text: string): void {
     this.update((s) => ({ ...s, draftHandoff: { key: sessionId, text } }));
   }
 
-  /** Starts a thread in `cwd` and runs its first action there; what the user typed goes to its composer if that fails. */
+  /** Começa uma conversa em `cwd` e roda sua primeira ação lá; o que o usuário digitou vai para seu composer se isso falhar. */
   private async startThread(
     cwd: string,
     typed: string,
@@ -796,8 +796,8 @@ export class HeliconController {
       this.navigate({ kind: "thread", sessionId: session.sessionId });
       const sent = await first(session.sessionId);
       if (!sent) {
-        // The new-thread composer that sent this is gone, so the prompt goes to the new thread's composer,
-        // carrying its files: without them a prompt sent for an image would come back as an empty draft.
+        // O composer de nova conversa que enviou isso sumiu, então o prompt vai para o composer da nova conversa,
+        // levando seus arquivos: sem eles um prompt enviado por uma imagem voltaria como um rascunho vazio.
         const carried = {
           ...(files.attachments?.length ? { attachments: files.attachments } : {}),
           ...(files.previews?.length ? { previews: files.previews } : {}),
@@ -806,7 +806,7 @@ export class HeliconController {
       }
       return true;
     } catch (error) {
-      this.toast("error", "Could not start a thread", errorMessage(error));
+      this.toast("error", "Não foi possível começar uma conversa", errorMessage(error));
       return false;
     } finally {
       this.setBusy("start", false);
@@ -824,21 +824,21 @@ export class HeliconController {
       return false;
     }
     if (thread.readOnly) {
-      this.toast("info", "This thread is read-only here", thread.readOnlyReason ?? "Another Muse session has it open.");
+      this.toast("info", "Esta conversa é só de leitura aqui", thread.readOnlyReason ?? "Outra sessão do Muse a tem aberta.");
       return false;
     }
-    // A second Enter lands before the composer clears, so one draft arrives twice: the first send owns
-    // it, and the duplicate reports sent — the text is going, so the composer stays clear.
+    // Um segundo Enter chega antes do composer limpar, então um rascunho chega duas vezes: o primeiro envio é dono
+    // dele, e a duplicata informa enviado — o texto está indo, então o composer fica limpo.
     const key = this.sendKey(sessionId, text, options);
     if (this.inflightSends.has(key)) {
       return true;
     }
     this.inflightSends.add(key);
-    // A caller that knows a turn is starting elsewhere can say so, before its `turn/started` reaches us.
+    // Um chamador que sabe que uma mensagem está começando em outro lugar pode dizer isso, antes de seu `turn/started` nos alcançar.
     const running = thread.fold.activeTurnId !== null || options.queue === true;
     const echo: LocalEcho = {
       localId: nextLocalId(),
-      // The echo shows what the transcript will, so it matches the prompt item when that arrives.
+      // O eco mostra o que a transcrição mostrará, para combinar com o item de prompt quando ele chegar.
       text: options.displayText ?? text,
       turnId: null,
       disposition: running ? (options.steer ? "steered" : "queued") : "sending",
@@ -856,7 +856,7 @@ export class HeliconController {
       const disposition: LocalEcho["disposition"] =
         ack.disposition === "queued" ? "queued" : ack.disposition === "steered" ? "steered" : "started";
       this.patchFold(sessionId, (f) => updateEcho(f, echo.localId, { turnId: ack.turnId, disposition }));
-      // The echo goes when the prompt lands, so the thread takes the saved files now rather than on a reload.
+      // O eco sai quando o prompt chega, então a conversa pega os arquivos salvos agora em vez de num recarregamento.
       this.keepAttachments(sessionId, ack.attachments ?? []);
       const turnId = ack.turnId;
       if (disposition === "started" && turnId) {
@@ -876,18 +876,18 @@ export class HeliconController {
       const kind = errorKind(error);
       if (!retried && (kind === "sessionNotLoaded" || kind === "sessionStreamMismatch")) {
         await this.loadThread(sessionId);
-        // The retry re-sends under this key, so it must not trip over its own guard.
+        // A repetição reenvia sob esta chave, então não deve tropeçar na própria guarda.
         this.inflightSends.delete(key);
         return this.sendToThread(sessionId, text, options, true);
       }
-      this.toast("error", "Message not sent", errorMessage(error));
+      this.toast("error", "Mensagem não enviada", errorMessage(error));
       return false;
     } finally {
       this.inflightSends.delete(key);
     }
   }
 
-  /** What makes two prompt deliveries the same send: the thread, the text, and the files riding along. */
+  /** O que faz duas entregas de prompt serem o mesmo envio: a conversa, o texto, e os arquivos indo junto. */
   private sendKey(sessionId: string, text: string, options: TurnDelivery): string {
     const files = (options.attachments ?? [])
       .map((file) => `${file.name}:${file.mediaType}:${file.base64.length}:${file.base64.slice(0, 24)}`)
@@ -905,7 +905,7 @@ export class HeliconController {
     try {
       await this.client.interruptTurn(sessionId, this.state.threads[sessionId]?.fold.activeTurnId ?? undefined);
     } catch (error) {
-      this.toast("error", "Could not stop the turn", errorMessage(error));
+      this.toast("error", "Não foi possível parar a mensagem", errorMessage(error));
     } finally {
       this.setBusy(key, false);
     }
@@ -920,14 +920,14 @@ export class HeliconController {
       await this.client.unqueueTurn(sessionId, echo.turnId);
       this.patchFold(sessionId, (f) => removeEcho(f, echo.localId));
     } catch (error) {
-      this.toast("info", "That message already started", errorMessage(error));
+      this.toast("info", "Essa mensagem já começou", errorMessage(error));
     }
   }
 
-  /** Clears a failed turn's notice, for when the user has acted on it and it is only taking up room. */
+  /** Limpa o aviso de uma mensagem falha, para quando o usuário já agiu sobre ele e ele só está ocupando espaço. */
   /**
-   * Closes a failed turn's notice. Kept in prefs as well as the fold: the fold is rebuilt from Muse's history
-   * whenever the thread reloads, and the notice would come back with it.
+   * Fecha o aviso de uma mensagem falha. Guardado nas prefs além do fold: o fold é reconstruído do histórico do Muse
+   * sempre que a conversa recarrega, e o aviso voltaria com ele.
    */
   dismissTurnError(sessionId: string, turnId: string | null): void {
     if (!turnId) {
@@ -948,7 +948,7 @@ export class HeliconController {
     });
   }
 
-  /** True when the prompt actually went; a caller can then tell whether to hand the text back to the user. */
+  /** Verdadeiro quando o prompt realmente foi; um chamador pode então dizer se devolve o texto ao usuário. */
   async retryTurn(
     sessionId: string,
     prompt: string,
@@ -958,10 +958,10 @@ export class HeliconController {
       queue: options.queue,
       attachments: options.attachments,
       previews: options.previews,
-      // Named, not read off the route: the user may have walked to another thread while the skills loaded.
+      // Nomeado, não lido da rota: o usuário pode ter ido para outra conversa enquanto as skills carregavam.
       sessionId,
     };
-    // A turn started by `/plan …` or `/init` shows the command, so retrying runs the command again.
+    // Uma mensagem começada por `/plan …` ou `/init` mostra o comando, então repetir roda o comando de novo.
     const parsed = parseSlash(prompt);
     const cwd = this.state.sessions[sessionId]?.cwd ?? null;
     if (parsed && cwd) {
@@ -976,7 +976,7 @@ export class HeliconController {
 
   // ---------------------------------------------------------------- approvals and questions
 
-  /** True when this thread answers its own approvals, by its own arming or the session-wide switch. */
+  /** Verdadeiro quando esta conversa responde às próprias aprovações, pelo próprio armamento ou pelo interruptor geral da sessão. */
   bypassArmed(sessionId: string): boolean {
     return this.state.bypassAll || this.state.bypassThreads.includes(sessionId);
   }
@@ -985,8 +985,8 @@ export class HeliconController {
     this.update((s) => ({ ...s, bypassAll: on }));
     if (on) {
       this.autoAllow(Object.keys(this.state.threads));
-      // A thread nobody has opened here has no local state at all, so its events are dropped on arrival and
-      // its approvals are invisible. The server's live view is what says which sessions are waiting.
+      // Uma conversa que ninguém abriu aqui não tem estado local algum, então seus eventos são descartados na chegada e
+      // suas aprovações são invisíveis. A visão ao vivo do servidor é o que diz quais sessões estão esperando.
       for (const session of Object.values(this.state.sessions)) {
         if ((session.live?.pendingApprovals ?? 0) > 0) {
           this.loadForBypass(session.sessionId);
@@ -996,9 +996,9 @@ export class HeliconController {
   }
 
   /**
-   * What a change in a thread's live state is worth saying out loud. Only the edges count: a request
-   * that has just appeared, a turn that has just ended, a goal that has just stopped being active.
-   * A state that was already true when the last report came in says nothing again.
+   * O que uma mudança no estado ao vivo de uma conversa vale dizer em voz alta. Só as bordas contam: um pedido
+   * que acabou de aparecer, uma mensagem que acabou de terminar, uma meta que acabou de deixar de ser ativa.
+   * Um estado que já era verdadeiro quando o último relato chegou não diz nada de novo.
    */
   private announce(
     sessionId: string,
@@ -1026,7 +1026,7 @@ export class HeliconController {
     }
   }
 
-  /** Opens a thread only so the bypass can reach its approvals, and answers them once it is there. */
+  /** Abre uma conversa só para o bypass alcançar suas aprovações, e as responde quando chega lá. */
   private loadForBypass(sessionId: string): void {
     const thread = this.state.threads[sessionId];
     if (!thread) {
@@ -1046,7 +1046,7 @@ export class HeliconController {
     }
   }
 
-  /** Puts every thread that was answering for itself back to asking, without touching the session-wide switch. */
+  /** Põe toda conversa que respondia por si mesma de volta a perguntar, sem tocar no interruptor geral da sessão. */
   clearThreadBypass(): void {
     if (this.state.bypassThreads.length > 0) {
       this.update((s) => ({ ...s, bypassThreads: [] }));
@@ -1054,17 +1054,17 @@ export class HeliconController {
   }
 
   /**
-   * What a bypass answers with: allow this once. A choice carrying a rule preview would write a standing
-   * rule into Muse's own config, which is not a thing to do on someone's behalf while they are not looking.
+   * Com o que um bypass responde: permitir desta vez. Uma escolha com prévia de regra escreveria uma regra permanente
+   * na config do próprio Muse, o que não se faz em nome de alguém enquanto ele não está olhando.
    */
   private allowOnce(request: ApprovalRequest): string | null {
     const choices = request.availableChoices ?? [];
-    // Only a choice that leaves nothing behind. Where the sole way to allow is to remember a rule, the
-    // request stays for the user: a rule in Muse's own config would outlive the bypass that wrote it.
+    // Só uma escolha que não deixa nada para trás. Onde o único jeito de permitir é lembrar uma regra, o
+    // pedido fica para o usuário: uma regra na config do próprio Muse sobreviveria ao bypass que a escreveu.
     return choices.find((choice) => choice.decision === "approved" && !choice.rulePreview)?.choiceId ?? null;
   }
 
-  /** Answers what is pending in every armed thread; a request offering no approval is left to the user. */
+  /** Responde o que está pendente em cada conversa armada; um pedido sem oferta de aprovação fica para o usuário. */
   private autoAllow(sessionIds: Iterable<string>): void {
     for (const sessionId of new Set(sessionIds)) {
       const thread = this.state.threads[sessionId];
@@ -1091,7 +1091,7 @@ export class HeliconController {
       return;
     }
     this.setBusy(key, true);
-    // The card goes on the click, not on the host's `approval/resolved`, which can be a second or more behind.
+    // O card sai no clique, não no `approval/resolved` do host, que pode estar um segundo ou mais atrasado.
     const decision = (request.availableChoices ?? []).find((c) => c.choiceId === choiceId)?.decision ?? "approved";
     this.patchFold(request.sessionId, (f) => {
       const approvals = { ...f.approvals };
@@ -1109,20 +1109,20 @@ export class HeliconController {
     } catch (error) {
       const kind = errorKind(error);
       if (kind === "approvalAlreadyResolved" || kind === "approvalNotFound") {
-        /* it was already settled elsewhere; the card is gone either way */
+        /* já foi resolvido em outro lugar; o card sumiu de todo jeito */
       } else if (kind === "approvalRequirementStale") {
         this.restoreApproval(request);
-        this.toast("info", "The request changed", "Review the updated request and decide again.");
+        this.toast("info", "O pedido mudou", "Revise o pedido atualizado e decida de novo.");
       } else {
         this.restoreApproval(request);
-        this.toast("error", "Decision not sent", errorMessage(error));
+        this.toast("error", "Decisão não enviada", errorMessage(error));
       }
     } finally {
       this.setBusy(key, false);
     }
   }
 
-  /** Puts a request back when its decision did not land, so the choice is still the user's. */
+  /** Devolve um pedido quando sua decisão não chegou, para a escolha continuar do usuário. */
   private restoreApproval(request: ApprovalRequest): void {
     this.patchFold(request.sessionId, (f) => {
       const resolved = { ...f.resolved };
@@ -1163,7 +1163,7 @@ export class HeliconController {
     return this.settleInput(
       request,
       () => this.client.answerUserInput(request.sessionId, request.userInputId, answers),
-      "Answer not sent",
+      "Resposta não enviada",
     );
   }
 
@@ -1171,7 +1171,7 @@ export class HeliconController {
     return this.settleInput(
       request,
       () => this.client.cancelUserInput(request.sessionId, request.userInputId),
-      "Could not skip the question",
+      "Não foi possível pular a pergunta",
     );
   }
 
@@ -1179,7 +1179,7 @@ export class HeliconController {
     return this.settleInput(
       request,
       () => this.client.clarifyUserInput(request.sessionId, request.userInputId, content),
-      "Reply not sent",
+      "Réplica não enviada",
     );
   }
 
@@ -1191,8 +1191,8 @@ export class HeliconController {
       this.setPrefs({ contributorAck: true });
       this.toast(
         "info",
-        "Contributor model selected",
-        model.description ?? "Prompts and outputs on contributor models may be used for product improvement.",
+        "Modelo de colaborador selecionado",
+        model.description ?? "Prompts e saídas em modelos de colaborador podem ser usados para melhoria do produto.",
       );
     }
     this.setPrefs({ defaultModelId: modelId });
@@ -1206,7 +1206,7 @@ export class HeliconController {
       await this.client.setSessionModel(route.sessionId, modelId);
     } catch (error) {
       this.patchMeta(route.sessionId, { modelId: previous });
-      this.toast("error", "Could not switch models", errorMessage(error));
+      this.toast("error", "Não foi possível trocar de modelo", errorMessage(error));
     }
   }
 
@@ -1560,7 +1560,7 @@ export class HeliconController {
     const run = async (sessionId: string): Promise<boolean> => {
       const thread = this.state.threads[sessionId];
       if (thread?.readOnly) {
-        this.toast("info", "This thread is read-only here", thread.readOnlyReason ?? "Another Muse session has it open.");
+        this.toast("info", "Esta conversa é só de leitura aqui", thread.readOnlyReason ?? "Outra sessão do Muse a tem aberta.");
         return false;
       }
       const key = `shell:${sessionId}`;
@@ -1785,7 +1785,7 @@ export class HeliconController {
   private async setGoal(sessionId: string, objective: string, typed: string, options: TurnDelivery): Promise<boolean> {
     const thread = this.state.threads[sessionId];
     if (thread?.readOnly) {
-      this.toast("info", "This thread is read-only here", thread.readOnlyReason ?? "Another Muse session has it open.");
+      this.toast("info", "Esta conversa é só de leitura aqui", thread.readOnlyReason ?? "Outra sessão do Muse a tem aberta.");
       return false;
     }
     try {

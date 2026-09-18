@@ -386,7 +386,7 @@ describe("HeliconController", () => {
     assert.equal(await controller.send("x".repeat(10)), false);
     const state = controller.store.get();
     assert.equal(state.threads["s1"]!.fold.echoes.length, 0);
-    assert.equal(state.toasts.at(-1)?.title, "Message not sent");
+    assert.equal(state.toasts.at(-1)?.title, "Mensagem não enviada");
     stop();
   });
 
@@ -400,7 +400,7 @@ describe("HeliconController", () => {
     assert.equal(await controller.send("Write the tests"), true);
     const state = controller.store.get();
     assert.deepEqual(state.route, { kind: "thread", sessionId: "s1" });
-    assert.equal(state.toasts.at(-1)?.title, "Message not sent");
+    assert.equal(state.toasts.at(-1)?.title, "Mensagem não enviada");
     assert.equal(controller.takeDraftHandoff("other"), null);
     assert.deepEqual(controller.takeDraftHandoff("s1"), { text: "Write the tests" });
     assert.equal(controller.store.get().draftHandoff, null);
