@@ -2,6 +2,7 @@ import { Check, ChevronDown, ChevronUp, Circle, CircleCheck, CircleX, Clock, Lis
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useApp, useController } from "../../app/context.js";
 import type { LocalEcho } from "../../model/fold.js";
+import { approvalChoiceLabel } from "../../model/approvals.js";
 import { describeApproval } from "../../model/format.js";
 import type { ApprovalChoice, ApprovalRequest, TodoItem, UserInputAnswer, UserInputQuestion, UserInputRequest } from "../../types.js";
 import { Tip } from "../ui/overlays.js";
@@ -130,7 +131,7 @@ export function ApprovalPanel(props: { request: ApprovalRequest; primary: boolea
               Voltar
             </Button>
             <Button size="sm" variant="primary" type="submit" loading={busy}>
-              {feedbackChoice.label}
+              {approvalChoiceLabel(feedbackChoice)}
             </Button>
           </div>
         </form>
@@ -147,7 +148,7 @@ export function ApprovalPanel(props: { request: ApprovalRequest; primary: boolea
                 onClick={() => pick(choice)}
               >
                 {choiceIcon(choice)}
-                {choice.label}
+                {approvalChoiceLabel(choice)}
               </Button>
             );
             return choice.rulePreview ? (
