@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Helicon Teste",
+  "mainBinaryName": "helicon-teste",
+  "identifier": "app.helicon.desktop.test",
+  "bundle": {
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": false
+  }
+}

@@ -522,7 +522,7 @@ fn main() {
             install_zoom_menu(app)?;
             // Abre a janela de imediato numa página de splash; o servidor pode levar alguns segundos sondando o WSL.
             let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(SPLASH_PAGE.parse()?))
-                .title("Helicon")
+                .title(app.config().product_name.as_deref().unwrap_or("Helicon"))
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(880.0, 560.0)
                 // O arrastar-arquivo nativo consome o DnD do HTML5 (reordenar barra lateral, anexar no composer) no Windows.

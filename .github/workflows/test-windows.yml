@@ -1,0 +1,57 @@
+name: Windows Teste
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [prod]
+    paths:
+      - .github/workflows/test-windows.yml
+      - apps/desktop/src-tauri/tauri.test.conf.json
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run build --workspace @helicon/daemon --workspace @helicon/ui --workspace @helicon/server
+      - name: Build isolated test installer
+        working-directory: apps/desktop
+        env:
+          HELICON_NODE_TARGET: x86_64-pc-windows-msvc
+        run: npm run tauri -- build --target x86_64-pc-windows-msvc --config src-tauri/tauri.test.conf.json
+      - name: Record build and installer checksum
+        shell: pwsh
+        run: |
+          $bundleDir = 'apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
+          $installers = @(Get-ChildItem -LiteralPath $bundleDir -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one test installer.' }
+          $checksum = Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256
+          @(
+            'Helicon Teste - Windows x64'
+            "Commit: $env:GITHUB_SHA"
+            "Run: $env:GITHUB_RUN_ID"
+            "Installer: $($installers[0].Name)"
+            "SHA256: $($checksum.Hash)"
+            'Separate application ID: app.helicon.desktop.test'
+            'Muse account and CLI are shared. Use only a disposable project for validation.'
+          ) | Set-Content -LiteralPath "$bundleDir/BUILD.txt" -Encoding utf8
+          Copy-Item -LiteralPath 'docs/TESTE-WINDOWS.md' -Destination "$bundleDir/TESTE-WINDOWS.md"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Helicon-Teste-Windows-${{ github.run_number }}
+          path: |
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/BUILD.txt
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/TESTE-WINDOWS.md
+          if-no-files-found: error
+          retention-days: 14
