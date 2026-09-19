@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { HeliconError, type EventHandler, type HeliconClient } from "../src/client.js";
-import { HeliconController, type Platform } from "../src/model/controller.js";
+import { HeliconController, staleThreadReason, type Platform } from "../src/model/controller.js";
 import { buildTurns } from "../src/model/fold.js";
 import { ZOOM_MAX, ZOOM_MIN } from "../src/model/store.js";
 import type { SessionSummary, SkillEntry, TranscriptLoad } from "../src/types.js";
@@ -324,6 +324,37 @@ describe("HeliconController", () => {
     resolve(load());
     await settle();
     assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, "live-1");
+    stop();
+  });
+
+  it("coalesces overlapping thread loads instead of losing buffered events", async () => {
+    // A second load while one is in flight used to orphan the first load's buffer: every event
+    // that streamed into it was dropped, and the thread never showed them (#32).
+    const client = new FakeClient();
+    let loads = 0;
+    let resolve!: (value: TranscriptLoad) => void;
+    client.transcript = () => {
+      loads += 1;
+      return new Promise<TranscriptLoad>((r) => (resolve = r));
+    };
+    const { controller, stop } = await started(client);
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { sessionId: "s1", turnId: "live-1" }, at: 1 });
+    const second = controller.loadThread("s1");
+    client.handler?.({
+      type: "msp",
+      sessionId: "s1",
+      method: "item/started",
+      params: { sessionId: "s1", item: { itemId: "i1", kind: "agentMessage", status: "inProgress", revision: 1 } },
+      at: 2,
+    });
+    resolve(load());
+    await settle();
+    await settle();
+    await second;
+    assert.equal(loads, 1, "overlapping loads share one transcript read");
+    const fold = controller.store.get().threads["s1"]?.fold;
+    assert.equal(fold?.activeTurnId, "live-1", "events buffered before the overlap still land");
+    assert.ok(fold?.items["i1"], "events buffered during the overlap still land");
     stop();
   });
 
@@ -1102,6 +1133,249 @@ describe("HeliconController", () => {
     await controller.archive("s1");
     controller.goBack();
     assert.deepEqual(controller.store.get().route, { kind: "home" });
+    stop();
+  });
+});
+
+describe("staleThreadReason", () => {
+  const NOW = 1_000_000;
+
+  it("leaves idle threads alone", () => {
+    assert.equal(staleThreadReason(null, null, NOW - 60_000, NOW), null);
+    assert.equal(staleThreadReason(null, "t1", NOW - 600_000, NOW), null);
+  });
+
+  it("leaves threads without an applied stamp alone", () => {
+    assert.equal(staleThreadReason("t1", null, null, NOW), null);
+  });
+
+  it("reloads a fold still showing a turn the server finished", () => {
+    assert.equal(staleThreadReason("t1", null, NOW - 30_000, NOW), null);
+    assert.equal(staleThreadReason("t1", null, NOW - 30_001, NOW), "diverged");
+    assert.equal(staleThreadReason("t1", undefined, NOW - 31_000, NOW), "diverged");
+  });
+
+  it("reloads a turn both sides agree is running but silent", () => {
+    assert.equal(staleThreadReason("t1", "t1", NOW - 90_000, NOW), null);
+    assert.equal(staleThreadReason("t1", "t1", NOW - 90_001, NOW), "quiet");
+  });
+});
+
+describe("stale thread watchdog", () => {
+  function watchPlatform() {
+    const base = platform("#/t/s1");
+    let now = 1_000_000;
+    const timers: ({ fn: () => void; ms: number } | null)[] = [];
+    const fake: Platform = {
+      ...base,
+      now: () => now,
+      schedule: (fn: () => void, ms: number) => {
+        timers.push({ fn, ms });
+        return timers.length - 1;
+      },
+      cancel: (handle: unknown) => {
+        if (typeof handle === "number") {
+          timers[handle] = null;
+        }
+      },
+    };
+    return {
+      fake,
+      setNow: (value: number) => {
+        now = value;
+      },
+      runStaleChecks: () => {
+        for (const [index, timer] of [...timers].entries()) {
+          if (timer && timer.ms === 30_000) {
+            timers[index] = null;
+            timer.fn();
+          }
+        }
+      },
+    };
+  }
+
+  const runningLoad = (): TranscriptLoad =>
+    load({
+      msp: { status: "running", activeTurnId: "live-1", modelId: "muse-spark-1.3", approvalMode: "onRequest", workspaceRoot: "/work/app", turnCount: 4 },
+      events: [...historyEvents, { method: "turn/started", params: { turnId: "live-1" }, at: 1 }],
+    });
+
+  async function startedWatching(client: FakeClient) {
+    const watch = watchPlatform();
+    const controller = new HeliconController(client, watch.fake);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    return { controller, stop, ...watch };
+  }
+
+  it("cancels recovery on disposal and resumes it when the controller starts again", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    client.transcript = async () => { loads += 1; return runningLoad(); };
+    const { controller, stop, setNow, runStaleChecks } = await startedWatching(client);
+    stop();
+    setNow(1_031_000);
+    runStaleChecks();
+    assert.equal(loads, 1, "a disposed controller never reloads");
+    const stopAgain = controller.start();
+    await settle();
+    await settle();
+    const before = loads;
+    setNow(1_100_000);
+    runStaleChecks();
+    await settle();
+    assert.equal(loads, before + 1, "restart restores the recovery timer");
+    stopAgain();
+  });
+
+  it("keeps the exhausted budget across navigation and gives a new turn two reloads", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    let turnId = "live-1";
+    client.transcript = async () => {
+      loads += 1;
+      const result = runningLoad();
+      return { ...result, msp: { ...result.msp!, activeTurnId: turnId } };
+    };
+    const { controller, stop, setNow, runStaleChecks } = await startedWatching(client);
+    for (const now of [1_031_000, 1_062_000, 1_093_000]) {
+      setNow(now); runStaleChecks(); await settle();
+    }
+    assert.equal(loads, 3);
+    await controller.loadThread("s1");
+    setNow(1_124_000); runStaleChecks(); await settle();
+    assert.equal(loads, 4, "ordinary reloads do not reset the automatic budget");
+    turnId = "live-2";
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { turnId }, at: 2 });
+    controller.flush();
+    for (const now of [1_155_000, 1_186_000, 1_217_000]) {
+      setNow(now); runStaleChecks(); await settle();
+    }
+    assert.equal(loads, 6, "a new turn gets exactly two automatic reloads");
+    stop();
+  });
+
+  it("keeps a buffered ending when overlapping recovery reads partial history", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop, setNow, runStaleChecks } = await startedWatching(client);
+    let resolve!: (value: TranscriptLoad) => void;
+    let loads = 0;
+    client.transcript = () => { loads += 1; return new Promise(r => { resolve = r; }); };
+    setNow(1_031_000); runStaleChecks();
+    const overlap = controller.loadThread("s1");
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/completed", params: { turnId: "live-1" }, at: 2 });
+    resolve({ ...runningLoad(), truncated: true, events: [] });
+    await overlap;
+    assert.equal(loads, 1);
+    assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, null);
+    assert.equal(controller.store.get().threads["s1"]?.truncated, true);
+    setNow(1_200_000); runStaleChecks();
+    assert.equal(loads, 1, "a completed turn no longer needs recovery");
+    stop();
+  });
+
+  it("releases a failed shared load so a manual retry can succeed", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop, setNow, runStaleChecks } = await startedWatching(client);
+    let reject!: (reason: Error) => void;
+    client.transcript = () => new Promise((_resolve, r) => { reject = r; });
+    setNow(1_031_000); runStaleChecks();
+    const overlap = controller.loadThread("s1");
+    reject(new Error("offline"));
+    await overlap;
+    assert.equal(controller.store.get().threads["s1"]?.load, "error");
+    client.transcript = async () => load();
+    await controller.loadThread("s1");
+    assert.equal(controller.store.get().threads["s1"]?.load, "ready");
+    assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, null);
+    stop();
+  });
+
+  it("reloads a thread whose ending never landed", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    client.transcript = async () => {
+      loads += 1;
+      return runningLoad();
+    };
+    const { stop, setNow, runStaleChecks } = await startedWatching(client);
+    assert.equal(loads, 1);
+    runStaleChecks();
+    assert.equal(loads, 1, "a thread that just applied anything is left alone");
+    setNow(1_000_000 + 31_000);
+    runStaleChecks();
+    await settle();
+    await settle();
+    assert.equal(loads, 2, "a fold still showing a finished turn reloads from history");
+    runStaleChecks();
+    assert.equal(loads, 2, "a fresh reload is not reloaded again at once");
+    setNow(1_000_000 + 62_000);
+    runStaleChecks();
+    await settle();
+    await settle();
+    assert.equal(loads, 3, "a thread that stays silent is retried once per grace period");
+    setNow(1_000_000 + 93_000);
+    runStaleChecks();
+    await settle();
+    await settle();
+    assert.equal(loads, 3, "a turn history never finishes stops being refetched");
+    stop();
+  });
+
+  it("reloads a turn both sides agree is running but silent", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    client.transcript = async () => {
+      loads += 1;
+      return runningLoad();
+    };
+    const { stop, setNow, runStaleChecks } = await startedWatching(client);
+    client.handler?.({
+      type: "session-status",
+      sessionId: "s1",
+      live: { activeTurnId: "live-1", turnStartedAt: null, pendingApprovals: 0, pendingInputs: 0, lastTerminal: null, lastError: null },
+    });
+    setNow(1_000_000 + 60_000);
+    runStaleChecks();
+    assert.equal(loads, 1, "a quiet-but-running turn gets a longer grace period");
+    setNow(1_000_000 + 91_000);
+    runStaleChecks();
+    await settle();
+    await settle();
+    assert.equal(loads, 2);
+    stop();
+  });
+
+  it("leaves idle threads and threads already loading alone", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    client.transcript = async () => {
+      loads += 1;
+      return load();
+    };
+    const { controller, stop, setNow, runStaleChecks } = await startedWatching(client);
+    assert.equal(loads, 1);
+    setNow(1_000_000 + 900_000);
+    runStaleChecks();
+    assert.equal(loads, 1, "an idle thread never reloads itself");
+
+    let resolve!: (value: TranscriptLoad) => void;
+    client.transcript = () => {
+      loads += 1;
+      return new Promise<TranscriptLoad>((r) => (resolve = r));
+    };
+    const loading = controller.loadThread("s1");
+    await settle();
+    assert.equal(controller.store.get().threads["s1"]?.load, "loading");
+    runStaleChecks();
+    resolve(load());
+    await loading;
+    await settle();
+    assert.equal(loads, 2, "a reload never piles onto a load already in flight");
     stop();
   });
 });

@@ -11,6 +11,7 @@ import {
   extractDiff,
   formatDuration,
   formatTokens,
+  lastLine,
   mergeDiffLines,
   modelDisplayName,
   relativeTime,
@@ -33,6 +34,43 @@ function tool(name: string, args: unknown, status = "completed", visibleOutput?:
 }
 
 describe("formatação", () => {
+  it("reads a giant edit as two plain blocks instead of aligning it", () => {
+    // A running edit's diff is recomputed on every flush, and the alignment table costs a cell per
+    // old/new pair: a 2000-line find/replace would eat the frame budget on its own (#32).
+    const removed = Array.from({ length: 2000 }, (_, i) => `old line ${i}`);
+    const added = Array.from({ length: 2000 }, (_, i) => `new line ${i}`);
+    const started = Date.now();
+    const rows = alignLines(removed, added);
+    assert.ok(Date.now() - started < 2000, `giant edit took ${Date.now() - started}ms to align`);
+    assert.equal(rows.length, 4000);
+    assert.ok(rows.every((row, i) => (i < 2000 ? row.kind === "del" : row.kind === "add")));
+    assert.deepEqual(
+      rows.map((row) => row.text),
+      [...removed, ...added],
+    );
+    // A modest edit still aligns: shared lines read as context, not as churn.
+    assert.deepEqual(
+      alignLines(["same", "old"], ["same", "new"]).map((row) => row.kind),
+      ["same", "del", "add"],
+    );
+  });
+
+  it("takes the last non-blank line without reading the whole log", () => {
+    assert.equal(lastLine(undefined), null);
+    assert.equal(lastLine(""), null);
+    assert.equal(lastLine("\n"), null);
+    assert.equal(lastLine("\n  \n"), null);
+    assert.equal(lastLine("only"), "only");
+    assert.equal(lastLine("first\nsecond\n\n"), "second");
+    assert.equal(lastLine("first\nsecond"), "second");
+    assert.equal(lastLine("a\n\x1b[32mok\x1b[0m\n"), "ok");
+    assert.equal(lastLine("a\n\x1b[0m\n"), "a");
+    assert.equal(lastLine("a\r\nb\r\n"), "b");
+    const head = `${"x".repeat(1000)}\n`.repeat(5000);
+    assert.equal(lastLine(`${head}tail\n\n\n`), "tail");
+  });
+
+
   it("formata tempos relativos de forma compacta", () => {
     const now = Date.parse("2026-09-11T12:00:00Z");
     assert.equal(relativeTime("2026-09-11T11:59:40Z", now), "agora");

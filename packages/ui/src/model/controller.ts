@@ -198,6 +198,43 @@ const FLUSH_MS = 24;
 const TOAST_MS = { info: 5000, success: 4000, error: 9000 } as const;
 const SKILLS_FRESH_MS = 60_000;
 const SKILLS_RETRY_MS = 10_000;
+/** How often loaded threads are checked for a stream that went silent. */
+const STALE_CHECK_MS = 30_000;
+/** A fold still showing a turn the server finished this long ago missed its ending: reload it. */
+const DIVERGED_GRACE_MS = 30_000;
+/** Both sides agree a turn is running, but nothing landed for this long: reload it. */
+const QUIET_TURN_MS = 90_000;
+/**
+ * Reloads one stuck turn is worth. A turn whose ending is missing from history too, rather than
+ * just from the stream, converges on nothing: without a cap the thread would refetch its whole
+ * history every grace period for as long as it stays open, which is worst on the very large
+ * sessions this watchdog exists for.
+ */
+const STALE_RELOAD_LIMIT = 2;
+
+/** Why a loaded thread needs reloading from history: its ending never landed, or its stream went quiet mid-turn. */
+export type StaleThreadReason = "diverged" | "quiet";
+
+/**
+ * Whether a loaded thread is stale enough to reload. A fold still showing a turn the server has
+ * finished is a missed ending (#32: the view froze while the backend kept working); a turn both
+ * sides agree is running but silent is a dead stream. Either way history converges the view, so a
+ * reload is what a restart would have done, without losing the rest of the app.
+ */
+export function staleThreadReason(
+  foldActiveTurnId: string | null,
+  liveActiveTurnId: string | null | undefined,
+  lastAppliedAt: number | null,
+  now: number,
+): StaleThreadReason | null {
+  if (!foldActiveTurnId || lastAppliedAt === null) {
+    return null;
+  }
+  if (!liveActiveTurnId) {
+    return now - lastAppliedAt > DIVERGED_GRACE_MS ? "diverged" : null;
+  }
+  return now - lastAppliedAt > QUIET_TURN_MS ? "quiet" : null;
+}
 
 /**
  * É dono do estado do app e de todo efeito colateral: chamadas ao servidor, o stream de eventos, roteamento e prefs.
@@ -221,12 +258,20 @@ export class HeliconController {
   readonly store: Store<AppState>;
   private readonly pending = new Map<string, ViewEvent[]>();
   private readonly loading = new Map<string, ViewEvent[]>();
+  /** Carregamentos simultâneos da mesma conversa compartilham a leitura e o buffer. */
+  private readonly inflightLoads = new Map<string, Promise<void>>();
   /** Chaves de entregas de prompt ainda esperando o servidor, para um rascunho enviado duas vezes virar uma. */
   private readonly inflightSends = new Set<string>();
   private readonly disposers: (() => void)[] = [];
   private flushHandle: unknown = null;
   private refreshHandle: unknown = null;
   private saveHandle: unknown = null;
+  private staleHandle: unknown = null;
+  private disposed = false;
+  /** When stream events were last applied per session, so a thread that went silent can be noticed. */
+  private readonly appliedAt = new Map<string, number>();
+  /** Reloads already spent on a thread's current stuck turn, so a hopeless one is not refetched forever. */
+  private readonly staleReloads = new Map<string, { turnId: string; count: number }>();
   private refreshing: Promise<void> | null = null;
   private refreshQueued = false;
   private toastSeq = 0;
@@ -257,6 +302,7 @@ export class HeliconController {
   }
 
   start(): () => void {
+    this.disposed = false;
     this.disposers.push(this.client.subscribe((event) => this.onEvent(event)));
     this.disposers.push(
       this.platform.onHashChange(() => {
@@ -270,6 +316,7 @@ export class HeliconController {
       this.updates.start();
       this.disposers.push(() => this.updates?.stop());
     }
+    this.scheduleStaleCheck();
     void this.boot(false);
     return () => this.dispose();
   }
@@ -347,14 +394,16 @@ export class HeliconController {
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const dispose of this.disposers.splice(0)) {
       dispose();
     }
-    for (const handle of [this.flushHandle, this.refreshHandle, this.saveHandle]) {
+    for (const handle of [this.flushHandle, this.refreshHandle, this.saveHandle, this.staleHandle]) {
       if (handle !== null) {
         this.platform.cancel(handle);
       }
     }
+    this.staleHandle = null;
     this.platform.savePrefs(this.state.prefs);
   }
 
@@ -526,6 +575,23 @@ export class HeliconController {
   }
 
   async loadThread(sessionId: string): Promise<void> {
+    // A second load while one is in flight would orphan the first load's buffer: every event that
+    // streamed into it is dropped, and the thread never shows them (#32: a frozen view on a thread
+    // whose backend kept working). Coalescing waits on the one buffer instead, so nothing is lost.
+    const inflight = this.inflightLoads.get(sessionId);
+    if (inflight) {
+      return inflight;
+    }
+    const run = this.reloadThread(sessionId).finally(() => {
+      if (this.inflightLoads.get(sessionId) === run) {
+        this.inflightLoads.delete(sessionId);
+      }
+    });
+    this.inflightLoads.set(sessionId, run);
+    return run;
+  }
+
+  private async reloadThread(sessionId: string): Promise<void> {
     const existing = this.state.threads[sessionId];
     this.loading.set(sessionId, []);
     this.setThread(sessionId, { ...(existing ?? blankThread()), load: "loading", error: null });
@@ -534,6 +600,7 @@ export class HeliconController {
       const buffered = this.loading.get(sessionId) ?? [];
       this.loading.delete(sessionId);
       const fold = applyEvents(foldFromLoad(load, existing?.fold ?? null), buffered);
+      this.appliedAt.set(sessionId, this.platform.now());
       this.update((s) => ({
         ...s,
         threads: {
@@ -658,6 +725,11 @@ export class HeliconController {
     }
     const batches = [...this.pending];
     this.pending.clear();
+    const appliedNow = this.platform.now();
+    for (const [id] of batches) {
+      this.appliedAt.set(id, appliedNow);
+    }
+
     this.update((s) => {
       const threads = { ...s.threads };
       for (const [id, events] of batches) {
@@ -673,6 +745,54 @@ export class HeliconController {
     const route = this.state.route;
     if (route.kind === "thread" && batches.some(([id]) => id === route.sessionId)) {
       this.markSeen(route.sessionId);
+    }
+  }
+
+  private scheduleStaleCheck(): void {
+    if (this.staleHandle !== null || this.disposed) {
+      return;
+    }
+    this.staleHandle = this.platform.schedule(() => {
+      this.staleHandle = null;
+      this.checkStaleThreads();
+    }, STALE_CHECK_MS);
+  }
+
+  /**
+   * Reloads loaded threads whose stream went silent: a missed ending or a dead stream looks exactly
+   * like a frozen view with a spinner (#32), and history converges it the way a restart would. A
+   * reload stamps the thread fresh, so a thread that stays silent is retried at most once per grace
+   * period — and a reload can never loop with itself, since a thread already loading is skipped.
+   */
+  private checkStaleThreads(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.scheduleStaleCheck();
+    const now = this.platform.now();
+    for (const [id, thread] of Object.entries(this.state.threads)) {
+      if (thread.load !== "ready" || this.loading.has(id)) {
+        continue;
+      }
+      const turnId = thread.fold.activeTurnId;
+      if (!turnId) {
+        this.staleReloads.delete(id);
+        continue;
+      }
+      const applied = this.appliedAt.get(id) ?? null;
+      if (applied === null) {
+        continue;
+      }
+      if (staleThreadReason(turnId, this.state.sessions[id]?.live?.activeTurnId ?? null, applied, now) === null) {
+        continue;
+      }
+      const spent = this.staleReloads.get(id);
+      const count = spent && spent.turnId === turnId ? spent.count : 0;
+      if (count >= STALE_RELOAD_LIMIT) {
+        continue;
+      }
+      this.staleReloads.set(id, { turnId, count: count + 1 });
+      void this.loadThread(id);
     }
   }
 

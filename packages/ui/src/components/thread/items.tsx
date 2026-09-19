@@ -32,6 +32,7 @@ import {
   formatDuration,
   formatTokens,
   humanize,
+  lastLine,
   mergeDiffLines,
   parseArgs,
   withoutDiffEcho,
@@ -177,7 +178,8 @@ export function OutputBlock(props: { text: string; truncated?: boolean; label?: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shown = full ? full.text : props.text;
-  const clean = shown.replace(ANSI, "").replace(/\s+$/, "");
+  // The shown bytes only change when the page does; stripping them again every flush would cost the whole log.
+  const clean = useMemo(() => shown.replace(ANSI, "").replace(/\s+$/, ""), [shown]);
   if (!clean) {
     return null;
   }
@@ -480,18 +482,6 @@ function DiffChip(props: { file: FileChanges; sessionId?: string }) {
       </Popover.Portal>
     </Popover.Root>
   );
-}
-
-function lastLine(text: string | undefined): string | null {
-  if (!text) {
-    return null;
-  }
-  const lines = text
-    .replace(ANSI, "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  return lines[lines.length - 1] ?? null;
 }
 
 function QuestionSummary(props: { item: MspItem; answers: UserInputAnswer[] | null }) {

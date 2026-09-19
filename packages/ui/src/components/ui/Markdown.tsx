@@ -1,6 +1,8 @@
 import { Check, Copy } from "lucide-react";
 import { Children, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { looksLikeFilePath, type FileTarget } from "../../model/files.js";
+import { STREAM_SAMPLE_MS, streamRenderMode } from "../../model/streaming.js";
+import { useSampledText } from "../../app/sampled.js";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { highlight } from "sugar-high";
@@ -281,13 +283,21 @@ function rehypeWords() {
 
 const STREAM_PLUGINS = [rehypeWords];
 
-/** Prosa do agente: markdown estilo GitHub com blocos de código destacados. `stream` revela cada palavra nova. */
+/** Prosa do agente; textos grandes em streaming atualizam em intervalos, sem animar cada palavra. */
 export const Markdown = memo(function Markdown(props: { text: string; className?: string; stream?: boolean }) {
+  const mode = streamRenderMode(props.text.length, props.stream ?? false);
+  const shown = useSampledText(props.text, mode === "sampled", STREAM_SAMPLE_MS);
+  const animateWords = mode === "words";
+  // ReactMarkdown refaz o parse em cada render. Reutilizar o elemento também é necessário:
+  // somente amostrar o texto ainda faria o parser trabalhar a cada alteração de props.text.
+  const rendered = useMemo(() => (
+    <ReactMarkdown remarkPlugins={PLUGINS} rehypePlugins={animateWords ? STREAM_PLUGINS : undefined} components={COMPONENTS}>
+      {shown}
+    </ReactMarkdown>
+  ), [shown, animateWords]);
   return (
     <div className={cn("prose-helicon", props.className)}>
-      <ReactMarkdown remarkPlugins={PLUGINS} rehypePlugins={props.stream ? STREAM_PLUGINS : undefined} components={COMPONENTS}>
-        {props.text}
-      </ReactMarkdown>
+      {rendered}
     </div>
   );
 });
