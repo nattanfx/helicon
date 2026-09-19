@@ -869,6 +869,50 @@ describe("HeliconController", () => {
     stop();
   });
 
+  it("keeps an unsaved markdown draft in memory across tab and thread switches, and drops it only when the tab is closed", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    const key = "/work/app\nREADME.md";
+    controller.openFile("s1", "README.md");
+    controller.openFile("s1", "notes.md");
+    controller.setFileDraft("/work/app", "README.md", "# rascunho", 100);
+
+    controller.activateFile("s1", "notes.md");
+    assert.equal(controller.store.get().fileDrafts[key]?.content, "# rascunho", "changing tabs does not drop the draft");
+    controller.openThread("s2");
+    assert.equal(controller.store.get().fileDrafts[key]?.content, "# rascunho", "changing threads does not drop the draft");
+    controller.toggleFiles(false);
+    assert.equal(controller.store.get().fileDrafts[key]?.content, "# rascunho", "hiding the files panel does not drop the draft");
+
+    controller.closeFile("s1", "README.md");
+    assert.equal(controller.store.get().fileDrafts[key], undefined, "closing the tab discards the in-memory draft");
+    stop();
+  });
+
+  it("does not write file drafts into prefs, so a new controller starts without them", async () => {
+    const client = new FakeClient();
+    let saved: unknown = null;
+    const fake = platform();
+    fake.savePrefs = (prefs) => {
+      saved = prefs;
+    };
+    const controller = new HeliconController(client, fake);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    controller.setFileDraft("/work/app", "README.md", "# rascunho", 100);
+    controller.setPrefs({ filesOpen: true });
+    await settle();
+    controller.dispose();
+    assert.equal(controller.store.get().fileDrafts["/work/app\nREADME.md"]?.content, "# rascunho");
+    assert.ok(saved && typeof saved === "object");
+    assert.equal("fileDrafts" in (saved as object), false, "prefs are the chrome settings, not unsaved file edits");
+
+    const revived = new HeliconController(client, { ...platform(), loadPrefs: () => saved });
+    assert.deepEqual(revived.store.get().fileDrafts, {}, "a restart has no file drafts to restore");
+    stop();
+  });
+
   it("reloads an open file when Muse edits it", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
