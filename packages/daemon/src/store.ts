@@ -164,6 +164,11 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS title_attempts (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+  state TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_shell_runs_session ON shell_runs(session_id, at);
 CREATE INDEX IF NOT EXISTS idx_usage_at ON usage(at);
@@ -311,6 +316,32 @@ export class HeliconStore {
       .prepare(`INSERT INTO settings (key, value) VALUES ('title', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
       .run(JSON.stringify(next));
     return next;
+  }
+
+  /** Only newly created conversations opt in; migration never enrolls existing history. */
+  allowTitleAttempt(sessionId: string): void {
+    this.db.prepare("INSERT OR IGNORE INTO title_attempts (session_id, state, updated_at) VALUES (?, 'pending', ?)")
+      .run(sessionId, nowIso());
+  }
+
+  titleAttemptState(sessionId: string): string | null {
+    const row = this.db.prepare("SELECT state FROM title_attempts WHERE session_id = ?").get(sessionId) as Row | undefined;
+    return row ? String(row["state"]) : null;
+  }
+
+  /** Atomic persistent claim: a crash or another connection must not repeat a paid call. */
+  claimTitleAttempt(sessionId: string): boolean {
+    return this.db.prepare("UPDATE title_attempts SET state = 'attempted', updated_at = ? WHERE session_id = ? AND state = 'pending'")
+      .run(nowIso(), sessionId).changes === 1;
+  }
+
+  finishTitleAttempt(sessionId: string, state: "succeeded" | "failed" | "unchanged" | "cancelled"): void {
+    this.db.prepare("UPDATE title_attempts SET state = ?, updated_at = ? WHERE session_id = ? AND state = 'attempted'")
+      .run(state, nowIso(), sessionId);
+  }
+
+  cancelPendingTitles(): void {
+    this.db.prepare("UPDATE title_attempts SET state = 'cancelled', updated_at = ? WHERE state IN ('pending', 'attempted')").run(nowIso());
   }
 
   upsertProject(cwd: string): Project {

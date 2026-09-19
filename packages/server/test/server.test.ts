@@ -808,6 +808,66 @@ describe("HeliconServer", () => {
     assert.deepEqual(connection.calls.at(-1), { method: "session/rename", params: { sessionId: "s1", name: "Fix login redirect" } });
   });
 
+  it("does not retry failed, empty or unchanged titles after discovery and restart", async () => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    for (const outcome of ["failed", "empty", "same", "throw"]) {
+      const dir = await mkdtemp(join(tmpdir(), "helicon-title-restart-"));
+      const connection = new FakeConnection();
+      connection.replies.set("session/start", { session: { sessionId: "s1" } });
+      connection.replies.set("session/list", {
+        sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", title: "Fix login" }], nextCursor: null,
+      });
+      connection.replies.set("view/page", {
+        events: [{ method: "item/completed", params: { item: { kind: "userMessage", text: "Fix login" } } }], nextCursor: null,
+      });
+      let calls = 0;
+      const exec: ExecFn = async () => {
+        calls++;
+        if (outcome === "throw") throw new Error("fake CLI failure");
+        return { exitCode: outcome === "failed" ? 1 : 0, stdout: outcome === "same"
+          ? JSON.stringify({ payload_type: "run.terminal.completed", payload: { kind: "run_terminal", terminal: "completed", text: "Fix login" } }) : "" };
+      };
+      const make = async () => {
+        const server = new HeliconServer({ port: 0, dataDir: dir, platform: "linux", musePath: "muse", hostFactory: fakeFactory(connection), exec });
+        const { port } = await server.listen();
+        return { server, base: `http://127.0.0.1:${port}` };
+      };
+      let running = await make();
+      try {
+        await send(running.base, "/api/sessions", { cwd: "/work/proj" });
+        const notify = () => connection.notify("item/completed", {
+          sessionId: "s1", item: { itemId: "u1", kind: "userMessage", text: "Fix login" },
+        });
+        notify(); notify();
+        await waitFor(() => calls === 1, "single attempt");
+        for (let n = 0; n < 3; n++) await send(running.base, "/api/discover", {});
+        await running.server.close();
+        running = await make();
+        for (let n = 0; n < 3; n++) await send(running.base, "/api/discover", {});
+        await send(running.base, "/api/title-settings", { enabled: false }, "PATCH");
+        await send(running.base, "/api/title-settings", { enabled: true }, "PATCH");
+        await new Promise((r) => setTimeout(r, 50));
+        assert.equal(calls, 1, outcome);
+        assert.equal((await get(running.base, "/api/sessions")).sessions[0].title, "Fix login");
+      } finally { await running.server.close(); await rm(dir, { recursive: true, force: true }); }
+    }
+  });
+
+  it("does not spend model calls discovering old echo titles", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", {
+      sessions: [{ sessionId: "old", workspaceRoot: "/work/proj", title: "Old request" }], nextCursor: null,
+    });
+    let calls = 0;
+    const { base } = await start(connection, { exec: async () => { calls++; return { stdout: "", exitCode: 1 }; } });
+    for (let n = 0; n < 3; n++) await send(base, "/api/discover", {});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(calls, 0);
+    assert.equal((await get(base, "/api/sessions")).sessions[0].title, "Old request");
+  });
+
   it("passes the chosen model to the title call", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
@@ -830,7 +890,7 @@ describe("HeliconServer", () => {
     assert.equal((await get(base, "/api/sessions")).sessions[0].title, "Add dark mode everywhere", "garbage output keeps the echo");
   });
 
-  it("stays silent while switched off, and upgrades on re-enable", async () => {
+  it("stays silent while switched off and does not charge for old conversations on re-enable", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
     connection.replies.set("view/page", {
@@ -857,8 +917,33 @@ describe("HeliconServer", () => {
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(calls.length, 0, "no model call while switched off");
     await send(base, "/api/title-settings", { enabled: true }, "PATCH");
-    await waitFor(async () => (await titleOf()) === "Add dark mode", "the upgrade after re-enable");
-    assert.equal(calls.length, 1);
+    await send(base, "/api/discover", {});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(await titleOf(), "Add dark mode everywhere");
+    assert.equal(calls.length, 0);
+  });
+
+  it("disabling then re-enabling discards an in-flight title and does not spend a second call", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    let release!: (result: { stdout: string; exitCode: number }) => void;
+    const gate = new Promise<{ stdout: string; exitCode: number }>((resolve) => { release = resolve; });
+    let calls = 0;
+    const { base } = await start(connection, { exec: async () => { calls++; return gate; } });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("item/completed", {
+      sessionId: "s1", item: { itemId: "u1", kind: "userMessage", text: "Please fix the login screen" },
+    });
+    await waitFor(() => calls === 1, "in-flight title");
+    await send(base, "/api/title-settings", { enabled: false }, "PATCH");
+    await send(base, "/api/title-settings", { enabled: true }, "PATCH");
+    release({ stdout: JSON.stringify({ payload_type: "run.terminal.completed", payload: {
+      kind: "run_terminal", terminal: "completed", text: "Fix login screen",
+    } }), exitCode: 0 });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal((await get(base, "/api/sessions")).sessions[0].title, "Please fix the login screen");
+    assert.equal(calls, 1);
+    assert.equal(connection.calls.some((c) => c.method === "session/rename"), false);
   });
 
   it("lets a rename typed mid-upgrade win over the generated title", async () => {

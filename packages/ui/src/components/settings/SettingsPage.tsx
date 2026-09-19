@@ -206,7 +206,7 @@ export function SettingsPage() {
         <Section title="Títulos das conversas">
           <Row
             label="Gerar títulos"
-            description="Gera nomes para novas conversas com uma chamada ao modelo, em vez de repetir o primeiro pedido, e renomeia até 30 conversas recentes que ainda repetem o pedido. As chamadas consomem seu plano do Muse Code. Desativado, mantém o primeiro pedido como título e não faz chamadas para gerar títulos."
+            description="Faz no máximo uma tentativa de título por conversa criada com esta opção ligada. Consome seu plano do Muse Code. Se falhar, mantém o primeiro pedido como título e não tenta novamente, mesmo após reiniciar. Conversas antigas não são renomeadas automaticamente. Desligar cancela tentativas pendentes; uma chamada já enviada pode consumir cota."
           >
             {titleSettings ? (
               <Toggle

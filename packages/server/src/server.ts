@@ -1365,12 +1365,10 @@ export class HeliconServer {
         }
         patch.modelId = modelId === null ? null : (modelId as string).trim();
       }
-      const wasEnabled = this.store.getTitleSettings().enabled;
       const next = this.store.setTitleSettings(patch);
-      if (!wasEnabled && next.enabled) {
-        for (const sessionId of this.titleUpgradePending) {
-          this.queueTitle(sessionId);
-        }
+      if (!next.enabled) {
+        this.store.cancelPendingTitles();
+        this.titleUpgradePending.clear();
       }
       this.json(res, 200, next);
       return true;
@@ -2022,6 +2020,9 @@ export class HeliconServer {
       createdAt: normalizeIso(raw?.["createdAt"]),
     });
     this.sessionHosts.set(started.sessionId, host.key);
+    if (this.store.getTitleSettings().enabled) {
+      this.store.allowTitleAttempt(started.sessionId);
+    }
     this.liveFor(started.sessionId);
     this.sessionsChanged();
     return this.summary(record, cwd);
@@ -2467,13 +2468,13 @@ export class HeliconServer {
         // A Muse-selected name is never upgraded, even if an echo here owed an attempt.
         this.titleUpgradePending.delete(sessionId);
       }
-      // A stored echo still owes one LLM attempt; anything Muse named, the user typed, with a call
-      // already in flight, or a past upgrade already replaced no longer qualifies, even across restarts.
+      // History can receive a free first-prompt fallback; only opted-in new sessions may call the model.
       const needsUpgrade =
         !this.titleUpgradeActive.has(sessionId) &&
         (stored.titleSource === "placeholder" ||
           (stored.titleSource === "auto" && echoTitle !== null && stored.title === echoTitle));
-      if (needsUpgrade && backfill < TITLE_BACKFILL_LIMIT) {
+      if (needsUpgrade && backfill < TITLE_BACKFILL_LIMIT &&
+          (stored.titleSource === "placeholder" || this.store.titleAttemptState(sessionId) === "pending")) {
         backfill += 1;
         this.titleUpgradePending.add(sessionId);
         this.queueTitle(sessionId);
@@ -2514,6 +2515,11 @@ export class HeliconServer {
           return;
         }
         const events = page.events.map(stripEvent).filter((e): e is NonNullable<typeof e> => e !== null);
+        const latest = this.store.getSession(sessionId);
+        if (!latest || latest.titleSource === "user" || latest.title !== current.title) {
+          this.titleUpgradePending.delete(sessionId);
+          continue;
+        }
         if (current.titleSource === "placeholder") {
           const title = titleFromEvents(events);
           if (!title) {
@@ -2542,7 +2548,8 @@ export class HeliconServer {
     }
     try {
       const settings = this.store.getTitleSettings();
-      if (!settings.enabled) {
+      if (!settings.enabled || this.closed) {
+        this.titleUpgradePending.delete(sessionId);
         return;
       }
       const before = this.store.getSession(sessionId);
@@ -2551,9 +2558,14 @@ export class HeliconServer {
         return;
       }
       this.titleUpgradePending.delete(sessionId);
+      if (!this.store.claimTitleAttempt(sessionId)) {
+        return;
+      }
       this.titleUpgradeActive.add(sessionId);
       try {
         await this.runThreadTitleUpgrade(sessionId, firstText, before.title, settings.modelId);
+      } catch {
+        if (!this.closed) this.store.finishTitleAttempt(sessionId, "failed");
       } finally {
         this.titleUpgradeActive.delete(sessionId);
       }
@@ -2587,19 +2599,32 @@ export class HeliconServer {
       ],
       runtime: await this.museRuntime(),
     });
+    if (this.closed) return;
+    const latest = this.store.getSession(sessionId);
+    if (!this.store.getTitleSettings().enabled || this.store.titleAttemptState(sessionId) !== "attempted" ||
+        latest?.titleSource !== "auto" || latest.title !== expectedTitle) {
+      this.store.finishTitleAttempt(sessionId, "cancelled");
+      return;
+    }
     const result = await this.options.exec(plan.command, plan.args);
-    if (this.closed || result.exitCode !== 0) {
+    if (this.closed) return;
+    if (result.exitCode !== 0) {
+      this.store.finishTitleAttempt(sessionId, "failed");
       return;
     }
     const title = sanitizeThreadTitle(parseExecTitle(result.stdout) ?? "", firstText);
     if (!title || title === expectedTitle) {
+      this.store.finishTitleAttempt(sessionId, title ? "unchanged" : "failed");
       return;
     }
     const current = this.store.getSession(sessionId);
-    if (!current || current.titleSource !== "auto" || current.title !== expectedTitle) {
+    if (!this.store.getTitleSettings().enabled || this.store.titleAttemptState(sessionId) !== "attempted" ||
+        !current || current.titleSource !== "auto" || current.title !== expectedTitle) {
+      this.store.finishTitleAttempt(sessionId, "cancelled");
       return;
     }
     this.store.updateSession(sessionId, { title, titleSource: "auto" });
+    this.store.finishTitleAttempt(sessionId, "succeeded");
     await this.renameInMuse(sessionId, title);
     this.sessionsChanged();
   }
