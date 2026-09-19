@@ -515,6 +515,25 @@ export function QueuedList(props: { sessionId: string; items: LocalEcho[] }) {
   );
 }
 
+/** O silêncio não permite concluir se o Muse parou ou terminou o trabalho. */
+export function StalledNotice(props: { onRetry: () => void; busy: boolean }) {
+  return (
+    <div role="status" className="flex items-start gap-3 rounded-2xl bg-sunken px-4 py-3 shadow-[0_0_0_1px_var(--border)]">
+      <Clock size={15} className="mt-0.5 shrink-0 text-warn" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-fg">Esta conversa está sem atualizações recentes</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Duas recargas automáticas não confirmaram o fim da resposta. O Muse pode ainda estar
+          trabalhando. Você pode recarregar o histórico; isso também permite até duas novas tentativas automáticas.
+        </p>
+      </div>
+      <Button size="sm" onClick={props.onRetry} loading={props.busy}>
+        Recarregar histórico
+      </Button>
+    </div>
+  );
+}
+
 export function ReadOnlyNotice(props: { reason: string | null; onRetry: () => void; busy: boolean }) {
   return (
     <div className="flex items-start gap-3 rounded-2xl bg-sunken px-4 py-3 shadow-[0_0_0_1px_var(--border)]">

@@ -1210,6 +1210,95 @@ describe("stale thread watchdog", () => {
     return { controller, stop, ...watch };
   }
 
+  async function exhaustRecovery(client: FakeClient) {
+    const watch = await startedWatching(client);
+    for (const now of [1_031_000, 1_062_000]) {
+      watch.setNow(now);
+      watch.runStaleChecks();
+      await settle();
+      assert.equal(watch.controller.store.get().threads["s1"]?.stalled, false);
+    }
+    watch.setNow(1_093_000);
+    watch.runStaleChecks();
+    await settle();
+    assert.equal(watch.controller.store.get().threads["s1"]?.stalled, true);
+    return watch;
+  }
+
+  it("shows silence after two reloads and renews the budget only on explicit retry", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    client.transcript = async () => { loads += 1; return runningLoad(); };
+    const { controller, stop, setNow, runStaleChecks } = await exhaustRecovery(client);
+    assert.equal(loads, 3);
+    await controller.loadThread("s1");
+    setNow(1_124_000); runStaleChecks(); await settle();
+    assert.equal(loads, 4, "ordinary reload keeps the automatic budget exhausted");
+    await controller.retryStalledThread("s1");
+    assert.equal(loads, 5);
+    assert.equal(controller.store.get().threads["s1"]?.stalled, true, "unchanged history keeps the notice");
+    for (const now of [1_155_000, 1_186_000, 1_217_000]) {
+      setNow(now); runStaleChecks(); await settle();
+    }
+    assert.equal(loads, 7, "explicit retry allows only two further automatic reloads");
+    assert.equal(client.sent.length, 0, "reading history never sends a prompt");
+    stop();
+  });
+
+  it("clears the silence notice when the stream resumes without renewing the same turn budget", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    client.transcript = async () => { loads += 1; return runningLoad(); };
+    const { controller, stop, setNow, runStaleChecks } = await exhaustRecovery(client);
+    client.handler?.({ type: "msp", sessionId: "s1", method: "item/started", params: {
+      item: { itemId: "resumed", kind: "agentMessage", status: "inProgress", revision: 1 },
+    }, at: 2 });
+    controller.flush();
+    assert.equal(controller.store.get().threads["s1"]?.stalled, false);
+    setNow(1_124_000); runStaleChecks(); await settle();
+    assert.equal(loads, 3);
+    assert.equal(controller.store.get().threads["s1"]?.stalled, true);
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/completed", params: { turnId: "live-1" }, at: 3 });
+    controller.flush();
+    setNow(1_200_000); runStaleChecks();
+    assert.equal(controller.store.get().threads["s1"]?.stalled, false);
+    stop();
+  });
+
+  it("clears the notice when history finishes or moves to another turn", async () => {
+    for (const finished of [false, true]) {
+      const client = new FakeClient();
+      client.transcript = async () => runningLoad();
+      const { controller, stop } = await exhaustRecovery(client);
+      client.transcript = async () => finished ? load() : {
+        ...runningLoad(), msp: { ...runningLoad().msp!, activeTurnId: "live-2" },
+      };
+      await controller.retryStalledThread("s1");
+      assert.equal(controller.store.get().threads["s1"]?.stalled, false);
+      stop();
+    }
+  });
+
+  it("keeps the notice on load failure and clears it on events buffered during retry", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    client.transcript = async () => { throw new Error("offline"); };
+    await controller.retryStalledThread("s1");
+    assert.equal(controller.store.get().threads["s1"]?.load, "error");
+    assert.equal(controller.store.get().threads["s1"]?.stalled, true);
+    let resolve!: (value: TranscriptLoad) => void;
+    client.transcript = () => new Promise(r => { resolve = r; });
+    const retry = controller.retryStalledThread("s1");
+    client.handler?.({ type: "msp", sessionId: "s1", method: "item/started", params: {
+      item: { itemId: "buffered", kind: "agentMessage", status: "inProgress", revision: 1 },
+    }, at: 2 });
+    resolve(runningLoad());
+    await retry;
+    assert.equal(controller.store.get().threads["s1"]?.stalled, false);
+    stop();
+  });
+
   it("cancels recovery on disposal and resumes it when the controller starts again", async () => {
     const client = new FakeClient();
     let loads = 0;

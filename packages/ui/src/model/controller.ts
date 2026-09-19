@@ -168,6 +168,7 @@ function blankThread(): ThreadState {
     fold: emptyFold(),
     attachments: [],
     shellRuns: [],
+    stalled: false,
   };
 }
 
@@ -574,6 +575,12 @@ export class HeliconController {
     }
   }
 
+  /** Uma tentativa manual renova o limite de recuperação automática desse turno. */
+  retryStalledThread(sessionId: string): Promise<void> {
+    this.staleReloads.delete(sessionId);
+    return this.loadThread(sessionId);
+  }
+
   async loadThread(sessionId: string): Promise<void> {
     // A second load while one is in flight would orphan the first load's buffer: every event that
     // streamed into it is dropped, and the thread never shows them (#32: a frozen view on a thread
@@ -614,6 +621,9 @@ export class HeliconController {
             fold,
             attachments: (load.attachments ?? []).map((file) => this.stamp(file)),
             shellRuns: load.shellRuns ?? [],
+            // Sem eventos novos, só manter o aviso se ainda for o mesmo turno.
+            stalled: Boolean(existing?.stalled && fold.activeTurnId &&
+              fold.activeTurnId === existing.fold.activeTurnId && buffered.length === 0),
           },
         },
         sessions: load.session ? { ...s.sessions, [sessionId]: load.session } : s.sessions,
@@ -735,7 +745,7 @@ export class HeliconController {
       for (const [id, events] of batches) {
         const thread = threads[id];
         if (thread) {
-          threads[id] = { ...thread, fold: applyEvents(thread.fold, events) };
+          threads[id] = { ...thread, fold: applyEvents(thread.fold, events), stalled: false };
         }
       }
       return { ...s, threads };
@@ -789,6 +799,9 @@ export class HeliconController {
       const spent = this.staleReloads.get(id);
       const count = spent && spent.turnId === turnId ? spent.count : 0;
       if (count >= STALE_RELOAD_LIMIT) {
+        if (!thread.stalled) {
+          this.setThread(id, { ...thread, stalled: true });
+        }
         continue;
       }
       this.staleReloads.set(id, { turnId, count: count + 1 });
@@ -942,6 +955,7 @@ export class HeliconController {
             fold,
             attachments: [],
             shellRuns: [],
+            stalled: false,
           },
         },
       }));

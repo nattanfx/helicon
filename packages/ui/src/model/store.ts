@@ -169,6 +169,8 @@ export interface ThreadState {
   attachments: AttachmentView[];
   /** Comandos `!` que o Helicon rodou sozinho, que a transcrição do Muse nunca vê. */
   shellRuns: ShellRun[];
+  /** Sem eventos recentes após esgotar as recargas automáticas do turno. */
+  stalled: boolean;
 }
 
 export interface Toast {

@@ -9,7 +9,7 @@ import type { ThreadState } from "../../model/store.js";
 import type { SessionSummary } from "../../types.js";
 import { SidebarToggle, TrafficLightSpacer } from "../chrome.js";
 import { Composer, ComposerFooter } from "../composer/Composer.js";
-import { ApprovalPanel, CloseCard, PlanPanel, QuestionPanel, QueuedList, ReadOnlyNotice } from "../requests/Requests.js";
+import { ApprovalPanel, CloseCard, PlanPanel, QuestionPanel, QueuedList, ReadOnlyNotice, StalledNotice } from "../requests/Requests.js";
 import { GoalPanel } from "./GoalPanel.js";
 import { revealLabel } from "../sidebar/Sidebar.js";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Tip } from "../ui/overlays.js";
@@ -266,6 +266,12 @@ function Dock(props: { session: SessionSummary; thread: ThreadState | null; runn
             reason={thread.readOnlyReason}
             busy={thread.load === "loading"}
             onRetry={() => void controller.loadThread(session.sessionId)}
+          />
+        ) : null}
+        {thread?.stalled && !thread.readOnly && approvals.length === 0 && inputs.length === 0 ? (
+          <StalledNotice
+            busy={thread.load === "loading"}
+            onRetry={() => void controller.retryStalledThread(session.sessionId)}
           />
         ) : null}
         {approvals.map((request, index) => (
