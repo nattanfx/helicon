@@ -8,7 +8,8 @@ import { Tip } from "../ui/overlays.js";
 import { Button, IconButton, Shortcut, Spinner, cn } from "../ui/primitives.js";
 import { RollingDigits } from "../ui/sourced.js";
 
-function isTyping(target: EventTarget | null): boolean {
+/** Em campos de texto, a tecla pertence à edição, não ao atalho de navegação. */
+export function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return Boolean(el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable));
 }

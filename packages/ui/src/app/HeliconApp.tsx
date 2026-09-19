@@ -3,6 +3,7 @@ import type { HeliconClient } from "../client.js";
 import { AddProjectDialog } from "../components/sidebar/AddProjectDialog.js";
 import { BootError, BootScreen, NewThread, Onboarding, Welcome } from "../components/home/Home.js";
 import { CommandPalette } from "../components/palette/CommandPalette.js";
+import { isTyping } from "../components/requests/Requests.js";
 import { SettingsPage } from "../components/settings/SettingsPage.js";
 import { Sidebar } from "../components/sidebar/Sidebar.js";
 import { ThreadView } from "../components/thread/ThreadView.js";
@@ -150,7 +151,7 @@ function GlobalShortcuts() {
       } else if (mod && event.shiftKey && !event.altKey && key === "e") {
         event.preventDefault();
         controller.toggleFiles();
-      } else if (event.altKey && !mod && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      } else if (event.altKey && !mod && (event.key === "ArrowUp" || event.key === "ArrowDown") && !isTyping(event.target)) {
         const state = controller.store.get();
         const ordered = Object.values(state.sessions).sort((a, b) => (a.activityAt < b.activityAt ? 1 : -1));
         if (ordered.length === 0) {

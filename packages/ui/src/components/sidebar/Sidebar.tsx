@@ -326,6 +326,11 @@ const ProjectSection = memo(function ProjectSection(props: {
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
             window.removeEventListener("pointercancel", onUp);
+            // Ao soltar sobre outro projeto, o clique pode ir para a lista, não para este cabeçalho.
+            // Limpa a marca depois desse clique para não bloquear o próximo clique do usuário.
+            setTimeout(() => {
+              didReorder.current = false;
+            }, 0);
             if (!started) {
               return;
             }
