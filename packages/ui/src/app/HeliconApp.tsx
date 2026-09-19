@@ -13,6 +13,7 @@ import { cn, isMac } from "../components/ui/primitives.js";
 import { Toasts } from "../components/ui/Toasts.js";
 import { HeliconController, type Platform } from "../model/controller.js";
 import type { Notifier } from "../model/notify.js";
+import type { AppIdentity } from "../model/identity.js";
 import type { AppUpdater } from "../model/updates.js";
 import { zoomStepFromKey, type ZoomStep } from "../model/zoom-shortcut.js";
 import { ControllerProvider, useApp, useController } from "./context.js";
@@ -31,7 +32,9 @@ export interface HeliconAppProps {
   frame?: WindowFrame;
   /** Presente quando o shell sobrepõe os semáforos do macOS à UI em vez de uma barra de título. */
   titlebarOverlay?: boolean;
-  /** Presente quando o shell pode se atualizar. */
+  /** Presente quando o shell informa versão, canal e compilação. */
+  identity?: AppIdentity;
+  /** Presente quando o shell pode se atualizar. Este fork não passa um. */
   updater?: AppUpdater;
   /** Como este shell mostra uma notificação de sistema; ausente onde não pode. */
   notifier?: Notifier;
@@ -41,6 +44,9 @@ export interface HeliconAppProps {
 export function HeliconApp(props: HeliconAppProps) {
   const [controller] = useState(() => {
     const created = new HeliconController(props.client, props.platform);
+    if (props.identity) {
+      created.attachIdentity(props.identity);
+    }
     if (props.updater) {
       created.attachUpdater(props.updater);
     }
@@ -49,6 +55,11 @@ export function HeliconApp(props: HeliconAppProps) {
     }
     return created;
   });
+  useEffect(() => {
+    if (props.identity) {
+      controller.attachIdentity(props.identity);
+    }
+  }, [controller, props.identity]);
   useEffect(() => controller.start(), [controller]);
   return (
     <ControllerProvider controller={controller}>

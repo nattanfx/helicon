@@ -11,6 +11,7 @@ import {
   FolderOpen,
   FolderPlus,
   GitBranch,
+  Info,
   Layers,
   ListFilter,
   Monitor,
@@ -48,6 +49,11 @@ import {
   type ProjectGroup,
   type SidebarEntry,
 } from "../../model/status.js";
+import {
+  identityHeading,
+  identitySummary,
+  type AppIdentity,
+} from "../../model/identity.js";
 import { CODE_THEMES, DEFAULT_SIDEBAR_WIDTH, type CodeTheme } from "../../model/store.js";
 import type { UpdateState } from "../../model/updates.js";
 import type { ProjectView, SessionSummary } from "../../types.js";
@@ -819,6 +825,7 @@ function GroupByMenu() {
 function SidebarFooter() {
   const controller = useController();
   const env = useApp((s) => s.env);
+  const identity = useApp((s) => s.identity);
   const connection = useApp((s) => s.connection);
   const discovering = useApp((s) => s.discovering);
   const hostError = useApp((s) => s.hostError);
@@ -830,7 +837,8 @@ function SidebarFooter() {
         : env?.platform === "win32" && env.runtime !== "native"
           ? { dot: "bg-ok", text: `Muse no WSL (${env.defaultDistro ?? "Ubuntu"})` }
           : { dot: "bg-ok", text: "Muse pronto" };
-  const detail = hostError ?? (env?.musePath ? `${env.musePath}  |  Helicon ${env.version}` : `Helicon ${env?.version ?? ""}`);
+  const heliconLabel = identity ? identityHeading(identity) : `Helicon ${env?.version ?? ""}`;
+  const detail = hostError ?? (env?.musePath ? `${env.musePath}  |  ${heliconLabel}` : heliconLabel);
   return (
     <div className="flex h-11 shrink-0 items-center gap-0.5 border-t border-line px-2">
       <Tip label={detail} side="top" align="start">
@@ -855,7 +863,7 @@ function SidebarFooter() {
           <Settings size={14} />
         </IconButton>
       </Tip>
-      <UpdatesMenu />
+      {identity ? <IdentityMenu identity={identity} /> : <UpdatesMenu />}
       <ThemeMenu />
     </div>
   );
@@ -883,6 +891,38 @@ export function updateSummary(updates: UpdateState, autoUpdate: boolean, paused:
     default:
       return paused ? "Atualizações pausadas" : autoUpdate ? "O Helicon se atualiza sozinho" : "Atualizações automáticas desligadas";
   }
+}
+
+function IdentityMenu(props: { identity: AppIdentity }) {
+  const { identity } = props;
+  return (
+    <Menu>
+      <Tip label={identityHeading(identity)} side="top">
+        <MenuTrigger asChild>
+          <IconButton label="Versão" className="relative">
+            <Info size={15} />
+          </IconButton>
+        </MenuTrigger>
+      </Tip>
+      <MenuContent side="top" align="start" className="w-[290px]">
+        <div className="px-2 pt-1.5 pb-2">
+          <p className="text-sm font-medium text-fg">{identityHeading(identity)}</p>
+          <p className="mt-0.5 text-xs text-muted">{identitySummary(identity)}</p>
+        </div>
+        <MenuSeparator />
+        <div className="px-2 py-1.5">
+          <a
+            href={identity.updateUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block rounded-md px-1 py-1 text-xs text-accent-text hover:underline"
+          >
+            Como atualizar este fork
+          </a>
+        </div>
+      </MenuContent>
+    </Menu>
+  );
 }
 
 /** Atualizações do app desktop. O ícone do rodapé mostra um ponto enquanto uma nova versão espera. */

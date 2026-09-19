@@ -15,7 +15,7 @@ O fluxo gera um arquivo de teste retido por 14 dias. Não cria tag, release nem 
 
 1. Feche a pt4 e abra **Helicon Teste** pelo menu Iniciar.
 2. Confirme que a página inicial aparece sem pedir senha e sem erro de credencial.
-3. Abra Configurações, clique em Voltar e abra Uso. Confirme que a navegação funciona.
+3. Abra Configurações, clique em Voltar e abra Uso. Confirme que a navegação funciona. Em Configurações, a seção Versão deve mostrar **Helicon Teste**, o identificador `app.helicon.desktop.test` e um link de atualização manual para o workflow Windows Teste — sem botões de verificar/baixar automaticamente.
 4. Crie uma pasta descartável, por exemplo `Documentos/Helicon-Teste`, com um arquivo `exemplo.txt`. Adicione essa pasta como projeto no aplicativo. Se a interface disponibilizar o explorador de arquivos sem conversa, abra o arquivo e confira o conteúdo; caso contrário, registre este item como pendente.
 5. Feche o aplicativo completamente e abra **Helicon Teste** outra vez. Confira que abre normalmente e mantém seu projeto de teste.
 

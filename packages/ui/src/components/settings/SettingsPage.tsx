@@ -1,9 +1,16 @@
-import { ArrowDownToLine, ArrowLeft, Minus, Plus, RefreshCw, RotateCw } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, Minus, Plus, RefreshCw, RotateCw, SquareArrowOutUpRight } from "lucide-react";
 import { Switch } from "radix-ui";
 import { useState, type ReactNode } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
 import { modelDisplayName } from "../../model/format.js";
+import {
+  channelDescription,
+  identityHeading,
+  identitySummary,
+  manualUpdateHint,
+  shortBuild,
+} from "../../model/identity.js";
 import { CODE_THEMES, ZOOM_MAX, ZOOM_MIN, type CodeTheme, type GroupBy, type ThemePref } from "../../model/store.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
@@ -102,6 +109,7 @@ export function SettingsPage() {
   const models = useApp((s) => s.models);
   const titleSettings = useApp((s) => s.titleSettings);
   const env = useApp((s) => s.env);
+  const identity = useApp((s) => s.identity);
   const updates = useApp((s) => s.updates);
   const bypassAll = useApp((s) => s.bypassAll);
   const armedThreads = useApp((s) => s.bypassThreads.length);
@@ -278,6 +286,29 @@ export function SettingsPage() {
           </Row>
         </Section>
 
+        <Section title="Versão">
+          <Row
+            label={identity ? identityHeading(identity) : `Helicon ${env?.version ?? ""}`.trim() || "Helicon"}
+            description={identity ? identitySummary(identity) : "Versão informada pelo servidor local."}
+          />
+          {identity ? <Row label="Canal" description={channelDescription(identity.channel)} /> : null}
+          {identity?.identifier ? <Fact label="Identificador" value={identity.identifier} /> : null}
+          {identity?.build ? <Fact label="Compilação" value={shortBuild(identity.build)} /> : null}
+          <Row
+            label="Atualização"
+            description={identity ? manualUpdateHint(identity.channel) : "Este fork não atualiza sozinho. Use o instalador publicado no repositório GitHub deste fork."}
+          >
+            <a
+              href={identity?.updateUrl ?? "https://github.com/nattanfx/helicon"}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md bg-raised px-2.5 text-sm font-medium text-fg shadow-btn hover:bg-hover"
+            >
+              <SquareArrowOutUpRight size={13} /> Abrir página de atualização
+            </a>
+          </Row>
+        </Section>
+
         {updates ? (
           <Section title="Atualizações">
             <Row label={`Helicon ${updates.currentVersion ?? ""}`} description={updateSummary(updates, prefs.autoUpdate, prefs.updatesPaused, now)}>
@@ -308,7 +339,7 @@ export function SettingsPage() {
         ) : null}
 
         <Section title="Ambiente">
-          <Fact label="Helicon" value={env?.version ?? "Desconhecido"} />
+          <Fact label="Servidor" value={env?.version ?? "Desconhecido"} />
           <Fact label="Plataforma" value={env?.platform ?? "Desconhecido"} />
           {env?.platform === "win32" ? (
             <Fact

@@ -13,6 +13,7 @@ import type {
   TitleSettings,
 } from "../types.js";
 import type { EchoAttachment, ThreadFold } from "./fold.js";
+import type { AppIdentity } from "./identity.js";
 import type { UpdateState } from "./updates.js";
 
 /** Um store externo minúsculo: snapshots imutáveis mais ouvintes de mudança, lidos via hooks estilo useSyncExternalStore. */
@@ -90,7 +91,7 @@ export interface Prefs {
   lastProject: string | null;
   /** O uso de dados do nível de colaborador foi reconhecido. */
   contributorAck: boolean;
-  /** App desktop: baixar novas versões conforme aparecem e instalá-las ao fechar. */
+  /** App desktop: baixar novas versões conforme aparecem e instalá-las ao fechar. Este fork deixa desligado. */
   autoUpdate: boolean;
   /** App desktop: sem checar, baixar ou instalar atualizações até retomar. */
   updatesPaused: boolean;
@@ -143,7 +144,7 @@ export function defaultPrefs(now = new Date().toISOString()): Prefs {
     effort: null,
     lastProject: null,
     contributorAck: false,
-    autoUpdate: true,
+    autoUpdate: false,
     updatesPaused: false,
     zoom: 1,
     filesOpen: false,
@@ -212,8 +213,10 @@ export interface AppState {
   hostError: string | null;
   /** Um prompt que não pôde ser enviado, esperando o composer que mostra `key` recebê-lo de volta, arquivos e tudo. */
   draftHandoff: { key: string; text: string; attachments?: OutgoingAttachment[]; previews?: EchoAttachment[] } | null;
-  /** Atualizações do app; nulo quando o shell não pode se atualizar, como num navegador. */
+  /** Atualizações do app; nulo quando o shell não se atualiza sozinho, como neste fork e no navegador. */
   updates: UpdateState | null;
+  /** Versão, canal e compilação deste pacote; nulo até o shell informar. */
+  identity: AppIdentity | null;
   /** As skills de cada pasta de projeto para o menu de barra do composer, carregadas quando preciso pela primeira vez. */
   skills: Record<string, SkillsState>;
   /** Um seletor do composer que um comando de barra abriu, como `/model`. */
@@ -270,6 +273,7 @@ export function initialState(prefs: Prefs): AppState {
     fileTreeOpen: {},
     draftHandoff: null,
     updates: null,
+    identity: null,
     skills: {},
     picker: null,
   };

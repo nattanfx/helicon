@@ -8,4 +8,5 @@ export { HeliconController, browserPlatform, hashToRoute, routeToHash, type Plat
 export { HeliconApp, type HeliconAppProps } from "./app/HeliconApp.js";
 export type { WindowFrame } from "./app/frame.js";
 export * from "./model/updates.js";
+export * from "./model/identity.js";
 export * from "./model/notify.js";

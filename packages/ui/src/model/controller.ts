@@ -64,6 +64,7 @@ import {
   type ThreadState,
   type Toast,
 } from "./store.js";
+import type { AppIdentity } from "./identity.js";
 import { NotificationManager, type Notifier } from "./notify.js";
 import { UpdateManager, type AppUpdater } from "./updates.js";
 
@@ -344,6 +345,11 @@ export class HeliconController {
       return;
     }
     this.setPrefs({ notifications: true });
+  }
+
+  /** Versão e canal informados pelo shell, sem consultar um atualizador. */
+  attachIdentity(identity: AppIdentity): void {
+    this.update((s) => ({ ...s, identity }));
   }
 
   /** O atualizador do shell desktop. Chame antes de `start`; um navegador nunca tem um. */

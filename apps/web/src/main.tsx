@@ -1,11 +1,11 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { HeliconApp } from "@helicon/ui";
+import { HeliconApp, type AppIdentity } from "@helicon/ui";
 import { Connect } from "./Connect.js";
 import { desktopFrame, titlebarOverlay, bindDesktopZoom } from "./frame.js";
+import { resolveAppIdentity } from "./identity.js";
 import { bindDesktopLinks } from "./links.js";
 import { appNotifier } from "./notifier.js";
-import { desktopUpdater } from "./updater.js";
 import { WebHeliconClient } from "./webClient.js";
 import "./theme.css";
 
@@ -23,6 +23,10 @@ if (!root) {
  */
 function Root() {
   const [connecting, setConnecting] = useState(window.location.hash === "#/connect");
+  const [identity, setIdentity] = useState<AppIdentity | undefined>();
+  useEffect(() => {
+    void resolveAppIdentity().then(setIdentity, () => undefined);
+  }, []);
   if (connecting) {
     return (
       <Connect
@@ -39,7 +43,7 @@ function Root() {
       client={new WebHeliconClient()}
       frame={desktopFrame()}
       titlebarOverlay={titlebarOverlay()}
-      updater={desktopUpdater()}
+      identity={identity}
       notifier={appNotifier()}
     />
   );

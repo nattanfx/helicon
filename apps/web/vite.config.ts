@@ -8,6 +8,8 @@ const uiEntry = fileURLToPath(new URL("../../packages/ui/src/index.ts", import.m
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // HELICON_BUILD is the git SHA from CI. Empty locally; the UI never invents one.
+  envPrefix: ["VITE_", "HELICON_"],
   resolve: {
     alias: { "@helicon/ui": uiEntry },
     dedupe: ["react", "react-dom"],

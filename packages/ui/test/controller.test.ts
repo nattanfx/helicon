@@ -1467,4 +1467,22 @@ describe("stale thread watchdog", () => {
     assert.equal(loads, 2, "a reload never piles onto a load already in flight");
     stop();
   });
+
+  it("records shell identity without attaching an updater", () => {
+    const controller = new HeliconController(new FakeClient(), platform());
+    assert.equal(controller.store.get().identity, null);
+    assert.equal(controller.store.get().updates, null);
+    assert.equal(controller.store.get().prefs.autoUpdate, false);
+    controller.attachIdentity({
+      version: "0.12.4",
+      channel: "teste",
+      productName: "Helicon Teste",
+      identifier: "app.helicon.desktop.test",
+      build: "7b98355",
+      updateUrl: "https://github.com/nattanfx/helicon/actions/workflows/test-windows.yml",
+    });
+    assert.equal(controller.store.get().identity?.channel, "teste");
+    assert.equal(controller.store.get().identity?.version, "0.12.4");
+    assert.equal(controller.store.get().updates, null);
+  });
 });
