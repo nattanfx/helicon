@@ -886,7 +886,7 @@ export function updateSummary(updates: UpdateState, autoUpdate: boolean, paused:
       return "Não foi possível verificar atualizações";
     case "upToDate": {
       const ago = updates.checkedAt ? relativeTime(new Date(updates.checkedAt).toISOString(), now) : "";
-      return paused ? "Em dia. Atualizações pausadas." : ago && ago !== "now" ? `Em dia, verificado há ${ago}` : "Em dia";
+      return paused ? "Em dia. Atualizações pausadas." : ago && ago !== "agora" ? `Em dia, verificado há ${ago}` : "Em dia";
     }
     default:
       return paused ? "Atualizações pausadas" : autoUpdate ? "O Helicon se atualiza sozinho" : "Atualizações automáticas desligadas";
