@@ -13,6 +13,9 @@ import {
   formatTokens,
   lastLine,
   mergeDiffLines,
+  CONTRIBUTOR_LABEL,
+  CONTRIBUTOR_NOTICE,
+  contributorChoiceLabel,
   modelDisplayName,
   relativeTime,
   shortenPath,
@@ -306,5 +309,9 @@ describe("aprovações e modelos", () => {
     assert.equal(contributor?.isDefault, true);
     assert.equal(models.find((m) => m.modelId === "muse-spark-1.3")?.contributor, false);
     assert.equal(modelDisplayName("muse-spark-1.3-contributor"), "muse-spark-1.3");
+    assert.equal(contributorChoiceLabel("muse-spark-1.3-contributor"), "muse-spark-1.3 · Contribuidor");
+    assert.equal(CONTRIBUTOR_LABEL, "Contribuidor");
+    assert.match(CONTRIBUTOR_NOTICE, /melhoria do produto/);
+    assert.doesNotMatch(CONTRIBUTOR_NOTICE, /Meta|preço|USD/i);
   });
 });

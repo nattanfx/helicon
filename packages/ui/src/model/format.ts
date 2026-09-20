@@ -701,3 +701,15 @@ export function modelDisplayName(modelId: string | null | undefined): string {
   }
   return modelId.replace(/-contributor$/i, "");
 }
+
+/**
+ * Rótulo único do nível Contributor do catálogo. Não inventa política da Meta nem preço:
+ * só o que `ModelOption.contributor` significa no tipo.
+ */
+export const CONTRIBUTOR_LABEL = "Contribuidor";
+export const CONTRIBUTOR_NOTICE =
+  "Pedidos e respostas podem ser usados para melhoria do produto.";
+
+export function contributorChoiceLabel(modelId: string): string {
+  return `${modelDisplayName(modelId)} · ${CONTRIBUTOR_LABEL}`;
+}

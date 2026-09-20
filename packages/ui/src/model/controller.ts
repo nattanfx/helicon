@@ -18,7 +18,7 @@ import type {
   ViewEvent,
   WorkflowAction,
 } from "../types.js";
-import { describeTool, modelDisplayName } from "./format.js";
+import { CONTRIBUTOR_NOTICE, describeTool, modelDisplayName } from "./format.js";
 import { fileKey, fileTarget, type LineRange } from "./files.js";
 import { goalPrompt } from "./goal.js";
 import {
@@ -1418,11 +1418,7 @@ export class HeliconController {
     const model = this.state.models.find((m) => m.modelId === modelId);
     if (model?.contributor && !this.state.prefs.contributorAck) {
       this.setPrefs({ contributorAck: true });
-      this.toast(
-        "info",
-        "Modelo de colaborador selecionado",
-        model.description ?? "Prompts e saídas em modelos de colaborador podem ser usados para melhoria do produto.",
-      );
+      this.toast("info", "Modelo de contribuidor selecionado", CONTRIBUTOR_NOTICE);
     }
     this.setPrefs({ defaultModelId: modelId });
     const route = this.state.route;

@@ -3,7 +3,7 @@ import { Switch } from "radix-ui";
 import { useState, type ReactNode } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
-import { modelDisplayName } from "../../model/format.js";
+import { CONTRIBUTOR_NOTICE, contributorChoiceLabel, modelDisplayName } from "../../model/format.js";
 import {
   channelDescription,
   identityHeading,
@@ -179,8 +179,8 @@ export function SettingsPage() {
                   value: model.modelId,
                   // As variantes de contribuidor compartilham um nome de exibição, então sem isto a lista
                   // ofereceria a mesma palavra duas vezes e não haveria como dizer qual botão é qual.
-                  label: model.contributor ? `${modelDisplayName(model.modelId)} · Contribuidor` : modelDisplayName(model.modelId),
-                  hint: model.contributor ? "Nível contribuidor: pedidos e respostas podem ser usados para melhoria do produto." : undefined,
+                  label: model.contributor ? contributorChoiceLabel(model.modelId) : modelDisplayName(model.modelId),
+                  hint: model.contributor ? CONTRIBUTOR_NOTICE : undefined,
                 }))}
                 onChange={(value) => void controller.setModel(value as string)}
               />
@@ -237,8 +237,8 @@ export function SettingsPage() {
                     { value: null, label: "Padrão do Muse" },
                     ...models.map((model) => ({
                       value: model.modelId as string | null,
-                      label: model.contributor ? `${modelDisplayName(model.modelId)} · Colaborador` : modelDisplayName(model.modelId),
-                      hint: model.contributor ? "Nível de colaborador: pedidos e respostas podem ser usados para melhoria do produto." : undefined,
+                      label: model.contributor ? contributorChoiceLabel(model.modelId) : modelDisplayName(model.modelId),
+                      hint: model.contributor ? CONTRIBUTOR_NOTICE : undefined,
                     })),
                   ]}
                   onChange={(value) => void controller.setTitleModel(value)}

@@ -89,7 +89,7 @@ export interface Prefs {
   effort: ReasoningEffort | null;
   /** O último projeto em que uma nova conversa foi iniciada. */
   lastProject: string | null;
-  /** O uso de dados do nível de colaborador foi reconhecido. */
+  /** O uso de dados do nível de contribuidor foi reconhecido. */
   contributorAck: boolean;
   /** App desktop: baixar novas versões conforme aparecem e instalá-las ao fechar. Este fork deixa desligado. */
   autoUpdate: boolean;

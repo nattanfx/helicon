@@ -32,7 +32,7 @@ import { CostMeter } from "./CostPanel.js";
 import { Popover, Slider, Switch } from "radix-ui";
 import { shallowEqual, useApp, useController } from "../../app/context.js";
 import { useSampled } from "../../app/sampled.js";
-import { basename, formatDuration, formatSpeed, formatTokens, modelDisplayName } from "../../model/format.js";
+import { basename, CONTRIBUTOR_LABEL, CONTRIBUTOR_NOTICE, formatDuration, formatSpeed, formatTokens, modelDisplayName } from "../../model/format.js";
 import { matchSlash, parseSlash, resolveSlash, slashCommands, type SlashCommand } from "../../model/slash.js";
 import type { SkillsState } from "../../model/store.js";
 import { lastTurnSpeed, streamingSpeed } from "../../model/usage.js";
@@ -511,8 +511,8 @@ const ToolbarTrigger = forwardRef<
 
 /** Marca modelos de nível contribuidor. Nos menus a descrição da opção explica; no resto, uma dica explica. */
 function ContributorBadge(props: { tip?: boolean }) {
-  const badge = <span className="shrink-0 rounded-[5px] bg-warn-soft px-1 py-px text-2xs font-medium text-warn-text">Contribuidor</span>;
-  return props.tip ? <Tip label="Suas conversas podem ser usadas para melhorar os produtos da Meta">{badge}</Tip> : badge;
+  const badge = <span className="shrink-0 rounded-[5px] bg-warn-soft px-1 py-px text-2xs font-medium text-warn-text">{CONTRIBUTOR_LABEL}</span>;
+  return props.tip ? <Tip label={CONTRIBUTOR_NOTICE}>{badge}</Tip> : badge;
 }
 
 /** Para que lado um menu da caixa abre: para longe da borda da tela contra a qual ela está. */
@@ -561,7 +561,7 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
                 badge={m.contributor ? <ContributorBadge /> : null}
                 description={
                   m.contributor
-                    ? "Pedidos e respostas podem ser usados para melhorar os produtos da Meta."
+                    ? CONTRIBUTOR_NOTICE
                     : m.contextLimit
                       ? `contexto de ${formatTokens(m.contextLimit)} tokens`
                       : undefined

@@ -1,6 +1,6 @@
 import { Popover } from "radix-ui";
 import { shallowEqual, useApp } from "../../app/context.js";
-import { formatTokens, modelDisplayName } from "../../model/format.js";
+import { CONTRIBUTOR_LABEL, formatTokens, modelDisplayName } from "../../model/format.js";
 import { formatCost } from "../../model/pricing.js";
 import { sessionUsage } from "../../model/usage.js";
 import { Tip, FLOATING } from "../ui/overlays.js";
@@ -93,7 +93,7 @@ function CostPanel(props: { sessionId: string }) {
                   <p className="truncate text-fg">
                     {modelDisplayName(model.modelId)}
                     {option?.contributor || /contributor/i.test(model.modelId) ? (
-                      <span className="ml-1.5 rounded bg-active px-1 py-px align-middle text-2xs font-medium text-muted">colaborador</span>
+                      <span className="ml-1.5 rounded bg-active px-1 py-px align-middle text-2xs font-medium text-muted">{CONTRIBUTOR_LABEL}</span>
                     ) : null}
                   </p>
                   <p className="text-2xs text-subtle tabular-nums">

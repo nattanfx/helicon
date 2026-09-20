@@ -2,7 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
-import { basename, formatDuration, formatTokens, modelDisplayName, relativeTime } from "../../model/format.js";
+import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, relativeTime } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
 import { fillUsageDays, USAGE_RANGES } from "../../model/usage-range.js";
 import type { ModelOption, UsageBucket, UsageReport, UsageThread } from "../../types.js";
@@ -109,7 +109,7 @@ export function UsagePage() {
             <Threads view={view} />
             <p className="text-xs text-subtle">
               Os preços são as tarifas publicadas pela Meta por milhão de tokens, ou o preço de catálogo do próprio modelo quando ele
-              tem um. Níveis de colaborador são cobrados à parte e marcados como tal.
+              tem um. Níveis de contribuidor são cobrados à parte e marcados como tal.
             </p>
           </div>
         )}
@@ -345,7 +345,7 @@ function Models(props: { view: UsageView }) {
                 <span className="size-2 shrink-0 rounded-[3px]" style={{ background: SERIES[index % SERIES.length] }} aria-hidden="true" />
                 <span className="truncate text-sm text-fg">{modelDisplayName(model.modelId)}</span>
                 {model.contributor ? (
-                  <span className="shrink-0 rounded bg-active px-1 py-px text-2xs font-medium text-muted">colaborador</span>
+                  <span className="shrink-0 rounded bg-active px-1 py-px text-2xs font-medium text-muted">{CONTRIBUTOR_LABEL}</span>
                 ) : null}
               </div>
               <span className="shrink-0 text-sm text-fg tabular-nums">{formatCost(model.cost, view.currency)}</span>
