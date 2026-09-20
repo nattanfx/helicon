@@ -51,7 +51,7 @@ function messageOf(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return typeof error === "string" && error ? error : "Something went wrong.";
+  return typeof error === "string" && error ? error : "Algo deu errado.";
 }
 
 /** Tauri throws this when latest.json exists but this OS is not in it yet (Windows publishes first). */

@@ -173,6 +173,14 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(fold.turns["t1"]?.startedAt, 1000);
   });
 
+  it("mostra um fallback em português quando o erro do turno vem sem mensagem", () => {
+    const fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1000 },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed", error: { kind: "error" } }, at: 5000 },
+    ]);
+    assert.equal(fold.turns["t1"]?.error?.message, "A mensagem falhou.");
+  });
+
   it("drops the local echo once the prompt comes back from the stream", () => {
     let fold = addEcho(emptyFold(), { localId: "l1", text: "hello  there", turnId: null, disposition: "sending", createdAt: 1 });
     fold = updateEcho(fold, "l1", { turnId: "t1", disposition: "started" });

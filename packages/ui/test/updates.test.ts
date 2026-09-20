@@ -110,4 +110,15 @@ describe("app updates", () => {
     assert.equal(manager.current.status, "upToDate");
     assert.equal(manager.current.checkedAt, 1000);
   });
+
+  it("mostra um fallback em português quando o erro não traz texto", async () => {
+    const fake = new FakeUpdater();
+    fake.check = async () => {
+      throw null;
+    };
+    const { manager } = setup({ autoUpdate: true, paused: false }, fake);
+    await manager.check();
+    assert.equal(manager.current.status, "error");
+    assert.equal(manager.current.error, "Algo deu errado.");
+  });
 });

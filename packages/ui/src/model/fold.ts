@@ -454,7 +454,7 @@ function applyOne(draft: Draft, event: ViewEvent): void {
         error: error
           ? {
               kind: str(error["kind"]) ?? "error",
-              message: str(error["message"]) ?? "The turn failed.",
+              message: str(error["message"]) ?? "A mensagem falhou.",
               retryable: error["retryable"] === true,
             }
           : undefined,
