@@ -7,6 +7,19 @@ export const MAX_FILE_DRAFT_CHARS = 1_000_000;
 export const FILE_DRAFTS_LEAVE_MESSAGE =
   "Há edições de arquivo que ainda não foram gravadas no disco. Fechar não as escreve nos arquivos; a cópia recuperável fica neste aparelho se o armazenamento local estiver intacto.";
 
+export const FILE_DRAFTS_LIMIT_MESSAGE =
+  "A edição passou do tamanho da cópia local (1.000.000 de caracteres) e não foi guardada. Ela continua nesta sessão; fechar ou reiniciar pode perdê-la.";
+
+export const FILE_DRAFTS_LEAVE_UNSAFE_MESSAGE =
+  "Há edições de arquivo que ainda não foram gravadas no disco. Algumas não têm cópia guardada neste aparelho (muito grandes ou armazenamento falhou); fechar pode perdê-las.";
+
+/** Chaves com edição grande demais para a cópia local; a omissão nunca é sucesso. */
+export function oversizedFileDraftKeys(drafts: Record<string, FileDraft>): string[] {
+  return Object.entries(drafts)
+    .filter(([key, draft]) => isFileKey(key) && typeof draft.content === "string" && draft.content.length > MAX_FILE_DRAFT_CHARS)
+    .map(([key]) => key);
+}
+
 function isFileKey(key: string): boolean {
   const split = key.indexOf("\n");
   return split > 0 && split < key.length - 1;

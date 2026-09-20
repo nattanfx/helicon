@@ -69,6 +69,9 @@ import {
 import {
   FILE_DRAFTS_KEY,
   FILE_DRAFTS_LEAVE_MESSAGE,
+  FILE_DRAFTS_LEAVE_UNSAFE_MESSAGE,
+  FILE_DRAFTS_LIMIT_MESSAGE,
+  oversizedFileDraftKeys,
   parseFileDrafts,
   serializeFileDrafts,
 } from "./fileDrafts.js";
@@ -2505,8 +2508,16 @@ export class HeliconController {
       this.platform.cancel(this.draftSaveHandle);
       this.draftSaveHandle = null;
     }
+    const omitted = oversizedFileDraftKeys(this.state.fileDrafts);
     try {
       this.platform.saveFileDrafts?.(serializeFileDrafts(this.state.fileDrafts));
+      if (omitted.length > 0) {
+        if (!this.draftsPersistFailed) {
+          this.draftsPersistFailed = true;
+          this.toast("info", "Cópia recuperável não foi guardada", FILE_DRAFTS_LIMIT_MESSAGE);
+        }
+        return;
+      }
       this.draftsPersistFailed = false;
     } catch {
       if (!this.draftsPersistFailed) {
@@ -2528,7 +2539,8 @@ export class HeliconController {
     if (!dialog) {
       return false;
     }
-    return this.platform.confirmLeave?.(FILE_DRAFTS_LEAVE_MESSAGE) ?? true;
+    const unsafe = this.draftsPersistFailed || oversizedFileDraftKeys(this.state.fileDrafts).length > 0;
+    return this.platform.confirmLeave?.(unsafe ? FILE_DRAFTS_LEAVE_UNSAFE_MESSAGE : FILE_DRAFTS_LEAVE_MESSAGE) ?? true;
   }
 
   fileUrl(cwd: string, path: string): string {

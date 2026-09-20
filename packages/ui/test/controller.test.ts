@@ -999,6 +999,39 @@ describe("HeliconController", () => {
     stop();
   });
 
+  it("avisa que a cópia não foi guardada quando a edição passa do limite", async () => {
+    const client = new FakeClient();
+    const fake = platform();
+    const guards: Array<(options: { dialog: boolean }) => boolean> = [];
+    const asked: string[] = [];
+    let stored: unknown = {};
+    fake.saveFileDrafts = (drafts) => {
+      stored = drafts;
+    };
+    fake.onBeforeClose = (handler) => {
+      guards.push(handler);
+      return () => {};
+    };
+    fake.confirmLeave = (message) => {
+      asked.push(message);
+      return true;
+    };
+    const controller = new HeliconController(client, fake);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    const huge = "a".repeat(1_000_001);
+    controller.setFileDraft("/work/app", "big.md", huge, 100);
+    guards[0]?.({ dialog: true });
+    assert.match(asked[0] ?? "", /não têm cópia guardada/);
+    controller.dispose();
+    assert.equal(controller.store.get().fileDrafts["/work/app\nbig.md"]?.content, huge, "a edição grande continua na sessão");
+    assert.deepEqual(stored, {}, "a cópia omitida não é tratada como sucesso persistido");
+    assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /não foi guardada/i);
+    assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /1\.000\.000/);
+    stop();
+  });
+
   it("reloads an open file when Muse edits it", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
