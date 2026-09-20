@@ -45,8 +45,12 @@ it("keeps network access working with a token and explicitly allowed browser ori
   const url = `http://127.0.0.1:${port}/api/health`;
   const headers = { origin: "https://helicon.example", authorization: "Bearer network-test-secret" };
   assert.equal((await fetch(url, { headers })).status, 200);
-  assert.equal((await fetch(url, { headers: { ...headers, authorization: "Bearer wrong" } })).status, 401);
-  assert.equal((await fetch(url, { headers: { ...headers, origin: "https://evil.example" } })).status, 403);
+  const denied = await fetch(url, { headers: { ...headers, authorization: "Bearer wrong" } });
+  assert.equal(denied.status, 401);
+  assert.equal(((await denied.json()) as { kind: string }).kind, "unauthorized");
+  const blocked = await fetch(url, { headers: { ...headers, origin: "https://evil.example" } });
+  assert.equal(blocked.status, 403);
+  assert.equal(((await blocked.json()) as { kind: string }).kind, "originForbidden");
 });
 
 it("bootstraps desktop once and authenticates pages, assets, API and events with its cookie", async (t) => {

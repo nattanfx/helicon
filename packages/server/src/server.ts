@@ -181,6 +181,7 @@ class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly kind: string | null = null,
   ) {
     super(message);
   }
@@ -340,7 +341,7 @@ export { deriveTitle };
 
 function errorInfo(error: unknown): { status: number; message: string; kind: string | null } {
   if (error instanceof HttpError) {
-    return { status: error.status, message: error.message, kind: null };
+    return { status: error.status, message: error.message, kind: error.kind };
   }
   const kind = typeof (error as { kind?: unknown })?.kind === "string" ? ((error as { kind: string }).kind) : null;
   const message = error instanceof Error ? error.message : String(error);
@@ -882,14 +883,14 @@ export class HeliconServer {
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!this.trustedHost(req)) {
-      this.fail(res, 403, "This daemon does not answer that host.");
+      this.fail(res, 403, "This daemon does not answer that host.", "hostForbidden");
       return;
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
     const method = (req.method ?? "GET").toUpperCase();
     if (!this.cors(req, res)) {
-      this.fail(res, 403, "This daemon does not answer that origin.");
+      this.fail(res, 403, "This daemon does not answer that origin.", "originForbidden");
       return;
     }
     if (method === "OPTIONS") {
@@ -902,7 +903,7 @@ export class HeliconServer {
         method !== "GET" || this.foreignOrigin(req) || !this.desktopBootstrap ||
         !this.matchesSecret(url.searchParams.get("key"), this.desktopBootstrap)
       ) {
-        this.fail(res, 401, "Invalid or expired desktop launch.");
+        this.fail(res, 401, "Invalid or expired desktop launch.", "desktopAuthExpired");
         return;
       }
       this.desktopBootstrap = null;
@@ -917,7 +918,7 @@ export class HeliconServer {
     }
     // The handshake is how a browser earns its cookie, so it cannot itself demand one.
     if (!(method === "POST" && path === "/api/auth") && !this.authorized(req)) {
-      this.fail(res, 401, "Missing or invalid token.");
+      this.fail(res, 401, "Missing or invalid token.", "unauthorized");
       return;
     }
     if (path.startsWith("/api/")) {
@@ -956,7 +957,7 @@ export class HeliconServer {
         return true;
       }
       if (!this.matchesSecret(str(body["token"]), this.options.token)) {
-        throw new HttpError(401, "That token does not match this daemon.");
+        throw new HttpError(401, "That token does not match this daemon.", "unauthorized");
       }
       // The stream cannot carry a header, so the cookie is what it authenticates with. Cross-site
       // cookies are only accepted over HTTPS, which is why a remote daemon needs TLS or a tunnel.

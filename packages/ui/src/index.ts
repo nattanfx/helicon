@@ -12,3 +12,4 @@ export * from "./model/identity.js";
 export * from "./model/approvals.js";
 export * from "./model/fileDrafts.js";
 export * from "./model/notify.js";
+export * from "./model/errors.js";

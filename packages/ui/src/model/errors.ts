@@ -1,3 +1,5 @@
+import { HeliconError, errorKind, errorMessage } from "../client.js";
+
 /**
  * Falhas que deixam uma conversa travada em vez de falhar uma única vez. Cada mensagem envia a conversa
  * inteira, então um pedaço do histórico que o provedor não aceita faz todas as mensagens seguintes falharem
@@ -90,6 +92,59 @@ function isQuotaError(kind: string | null | undefined, message: string): boolean
     return false;
   }
   return /429|quota exhausted|rate[\s_-]?limit/i.test(message);
+}
+
+export interface AuthErrorCopy {
+  title: string;
+  explanation: string;
+}
+
+/**
+ * Falhas de acesso ao daemon. Prefere `kind` estável; frases inglesas só se o kind vier vazio.
+ * Nunca devolve o token. Tentar de novo com o mesmo segredo errado não resolve.
+ */
+export function authErrorCopy(kind: string | null | undefined, status: number, message: string): AuthErrorCopy | null {
+  const text = message.trim();
+  const desktop = kind === "desktopAuthExpired" || (kind == null && /expired desktop launch/i.test(text));
+  if (desktop) {
+    return {
+      title: "Abertura do aplicativo expirada",
+      explanation:
+        "Esta abertura do Helicon expirou. Feche e abra de novo pelo atalho. Tentar de novo nesta tela não gera uma abertura nova.",
+    };
+  }
+  const unauthorized =
+    kind === "unauthorized" || (kind == null && status === 401 && /token|unauthorized|not match this daemon/i.test(text));
+  if (unauthorized) {
+    return {
+      title: "Acesso recusado",
+      explanation:
+        "O servidor não aceitou o acesso. Confira o token. Tentar de novo com o mesmo valor errado não resolve. O Helicon não mostra o segredo aqui.",
+    };
+  }
+  const host = kind === "hostForbidden" || (kind == null && /does not answer that host/i.test(text));
+  if (host) {
+    return {
+      title: "Host não permitido",
+      explanation: "Este servidor recusou o nome de host da requisição. Isso não se resolve repetindo a mesma chamada.",
+    };
+  }
+  const origin = kind === "originForbidden" || (kind == null && /does not answer that origin/i.test(text));
+  if (origin) {
+    return {
+      title: "Origem não permitida",
+      explanation:
+        "Este servidor recusou a origem desta página. Inicie-o com --allow-origin para ela. Repetir a mesma origem recusada não resolve.",
+    };
+  }
+  return null;
+}
+
+export function userFacingError(error: unknown): string {
+  const kind = errorKind(error);
+  const status = error instanceof HeliconError ? error.status : 0;
+  const message = errorMessage(error);
+  return authErrorCopy(kind, status, message)?.explanation ?? sanitizeErrorDetail(message);
 }
 
 /** Tira tokens e ids de pedido do detalhe técnico; o usuário não precisa deles na tela. */

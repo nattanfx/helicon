@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { authErrorCopy } from "@helicon/ui";
 import { currentDaemon, setDaemon } from "./webClient.js";
 
 /** Reduz um endereço digitado a algo acessível, ou null quando não é um endereço. */
@@ -43,12 +44,12 @@ export function Connect(props: { onDone: () => void }) {
         body: JSON.stringify({ token: token.trim() || null }),
         credentials: "include",
       });
-      if (response.status === 401) {
-        setError("O servidor não aceitou o token.");
-        return;
-      }
+      const body = (await response.json().catch(() => ({}))) as { error?: unknown; kind?: unknown };
+      const kind = typeof body.kind === "string" ? body.kind : null;
+      const raw = typeof body.error === "string" ? body.error : "";
+      const auth = authErrorCopy(kind, response.status, raw);
       if (!response.ok) {
-        setError(`O servidor respondeu com ${response.status}.`);
+        setError(auth?.explanation ?? `O servidor respondeu com ${response.status}.`);
         return;
       }
       setDaemon({ base: origin, token: token.trim() || null });

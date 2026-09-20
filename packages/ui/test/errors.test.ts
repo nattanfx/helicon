@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeErrorDetail, stuckThread, turnErrorCopy } from "../src/model/errors.js";
+import { HeliconError } from "../src/client.js";
+import { authErrorCopy, sanitizeErrorDetail, stuckThread, turnErrorCopy, userFacingError } from "../src/model/errors.js";
 
 describe("conversas travadas", () => {
   it("sabe que uma imagem ilegível envenena todas as próximas mensagens", () => {
@@ -70,5 +71,34 @@ describe("falha de cota", () => {
     assert.match(copy.technical ?? "", /request_id=…/);
     assert.doesNotMatch(copy.technical ?? "", /tok_live_123|sk-test|abc-secret/);
     assert.equal(sanitizeErrorDetail("Bearer abc def"), "Bearer … def");
+  });
+});
+
+describe("falha de autenticação", () => {
+  it("explains unauthorized and expired desktop launch without echoing the secret", () => {
+    const denied = authErrorCopy("unauthorized", 401, "Missing or invalid token.");
+    assert.equal(denied?.title, "Acesso recusado");
+    assert.match(denied?.explanation ?? "", /mesmo valor errado não resolve/);
+    assert.doesNotMatch(denied?.explanation ?? "", /test-secret|Bearer /);
+
+    const expired = authErrorCopy("desktopAuthExpired", 401, "Invalid or expired desktop launch.");
+    assert.match(expired?.explanation ?? "", /atalho/);
+    assert.match(expired?.explanation ?? "", /não gera uma abertura nova/);
+
+    const legacy = authErrorCopy(null, 401, "That token does not match this daemon.");
+    assert.equal(legacy?.title, "Acesso recusado");
+  });
+
+  it("explains host and origin refusals, and does not treat a file 403 as auth", () => {
+    assert.equal(authErrorCopy("hostForbidden", 403, "This daemon does not answer that host.")?.title, "Host não permitido");
+    assert.equal(authErrorCopy("originForbidden", 403, "This daemon does not answer that origin.")?.title, "Origem não permitida");
+    assert.equal(authErrorCopy(null, 403, "That file is outside this project."), null);
+  });
+
+  it("surfaces auth copy from a HeliconError without putting the token in the text", () => {
+    const error = new HeliconError("Missing or invalid token. Bearer tok_live_secret", 401, "unauthorized");
+    const text = userFacingError(error);
+    assert.match(text, /não aceitou o acesso/);
+    assert.doesNotMatch(text, /tok_live_secret/);
   });
 });

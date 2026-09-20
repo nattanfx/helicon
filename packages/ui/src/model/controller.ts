@@ -1,4 +1,5 @@
 import { errorKind, errorMessage, type HeliconClient } from "../client.js";
+import { userFacingError } from "./errors.js";
 import type {
   ApprovalMode,
   ApprovalRequest,
@@ -486,7 +487,7 @@ export class HeliconController {
       void this.loadTitleSettings();
       void this.loadPlanUsage();
     } catch (error) {
-      this.update((s) => ({ ...s, boot: "error", bootError: errorMessage(error) }));
+      this.update((s) => ({ ...s, boot: "error", bootError: userFacingError(error) }));
     }
   }
 
@@ -549,7 +550,7 @@ export class HeliconController {
       }
     } catch (error) {
       if (!silent) {
-        this.toast("error", "Não foi possível atualizar as conversas a partir do Muse", errorMessage(error));
+        this.toast("error", "Não foi possível atualizar as conversas a partir do Muse", userFacingError(error));
       }
     } finally {
       this.update((s) => ({ ...s, discovering: false }));
@@ -1034,7 +1035,7 @@ export class HeliconController {
       }
       return true;
     } catch (error) {
-      this.toast("error", "Não foi possível começar uma conversa", errorMessage(error));
+      this.toast("error", "Não foi possível começar uma conversa", userFacingError(error));
       return false;
     } finally {
       this.setBusy("start", false);
@@ -1108,7 +1109,7 @@ export class HeliconController {
         this.inflightSends.delete(key);
         return this.sendToThread(sessionId, text, options, true);
       }
-      this.toast("error", "Mensagem não enviada", errorMessage(error));
+      this.toast("error", "Mensagem não enviada", userFacingError(error));
       return false;
     } finally {
       this.inflightSends.delete(key);
@@ -1133,7 +1134,7 @@ export class HeliconController {
     try {
       await this.client.interruptTurn(sessionId, this.state.threads[sessionId]?.fold.activeTurnId ?? undefined);
     } catch (error) {
-      this.toast("error", "Não foi possível parar a mensagem", errorMessage(error));
+      this.toast("error", "Não foi possível parar a mensagem", userFacingError(error));
     } finally {
       this.setBusy(key, false);
     }
@@ -1148,7 +1149,7 @@ export class HeliconController {
       await this.client.unqueueTurn(sessionId, echo.turnId);
       this.patchFold(sessionId, (f) => removeEcho(f, echo.localId));
     } catch (error) {
-      this.toast("info", "Essa mensagem já começou", errorMessage(error));
+      this.toast("info", "Essa mensagem já começou", userFacingError(error));
     }
   }
 
@@ -1343,7 +1344,7 @@ export class HeliconController {
         this.toast("info", "O pedido mudou", "Revise o pedido atualizado e decida de novo.");
       } else {
         this.restoreApproval(request);
-        this.toast("error", "Decisão não enviada", errorMessage(error));
+        this.toast("error", "Decisão não enviada", userFacingError(error));
       }
     } finally {
       this.setBusy(key, false);
@@ -1380,7 +1381,7 @@ export class HeliconController {
       if (kind === "userInputAlreadySettled" || kind === "userInputNotFound") {
         this.dropInput(request);
       } else {
-        this.toast("error", failure, errorMessage(error));
+        this.toast("error", failure, userFacingError(error));
       }
     } finally {
       this.setBusy(key, false);
@@ -1434,7 +1435,7 @@ export class HeliconController {
       await this.client.setSessionModel(route.sessionId, modelId);
     } catch (error) {
       this.patchMeta(route.sessionId, { modelId: previous });
-      this.toast("error", "Não foi possível trocar de modelo", errorMessage(error));
+      this.toast("error", "Não foi possível trocar de modelo", userFacingError(error));
     }
   }
 
@@ -1450,7 +1451,7 @@ export class HeliconController {
       await this.client.setApprovalMode(route.sessionId, mode);
     } catch (error) {
       this.patchMeta(route.sessionId, { approvalMode: previous });
-      this.toast("error", "Não foi possível alterar as permissões", errorMessage(error));
+      this.toast("error", "Não foi possível alterar as permissões", userFacingError(error));
     }
   }
 
@@ -1466,7 +1467,7 @@ export class HeliconController {
     } catch (error) {
       if (rev === this.titleSettingsRev) {
         this.update((s) => ({ ...s, titleSettings: previous }));
-        this.toast("error", "Não foi possível alterar os títulos das conversas", errorMessage(error));
+        this.toast("error", "Não foi possível alterar os títulos das conversas", userFacingError(error));
       }
     }
   }
@@ -1483,7 +1484,7 @@ export class HeliconController {
     } catch (error) {
       if (rev === this.titleSettingsRev) {
         this.update((s) => ({ ...s, titleSettings: previous }));
-        this.toast("error", "Não foi possível alterar o modelo dos títulos", errorMessage(error));
+        this.toast("error", "Não foi possível alterar o modelo dos títulos", userFacingError(error));
       }
     }
   }
@@ -1504,7 +1505,7 @@ export class HeliconController {
       // Uma conversa ainda não carregada assume o esforço com sua próxima mensagem.
       const kind = errorKind(error);
       if (kind !== "sessionNotLoaded" && kind !== "sessionStreamMismatch") {
-        this.toast("error", "Não foi possível alterar o esforço desta conversa", errorMessage(error));
+        this.toast("error", "Não foi possível alterar o esforço desta conversa", userFacingError(error));
       }
     });
   }
@@ -1547,7 +1548,7 @@ export class HeliconController {
       }
     } catch (error) {
       this.upsertSession(current);
-      this.toast("error", "Não foi possível renomear a conversa", errorMessage(error));
+      this.toast("error", "Não foi possível renomear a conversa", userFacingError(error));
     }
   }
 
@@ -1573,7 +1574,7 @@ export class HeliconController {
       });
     } catch (error) {
       this.upsertSession(current);
-      this.toast("error", "Não foi possível arquivar a conversa", errorMessage(error));
+      this.toast("error", "Não foi possível arquivar a conversa", userFacingError(error));
     }
   }
 
@@ -1594,7 +1595,7 @@ export class HeliconController {
       }
     } catch (error) {
       this.upsertSession(current);
-      this.toast("error", settled ? "Não foi possível resolver a conversa" : "Não foi possível trazer a conversa de volta", errorMessage(error));
+      this.toast("error", settled ? "Não foi possível resolver a conversa" : "Não foi possível trazer a conversa de volta", userFacingError(error));
     }
   }
 
@@ -1608,7 +1609,7 @@ export class HeliconController {
       const saved = await this.client.updateSession(session.sessionId, { archived: false });
       this.upsertSession(saved ?? { ...session, archived: false });
     } catch (error) {
-      this.toast("error", "Não foi possível restaurar a conversa", errorMessage(error));
+      this.toast("error", "Não foi possível restaurar a conversa", userFacingError(error));
     }
   }
 
@@ -1620,7 +1621,7 @@ export class HeliconController {
     try {
       await this.client.revealPath(path);
     } catch (error) {
-      this.toast("error", "Não foi possível abrir a pasta", errorMessage(error));
+      this.toast("error", "Não foi possível abrir a pasta", userFacingError(error));
     }
   }
 
@@ -1641,7 +1642,7 @@ export class HeliconController {
       this.newThread(added.cwd);
       return true;
     } catch (error) {
-      this.toast("error", "Não foi possível clonar o repositório", errorMessage(error));
+      this.toast("error", "Não foi possível clonar o repositório", userFacingError(error));
       return false;
     } finally {
       this.setBusy("cloneProject", false);
@@ -1664,7 +1665,7 @@ export class HeliconController {
       this.newThread(added.cwd);
       return true;
     } catch (error) {
-      this.toast("error", "Não foi possível adicionar essa pasta", errorMessage(error));
+      this.toast("error", "Não foi possível adicionar essa pasta", userFacingError(error));
       return false;
     } finally {
       this.setBusy("addProject", false);
@@ -1691,7 +1692,7 @@ export class HeliconController {
       await this.client.setProjectOrder(next.map((p) => p.cwd));
     } catch (error) {
       this.update((s) => ({ ...s, projects: current }));
-      this.toast("error", "Não foi possível reordenar os projetos", errorMessage(error));
+      this.toast("error", "Não foi possível reordenar os projetos", userFacingError(error));
     }
   }
 
@@ -1714,7 +1715,7 @@ export class HeliconController {
       });
     } catch (error) {
       void this.refresh();
-      this.toast("error", "Não foi possível remover o projeto", errorMessage(error));
+      this.toast("error", "Não foi possível remover o projeto", userFacingError(error));
     }
   }
 
@@ -1723,7 +1724,7 @@ export class HeliconController {
       await this.client.discover(cwd);
       await this.refresh();
     } catch (error) {
-      this.toast("error", "Não foi possível atualizar esse projeto", errorMessage(error));
+      this.toast("error", "Não foi possível atualizar esse projeto", userFacingError(error));
     }
   }
 
@@ -1736,7 +1737,7 @@ export class HeliconController {
       await this.client.setPinned(cwd, !project.pinned);
       await this.refresh();
     } catch (error) {
-      this.toast("error", "Não foi possível atualizar o projeto", errorMessage(error));
+      this.toast("error", "Não foi possível atualizar o projeto", userFacingError(error));
     }
   }
 
@@ -1800,7 +1801,7 @@ export class HeliconController {
         loadedAt: this.platform.now(),
       });
     } catch (error) {
-      this.setSkills(cwd, { status: "error", skills: current?.skills ?? [], error: errorMessage(error), loadedAt: this.platform.now() });
+      this.setSkills(cwd, { status: "error", skills: current?.skills ?? [], error: userFacingError(error), loadedAt: this.platform.now() });
     }
   }
 
@@ -1835,7 +1836,7 @@ export class HeliconController {
         this.addShellRun(sessionId, await this.client.runShellProxy(sessionId, command));
         return true;
       } catch (error) {
-        this.toast("error", "Comando não executado", errorMessage(error));
+        this.toast("error", "Comando não executado", userFacingError(error));
         return false;
       } finally {
         this.setBusy(key, false);
@@ -2021,7 +2022,7 @@ export class HeliconController {
       try {
         body = await this.client.skillBody(cwd ?? "", skill.id);
       } catch (error) {
-        this.toast("error", `Não foi possível carregar /${skill.name}`, errorMessage(error));
+        this.toast("error", `Não foi possível carregar /${skill.name}`, userFacingError(error));
         return false;
       }
     }
@@ -2057,7 +2058,7 @@ export class HeliconController {
       if (errorKind(error) === "methodNotFound") {
         return this.sendToThread(sessionId, goalPrompt(objective), { ...options, displayText: typed }, false);
       }
-      this.toast("error", "Não foi possível definir a meta", errorMessage(error));
+      this.toast("error", "Não foi possível definir a meta", userFacingError(error));
       return false;
     }
   }
@@ -2076,7 +2077,7 @@ export class HeliconController {
       if (!options.quiet) {
         // O Muse recusa um verbo que o estado atual da meta não permite, como pausar uma que já está bloqueada.
         const stale = /invalid_goal_state|missing_goal/.test(errorMessage(error));
-        this.toast(stale ? "info" : "error", GOAL_FAILURES[action], stale ? "A meta mudou desde que este painel foi atualizado. Tente de novo quando ele alcançar." : errorMessage(error));
+        this.toast(stale ? "info" : "error", GOAL_FAILURES[action], stale ? "A meta mudou desde que este painel foi atualizado. Tente de novo quando ele alcançar." : userFacingError(error));
       }
       return false;
     } finally {
@@ -2097,7 +2098,7 @@ export class HeliconController {
       await this.client.task(sessionId, action, taskId);
       return true;
     } catch (error) {
-      this.toast("error", TASK_FAILURES[action], errorMessage(error));
+      this.toast("error", TASK_FAILURES[action], userFacingError(error));
       return false;
     } finally {
       this.setBusy(key, false);
@@ -2114,7 +2115,7 @@ export class HeliconController {
       await this.client.subagent(sessionId, action, subagentId, body ? { body } : {});
       return true;
     } catch (error) {
-      this.toast("error", "O subagente não aceitou isso", errorMessage(error));
+      this.toast("error", "O subagente não aceitou isso", userFacingError(error));
       return false;
     } finally {
       this.setBusy(key, false);
@@ -2138,7 +2139,7 @@ export class HeliconController {
     } catch (error) {
       // Uma tentativa obsoleta significa que o filho avançou desde que este cartão foi desenhado; a próxima atualização da tela o redesenha.
       const stale = errorKind(error) === "stale_attempt";
-      this.toast(stale ? "info" : "error", stale ? "Esse agente já avançou" : "O workflow não aceitou isso", stale ? "Tente de novo quando o cartão atualizar." : errorMessage(error));
+      this.toast(stale ? "info" : "error", stale ? "Esse agente já avançou" : "O workflow não aceitou isso", stale ? "Tente de novo quando o cartão atualizar." : userFacingError(error));
       return false;
     } finally {
       this.setBusy(key, false);
@@ -2179,7 +2180,7 @@ export class HeliconController {
       this.toast(
         "error",
         "Não foi possível ramificar a conversa",
-        errorKind(error) === "forkBoundaryInvalid" ? "O Muse não encontrou um ponto nesta conversa para ramificá-la." : errorMessage(error),
+        errorKind(error) === "forkBoundaryInvalid" ? "O Muse não encontrou um ponto nesta conversa para ramificá-la." : userFacingError(error),
       );
       return false;
     } finally {
@@ -2199,7 +2200,7 @@ export class HeliconController {
       this.toast("info", "Compactando o contexto", "O Muse vai resumir as mensagens anteriores para liberar a janela de contexto.");
       return true;
     } catch (error) {
-      this.toast("error", "Não foi possível compactar o contexto", errorMessage(error));
+      this.toast("error", "Não foi possível compactar o contexto", userFacingError(error));
       return false;
     }
   }
@@ -2253,7 +2254,7 @@ export class HeliconController {
     try {
       await this.client.openFolder(cwd, target);
     } catch (error) {
-      this.toast("error", target === "editor" ? "Não foi possível abrir o VS Code" : "Não foi possível abrir a pasta", errorMessage(error));
+      this.toast("error", target === "editor" ? "Não foi possível abrir o VS Code" : "Não foi possível abrir a pasta", userFacingError(error));
     }
   }
 
@@ -2465,7 +2466,7 @@ export class HeliconController {
           run: () => void this.saveFile(cwd, path, true),
         });
       } else {
-        this.toast("error", "Não foi possível salvar o arquivo", errorMessage(error));
+        this.toast("error", "Não foi possível salvar o arquivo", userFacingError(error));
       }
       return null;
     } finally {
@@ -2542,7 +2543,7 @@ export class HeliconController {
     try {
       await this.client.openFileExternally(cwd, path);
     } catch (error) {
-      this.toast("error", "Não foi possível abrir o arquivo", errorMessage(error));
+      this.toast("error", "Não foi possível abrir o arquivo", userFacingError(error));
     }
   }
 
