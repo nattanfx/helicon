@@ -43,16 +43,16 @@ describe("conversas travadas", () => {
 });
 
 describe("falha de cota", () => {
-  it("explains a rateLimit kind in Portuguese and does not offer retry as a fix", () => {
-    const copy = turnErrorCopy("rateLimit", "quota", true);
+  it("explains a rateLimit kind with quota evidence in Portuguese and does not offer retry as a fix", () => {
+    const copy = turnErrorCopy("rateLimit", "API error 429: Subscription quota exhausted.", true);
     assert.equal(copy.title, "A cota do plano acabou");
     assert.match(copy.explanation, /não restaura a cota/);
     assert.doesNotMatch(copy.explanation, /tente de novo agora/i);
     assert.equal(copy.offerRetry, false);
-    assert.equal(copy.technical, "quota");
+    assert.match(copy.technical ?? "", /Subscription quota exhausted/);
   });
 
-  it("recognizes a 429 sentence when the host omitted the kind, and keeps other kinds faithful", () => {
+  it("recognizes a 429 quota sentence when the host omitted the kind, and keeps other kinds faithful", () => {
     const legacy = turnErrorCopy(null, "API error 429: Subscription quota exhausted.", true);
     assert.equal(legacy.offerRetry, false);
     assert.equal(legacy.title, "A cota do plano acabou");
@@ -71,6 +71,48 @@ describe("falha de cota", () => {
     assert.match(copy.technical ?? "", /request_id=…/);
     assert.doesNotMatch(copy.technical ?? "", /tok_live_123|sk-test|abc-secret/);
     assert.equal(sanitizeErrorDetail("Bearer abc def"), "Bearer … def");
+  });
+});
+
+describe("limite temporário (REV4)", () => {
+  it("does not treat a generic 429 as exhausted quota and respects retryable", () => {
+    const limited = turnErrorCopy(null, "429 Too many requests. Retry after 5 seconds.", true);
+    assert.equal(limited.title, "Limite temporário atingido");
+    assert.doesNotMatch(limited.explanation, /cota do plano acabou/i);
+    assert.match(limited.explanation, /temporário/);
+    assert.match(limited.explanation, /Não houve nova tentativa automática/);
+    assert.equal(limited.offerRetry, true);
+    assert.match(limited.technical ?? "", /Retry after 5 seconds/);
+
+    const waiting = turnErrorCopy(null, "429 Too many requests. Retry after 5 seconds.", false);
+    assert.equal(waiting.title, "Limite temporário atingido");
+    assert.equal(waiting.offerRetry, false);
+  });
+
+  it("treats rateLimit without quota evidence as a temporary limit, not quota", () => {
+    const bare = turnErrorCopy("rateLimit", "quota", true);
+    assert.equal(bare.title, "Limite temporário atingido");
+    assert.equal(bare.offerRetry, true);
+
+    const genericRate = turnErrorCopy("rateLimit", "rate limit exceeded, slow down", true);
+    assert.equal(genericRate.title, "Limite temporário atingido");
+    assert.equal(genericRate.offerRetry, true);
+  });
+
+  it("keeps an unknown kind faithful and handles an error without a code", () => {
+    const unknown = turnErrorCopy("fileChanged", "429 Too many requests. Retry after 5 seconds.", true);
+    assert.equal(unknown.title, "Esta mensagem falhou");
+    assert.equal(unknown.offerRetry, true);
+    assert.equal(unknown.technical, null);
+
+    const noCode = turnErrorCopy(null, "Something broke", true);
+    assert.equal(noCode.title, "Esta mensagem falhou");
+    assert.equal(noCode.offerRetry, true);
+    assert.equal(noCode.technical, null);
+
+    const noCodeWaiting = turnErrorCopy(undefined, "Something broke", false);
+    assert.equal(noCodeWaiting.title, "Esta mensagem falhou");
+    assert.equal(noCodeWaiting.offerRetry, false);
   });
 });
 

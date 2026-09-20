@@ -80,18 +80,46 @@ export interface TurnErrorCopy {
   offerRetry: boolean;
 }
 
-/** Kind estável que o Muse envia em `turn/completed` quando o plano estoura. */
+/** Kind estável que o Muse envia em `turn/completed` quando há limite de uso. */
 const QUOTA_KIND = "rateLimit";
 
+/**
+ * Evidência específica de cota esgotada. "429" ou "rate limit" sozinhos não bastam:
+ * indicam apenas limitação, que pode ser temporária.
+ */
+const QUOTA_EVIDENCE =
+  /quota\s*(exhausted|exceeded)|exhaust\w*[^a-z0-9_]+.*quota|exceed\w*[^a-z0-9_]+.*quota|quota\s+.*exhaust|quota\s+.*exceed|subscription\s+quota|plan\s+quota|out\s+of\s+(quota|credits)|billing/i;
+
+/** Sinais de limitação temporária ou indeterminada, sem afirmar que a cota acabou. */
+const RATE_EVIDENCE = /\b429\b|rate[\s_-]?limit|too many requests|retry\s*after|throttl|slow\s*down/i;
+
+function hasQuotaEvidence(message: string): boolean {
+  return QUOTA_EVIDENCE.test(message);
+}
+
+function hasRateEvidence(message: string): boolean {
+  return RATE_EVIDENCE.test(message);
+}
+
 function isQuotaError(kind: string | null | undefined, message: string): boolean {
+  // Outro código estável continua fiel: não inferir cota pelo texto.
+  if (kind && kind !== "error" && kind !== QUOTA_KIND) {
+    return false;
+  }
+  return hasQuotaEvidence(message);
+}
+
+function isRateLimited(kind: string | null | undefined, message: string): boolean {
+  // Outro código estável continua fiel: não inferir limite pelo texto.
+  if (kind && kind !== "error" && kind !== QUOTA_KIND) {
+    return false;
+  }
+  // O kind já sinaliza limitação; a cota foi excluída acima.
   if (kind === QUOTA_KIND) {
     return true;
   }
   // Servidores/hosts antigos: só a frase, e só se não houver outro código estável.
-  if (kind && kind !== "error") {
-    return false;
-  }
-  return /429|quota exhausted|rate[\s_-]?limit/i.test(message);
+  return hasRateEvidence(message);
 }
 
 export interface AuthErrorCopy {
@@ -196,6 +224,7 @@ export function sanitizeErrorDetail(message: string): string {
 
 /**
  * Como explicar uma mensagem falha. Cota nunca oferece “tentar de novo” como se isso restaurasse o plano.
+ * Limite temporário respeita `retryable` para a tentativa manual, sem reenvio automático.
  * Falhas de histórico (`stuckThread`) são tratadas à parte no cartão.
  */
 export function turnErrorCopy(kind: string | null | undefined, message: string, retryable: boolean): TurnErrorCopy {
@@ -207,6 +236,15 @@ export function turnErrorCopy(kind: string | null | undefined, message: string, 
         "O Muse recusou esta mensagem porque o limite do plano foi atingido. Tentar de novo agora não restaura a cota. Confira Uso para ver a janela atual, ou espere a renovação.",
       technical: text,
       offerRetry: false,
+    };
+  }
+  if (isRateLimited(kind, message)) {
+    return {
+      title: "Limite temporário atingido",
+      explanation:
+        "O Muse recusou esta mensagem por limite temporário, não pela cota do plano. Espere um pouco antes de tentar de novo; repetir na mesma hora pode falhar igual. Não houve nova tentativa automática.",
+      technical: text,
+      offerRetry: retryable,
     };
   }
   return {
