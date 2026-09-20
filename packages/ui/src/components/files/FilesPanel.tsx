@@ -21,6 +21,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { shallowEqual, useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
 import { errorKind, errorMessage } from "../../client.js";
+import { fileDraftConflicts } from "../../model/fileDrafts.js";
 import { basenameOf, dirnameOf, fileKey, fileTarget, formatFileSize, isMarkdownPath, type LineRange } from "../../model/files.js";
 import { DEFAULT_FILES_WIDTH } from "../../model/store.js";
 import type { FileContent, FileEntry } from "../../types.js";
@@ -421,6 +422,7 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
 
   const crumbs = props.path.split("/");
   const editable = markdown && file?.kind === "markdown" && !file.truncated;
+  const conflict = Boolean(draft && file && fileDraftConflicts(draft, file.mtimeMs));
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-line pr-1.5 pl-3">
@@ -458,6 +460,16 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
           </Tip>
         ) : null}
       </div>
+      {conflict ? (
+        <div className="flex items-start gap-2 border-b border-warn-line bg-warn-soft px-3 py-2">
+          <p className="min-w-0 flex-1 text-xs text-pretty text-fg">
+            Este arquivo mudou no disco desde que a edição começou. Nada foi gravado por cima. Recarregar mostra o disco e descarta a cópia daqui.
+          </p>
+          <Button size="sm" variant="ghost" className="h-6 shrink-0 px-2 text-xs" onClick={() => controller.reloadFile(props.cwd, props.path)}>
+            Recarregar
+          </Button>
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-auto">
         {error ? (
           <FileProblem

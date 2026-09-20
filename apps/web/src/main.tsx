@@ -6,6 +6,7 @@ import { desktopFrame, titlebarOverlay, bindDesktopZoom } from "./frame.js";
 import { resolveAppIdentity } from "./identity.js";
 import { bindDesktopLinks } from "./links.js";
 import { appNotifier } from "./notifier.js";
+import { appPlatform } from "./platform.js";
 import { WebHeliconClient } from "./webClient.js";
 import "./theme.css";
 
@@ -41,6 +42,7 @@ function Root() {
   return (
     <HeliconApp
       client={new WebHeliconClient()}
+      platform={appPlatform()}
       frame={desktopFrame()}
       titlebarOverlay={titlebarOverlay()}
       identity={identity}

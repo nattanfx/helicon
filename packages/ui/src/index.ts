@@ -10,4 +10,5 @@ export type { WindowFrame } from "./app/frame.js";
 export * from "./model/updates.js";
 export * from "./model/identity.js";
 export * from "./model/approvals.js";
+export * from "./model/fileDrafts.js";
 export * from "./model/notify.js";

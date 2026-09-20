@@ -55,6 +55,7 @@ import {
   type AppState,
   type CodeTheme,
   type ComposerPicker,
+  type FileDraft,
   type FilePanel,
   type GroupBy,
   type Prefs,
@@ -64,6 +65,12 @@ import {
   type ThreadState,
   type Toast,
 } from "./store.js";
+import {
+  FILE_DRAFTS_KEY,
+  FILE_DRAFTS_LEAVE_MESSAGE,
+  parseFileDrafts,
+  serializeFileDrafts,
+} from "./fileDrafts.js";
 import type { AppIdentity } from "./identity.js";
 import { NotificationManager, type Notifier } from "./notify.js";
 import { UpdateManager, type AppUpdater } from "./updates.js";
@@ -80,6 +87,16 @@ export interface Platform {
   cancel(handle: unknown): void;
   /** Se a janela tem a atenção do usuário; nada é anunciado para quem já está olhando. */
   focused(): boolean;
+  /** Cópias recuperáveis de edições de arquivo, fora das prefs. Ausente: começa vazio. */
+  loadFileDrafts?(): unknown;
+  saveFileDrafts?(drafts: Record<string, FileDraft>): void;
+  /** True = pode sair. Usado no fechamento da janela do desktop, não no `beforeunload` do navegador. */
+  confirmLeave?(message: string): boolean;
+  /**
+   * `dialog: true` no fechar do desktop (pode perguntar). `dialog: false` no unload do navegador
+   * (só o aviso genérico). True = deixar fechar.
+   */
+  onBeforeClose?(handler: (options: { dialog: boolean }) => boolean): () => void;
 }
 
 const PREFS_KEY = "helicon.prefs.v1";
@@ -122,6 +139,33 @@ export function browserPlatform(): Platform {
     cancel: (handle) => window.clearTimeout(handle as number),
     // Uma janela sem documento algum não é uma que alguém esteja olhando.
     focused: () => typeof document !== "undefined" && document.hasFocus(),
+    loadFileDrafts: () => {
+      try {
+        const raw = window.localStorage.getItem(FILE_DRAFTS_KEY);
+        return raw ? (JSON.parse(raw) as unknown) : null;
+      } catch {
+        return null;
+      }
+    },
+    saveFileDrafts: (drafts) => {
+      const payload = serializeFileDrafts(drafts);
+      if (Object.keys(payload).length === 0) {
+        window.localStorage.removeItem(FILE_DRAFTS_KEY);
+      } else {
+        window.localStorage.setItem(FILE_DRAFTS_KEY, JSON.stringify(payload));
+      }
+    },
+    confirmLeave: (message) => (typeof window.confirm === "function" ? window.confirm(message) : true),
+    onBeforeClose: (handler) => {
+      const onUnload = (event: BeforeUnloadEvent) => {
+        if (!handler({ dialog: false })) {
+          event.preventDefault();
+          event.returnValue = "";
+        }
+      };
+      window.addEventListener("beforeunload", onUnload);
+      return () => window.removeEventListener("beforeunload", onUnload);
+    },
   };
 }
 
@@ -268,6 +312,8 @@ export class HeliconController {
   private flushHandle: unknown = null;
   private refreshHandle: unknown = null;
   private saveHandle: unknown = null;
+  private draftSaveHandle: unknown = null;
+  private draftsPersistFailed = false;
   private staleHandle: unknown = null;
   private disposed = false;
   /** When stream events were last applied per session, so a thread that went silent can be noticed. */
@@ -292,7 +338,8 @@ export class HeliconController {
     private readonly platform: Platform = browserPlatform(),
   ) {
     const fallback = defaultPrefs(new Date(platform.now()).toISOString());
-    this.store = new Store(initialState(revivePrefs(platform.loadPrefs(), fallback)));
+    const state = initialState(revivePrefs(platform.loadPrefs(), fallback));
+    this.store = new Store({ ...state, fileDrafts: parseFileDrafts(platform.loadFileDrafts?.() ?? null) });
   }
 
   private get state(): AppState {
@@ -317,6 +364,12 @@ export class HeliconController {
     if (this.updates) {
       this.updates.start();
       this.disposers.push(() => this.updates?.stop());
+    }
+    if (this.platform.onBeforeClose) {
+      this.disposers.push(this.platform.onBeforeClose((options) => this.allowClose(options.dialog)));
+    }
+    if (Object.keys(this.state.fileDrafts).length > 0) {
+      this.toast("info", "Edições de arquivo não gravadas", "Abra o arquivo no visualizador para continuar. Nada foi escrito no disco.");
     }
     this.scheduleStaleCheck();
     void this.boot(false);
@@ -405,12 +458,14 @@ export class HeliconController {
     for (const dispose of this.disposers.splice(0)) {
       dispose();
     }
-    for (const handle of [this.flushHandle, this.refreshHandle, this.saveHandle, this.staleHandle]) {
+    for (const handle of [this.flushHandle, this.refreshHandle, this.saveHandle, this.draftSaveHandle, this.staleHandle]) {
       if (handle !== null) {
         this.platform.cancel(handle);
       }
     }
     this.staleHandle = null;
+    this.draftSaveHandle = null;
+    this.persistFileDrafts();
     this.platform.savePrefs(this.state.prefs);
   }
 
@@ -2364,6 +2419,18 @@ export class HeliconController {
       }
       return { ...s, fileDrafts };
     });
+    if (content === null) {
+      this.persistFileDrafts();
+    } else {
+      this.scheduleFileDraftsPersist();
+    }
+  }
+
+  /** Descarta a cópia recuperável e recarrega o arquivo do disco, sem gravar o original. */
+  reloadFile(cwd: string, path: string): void {
+    this.setFileDraft(cwd, path, null);
+    const key = fileKey(cwd, path);
+    this.update((s) => ({ ...s, fileVersions: { ...s.fileVersions, [key]: (s.fileVersions[key] ?? 0) + 1 } }));
   }
 
   /**
@@ -2389,6 +2456,7 @@ export class HeliconController {
         }
         return { ...s, fileDrafts, fileVersions: { ...s.fileVersions, [key]: (s.fileVersions[key] ?? 0) + 1 } };
       });
+      this.persistFileDrafts();
       return saved.mtimeMs;
     } catch (error) {
       if (errorKind(error) === "fileChanged") {
@@ -2423,6 +2491,47 @@ export class HeliconController {
 
   searchFiles(cwd: string, query: string) {
     return this.client.searchFiles(cwd, query);
+  }
+
+  private scheduleFileDraftsPersist(): void {
+    if (this.draftSaveHandle !== null) {
+      return;
+    }
+    this.draftSaveHandle = this.platform.schedule(() => {
+      this.draftSaveHandle = null;
+      this.persistFileDrafts();
+    }, 400);
+  }
+
+  private persistFileDrafts(): void {
+    if (this.draftSaveHandle !== null) {
+      this.platform.cancel(this.draftSaveHandle);
+      this.draftSaveHandle = null;
+    }
+    try {
+      this.platform.saveFileDrafts?.(serializeFileDrafts(this.state.fileDrafts));
+      this.draftsPersistFailed = false;
+    } catch {
+      if (!this.draftsPersistFailed) {
+        this.draftsPersistFailed = true;
+        this.toast(
+          "info",
+          "Cópia recuperável não foi guardada",
+          "A edição continua nesta sessão. Reiniciar o Helicon pode perdê-la.",
+        );
+      }
+    }
+  }
+
+  private allowClose(dialog: boolean): boolean {
+    this.persistFileDrafts();
+    if (Object.keys(this.state.fileDrafts).length === 0) {
+      return true;
+    }
+    if (!dialog) {
+      return false;
+    }
+    return this.platform.confirmLeave?.(FILE_DRAFTS_LEAVE_MESSAGE) ?? true;
   }
 
   fileUrl(cwd: string, path: string): string {

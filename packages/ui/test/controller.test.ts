@@ -244,6 +244,10 @@ function platform(hash = ""): Platform & { hash: string } {
     hash,
     loadPrefs: () => null,
     savePrefs: () => {},
+    loadFileDrafts: () => null,
+    saveFileDrafts: () => {},
+    confirmLeave: () => true,
+    onBeforeClose: () => () => {},
     readHash: () => state.hash,
     writeHash: (next: string) => {
       state.hash = next;
@@ -909,7 +913,89 @@ describe("HeliconController", () => {
     assert.equal("fileDrafts" in (saved as object), false, "prefs are the chrome settings, not unsaved file edits");
 
     const revived = new HeliconController(client, { ...platform(), loadPrefs: () => saved });
-    assert.deepEqual(revived.store.get().fileDrafts, {}, "a restart has no file drafts to restore");
+    assert.deepEqual(revived.store.get().fileDrafts, {}, "prefs alone do not restore file drafts");
+    stop();
+  });
+
+  it("restores file drafts from their own store after a restart, and drops them on save or discard", async () => {
+    const client = new FakeClient();
+    let stored: unknown = {};
+    const fake = platform();
+    fake.saveFileDrafts = (drafts) => {
+      stored = drafts;
+    };
+    fake.loadFileDrafts = () => stored;
+    const controller = new HeliconController(client, fake);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    controller.setFileDraft("/work/app", "README.md", "# rascunho", 100);
+    controller.dispose();
+    assert.deepEqual(stored, { "/work/app\nREADME.md": { content: "# rascunho", baseMtimeMs: 100 } });
+
+    const revived = new HeliconController(client, {
+      ...platform(),
+      loadFileDrafts: () => stored,
+      saveFileDrafts: (next) => {
+        stored = next;
+      },
+    });
+    assert.equal(revived.store.get().fileDrafts["/work/app\nREADME.md"]?.content, "# rascunho");
+    const stopRevived = revived.start();
+    assert.ok(revived.store.get().toasts.some((toast) => /não gravadas/.test(toast.title)));
+    await settle();
+    try {
+      assert.equal(await revived.saveFile("/work/app", "README.md"), 200);
+      assert.deepEqual(stored, {});
+      revived.setFileDraft("/work/app", "notes.md", "# outra", 50);
+      revived.setFileDraft("/work/app", "notes.md", null);
+      assert.deepEqual(stored, {});
+    } finally {
+      stopRevived();
+    }
+  });
+
+  it("asks before closing the window when a file draft exists, without writing the original file", async () => {
+    const client = new FakeClient();
+    const fake = platform();
+    const guards: Array<(options: { dialog: boolean }) => boolean> = [];
+    const asked: string[] = [];
+    fake.onBeforeClose = (handler) => {
+      guards.push(handler);
+      return () => {};
+    };
+    fake.confirmLeave = (message) => {
+      asked.push(message);
+      return false;
+    };
+    const controller = new HeliconController(client, fake);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    assert.equal(guards[0]?.({ dialog: true }), true, "closing with no draft is free");
+    controller.setFileDraft("/work/app", "README.md", "# rascunho", 100);
+    assert.equal(guards[0]?.({ dialog: false }), false, "browser unload keeps the generic warning");
+    assert.equal(asked.length, 0);
+    assert.equal(guards[0]?.({ dialog: true }), false, "desktop close can stay on the app");
+    assert.equal(asked.length, 1);
+    assert.equal(client.writes.length, 0);
+    stop();
+  });
+
+  it("keeps going when the recoverable copy cannot be stored", async () => {
+    const client = new FakeClient();
+    const fake = platform();
+    fake.saveFileDrafts = () => {
+      throw new Error("quota");
+    };
+    const controller = new HeliconController(client, fake);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    controller.setFileDraft("/work/app", "README.md", "# rascunho", 100);
+    controller.dispose();
+    assert.equal(controller.store.get().fileDrafts["/work/app\nREADME.md"]?.content, "# rascunho");
+    assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /não foi guardada/i);
     stop();
   });
 

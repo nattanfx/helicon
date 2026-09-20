@@ -1,17 +1,15 @@
 # Rascunhos do editor de arquivos
 
-Diagnóstico C3 sobre `5df2bd7`. O rascunho da caixa de mensagem já sobrevive a troca de conversa e recarregamento (`helicon.draft.` no `localStorage`). Isto trata só de **edição não salva de Markdown** no visualizador.
+C4 sobre `cad7a8c`. O rascunho da caixa de mensagem já sobrevive em `helicon.draft.`. A **edição não salva de Markdown** agora tem cópia recuperável em `helicon.fileDrafts.v1`, fora das prefs. Nada é gravado no arquivo original até o usuário salvar.
 
-## Onde o rascunho vive hoje
+## Onde o rascunho vive
 
 | Dado | Onde | Sobrevive a reinício? |
 | --- | --- | --- |
-| Edição não salva | `AppState.fileDrafts`, chave `fileKey(cwd, path)` = `cwd + "\n" + path` | Não |
+| Edição não salva | `AppState.fileDrafts` e `localStorage` `helicon.fileDrafts.v1`, chave `cwd + "\n" + path` | Sim, se couber no limite |
 | Abas abertas | `AppState.filePanels` por `sessionId` | Não |
 | Preferência de painel aberto | `prefs.filesOpen` → `helicon.prefs.v1` | Sim |
 | Rascunho da mensagem | `localStorage` `helicon.draft.<sessionId ou new:cwd>` | Sim |
-
-`setFileDraft` só altera o store em memória. `dispose` e o debounce de prefs gravam apenas `Prefs`. O fechamento da janela Tauri (`Destroyed`) mata o servidor e não pergunta por edições.
 
 ## O que já funciona (preservar)
 
@@ -20,14 +18,10 @@ Diagnóstico C3 sobre `5df2bd7`. O rascunho da caixa de mensagem já sobrevive a
 - Salvar: envia o conteúdo com o `mtime` da abertura; se o disco mudou, `fileChanged` (409) e toast com Sobrescrever. O arquivo original não é gravado nessa recusa.
 - Só Markdown editável e não truncado entra no editor.
 
-## Lacuna para C4
+## C4 feito
 
-Reiniciar ou fechar o aplicativo perde a edição. Não há aviso no fechamento da janela. Não misturar isso com o rascunho da mensagem.
-
-## Proposta mínima para C4
-
-1. Guardar `fileDrafts` num armazenamento local separado (`helicon.fileDrafts.v1`), chave por projeto/caminho, com `content` e `baseMtimeMs`.
-2. Restaurar ao abrir o arquivo; se o `mtime` do disco diferir, conflito visível — nunca gravar o original sozinho.
-3. Apagar a cópia ao salvar ou descartar (fechar a aba com confirmação já existente).
-4. Se houver rascunho ao fechar a janela, perguntar (desktop `onCloseRequested`; no navegador, `beforeunload`).
-5. Limitar tamanho; falha de armazenamento não derruba o app. Sem migração de banco e sem tocar em dados reais na implantação.
+1. `helicon.fileDrafts.v1` separado das prefs; restaurado no arranque.
+2. Se o `mtime` do disco diferir da base, faixa de conflito; Recarregar descarta a cópia. Salvar continua recusando 409 sem gravar por cima.
+3. Salvar ou fechar a aba (com confirmação) remove a cópia.
+4. Fechar a janela com rascunho: desktop pergunta; navegador usa o aviso genérico de saída. Fechar não escreve o arquivo original.
+5. Acima de 1 milhão de caracteres a cópia não entra no armazenamento; falha de quota não derruba o app. Sem migração de banco.
