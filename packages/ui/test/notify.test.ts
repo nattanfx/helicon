@@ -74,6 +74,25 @@ describe("notificações", () => {
     assert.match(shown[2]?.title ?? "", /falhou/);
   });
 
+  it("mostra o estado da meta em português, sem cru em inglês", async () => {
+    const { fake, shown } = notifier();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false }));
+
+    await manager.announce({ kind: "goal", sessionId: "s1", thread: "notes-app", status: "complete" });
+    await manager.announce({ kind: "goal", sessionId: "s2", thread: "winmux", status: "paused" });
+    await manager.announce({ kind: "goal", sessionId: "s3", thread: "site", status: "blocked" });
+    await manager.announce({ kind: "goal", sessionId: "s4", thread: "api", status: "budget_limited" });
+
+    assert.match(shown[0]?.title ?? "", /Meta concluída/);
+    assert.match(shown[0]?.body ?? "", /alcançou sua meta/);
+    assert.match(shown[1]?.body ?? "", /está pausada\./);
+    assert.match(shown[2]?.body ?? "", /está bloqueada\./);
+    assert.match(shown[3]?.body ?? "", /está sem orçamento\./);
+    for (const note of shown) {
+      assert.doesNotMatch(note.body, /paused|blocked|budget_limited/);
+    }
+  });
+
   it("diz a mesma coisa sobre uma conversa uma vez, até passar tempo suficiente", async () => {
     const { fake, shown } = notifier();
     const time = clock();

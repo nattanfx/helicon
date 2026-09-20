@@ -4,6 +4,8 @@
  * aqui toca em nenhum dos dois, então a decisão do que vale anunciar continua testável sozinha.
  */
 
+import { statusLabel } from "./goal.js";
+
 export type NotifyPermission = "granted" | "denied" | "default";
 
 export interface Notifier {
@@ -41,10 +43,14 @@ function copy(event: NotifyEvent): { title: string; body: string } {
       return event.failed
         ? { title: "Uma mensagem falhou", body: `${event.thread} parou com um erro.` }
         : { title: "Muse terminou", body: `${event.thread} terminou.` };
-    case "goal":
-      return event.status === "complete"
-        ? { title: "Meta concluída", body: `${event.thread} alcançou sua meta.` }
-        : { title: "Uma meta precisa de atenção", body: `${event.thread} está ${event.status}.` };
+    case "goal": {
+      if (event.status === "complete") {
+        return { title: "Meta concluída", body: `${event.thread} alcançou sua meta.` };
+      }
+      const { label } = statusLabel(event.status);
+      const estado = label.charAt(0).toLowerCase() + label.slice(1);
+      return { title: "Uma meta precisa de atenção", body: `${event.thread} está ${estado}.` };
+    }
   }
 }
 
