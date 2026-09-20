@@ -47,4 +47,18 @@ describe("rótulos de aprovação", () => {
     assert.equal(translateApprovalLabel("Allow and remember - rm *"), "Permitir e lembrar - rm *");
     assert.equal(translateApprovalLabel("Reject: do not run npm test"), "Rejeitar: do not run npm test");
   });
+
+  it("traduz os persistentes com escopo explícito sem mudar comando nem ids", () => {
+    const workspace = { choiceId: "ws-proc", label: "Always allow in this workspace: Get-Process", decision: "approved", scope: "persistent" };
+    const network = { choiceId: "net-dst", label: "Always allow this network destination", decision: "approved", scope: "persistent" };
+    assert.equal(
+      approvalChoiceLabel(workspace),
+      "Permitir sempre neste workspace: Get-Process",
+    );
+    assert.equal(approvalChoiceLabel(network), "Permitir sempre este destino de rede");
+    assert.equal(workspace.choiceId, "ws-proc");
+    assert.equal(network.decision, "approved");
+    assert.equal(network.scope, "persistent");
+    assert.equal(translateApprovalLabel("Allow this host"), "Allow this host");
+  });
 });

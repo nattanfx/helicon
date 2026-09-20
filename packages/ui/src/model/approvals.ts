@@ -6,6 +6,8 @@
 const KNOWN_LABELS: readonly { match: string; pt: string }[] = [
   { match: "Allow and remember", pt: "Permitir e lembrar" },
   { match: "Allow for this session", pt: "Permitir nesta sessão" },
+  { match: "Always allow in this workspace", pt: "Permitir sempre neste workspace" },
+  { match: "Always allow this network destination", pt: "Permitir sempre este destino de rede" },
   { match: "Always allow", pt: "Permitir sempre" },
   { match: "Allow always", pt: "Permitir sempre" },
   { match: "Allow once", pt: "Permitir desta vez" },
