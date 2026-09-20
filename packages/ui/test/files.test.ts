@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { dirnameOf, fileKey, fileTarget, formatFileSize, isMarkdownPath, looksLikeFilePath, relativeToProject } from "../src/model/files.js";
+import { dirnameOf, fileKey, fileOpenProblem, fileTarget, formatFileSize, isMarkdownPath, looksLikeFilePath, relativeToProject } from "../src/model/files.js";
 
 describe("links de arquivo", () => {
   it("resolve caminhos relativos, absolutos e com sufixo de linha contra o projeto", () => {
@@ -44,5 +44,23 @@ describe("links de arquivo", () => {
     assert.equal(formatFileSize(512), "512 B");
     assert.equal(formatFileSize(2048), "2.0 KB");
     assert.equal(formatFileSize(3 * 1024 * 1024), "3.0 MB");
+  });
+
+  it("explains a missing file from a stable kind, not from guessing the English sentence", () => {
+    const known = fileOpenProblem("fileNotFound", "That file does not exist.");
+    assert.equal(known.title, "Este arquivo não foi encontrado");
+    assert.equal(known.detail, "Esse caminho não existe neste projeto.");
+    assert.doesNotMatch(known.detail, /password|token|secret/i);
+
+    const legacy = fileOpenProblem(null, "That file does not exist.");
+    assert.equal(legacy.title, known.title);
+
+    const other = fileOpenProblem("fileChanged", "That file does not exist.");
+    assert.equal(other.title, "Não foi possível abrir este arquivo");
+    assert.equal(other.detail, "That file does not exist.");
+
+    const unknown = fileOpenProblem(null, "Permission denied.");
+    assert.equal(unknown.title, "Não foi possível abrir este arquivo");
+    assert.equal(unknown.detail, "Permission denied.");
   });
 });

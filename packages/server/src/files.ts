@@ -139,7 +139,7 @@ export async function resolveInRoot(
     if (options.mustExist === false) {
       return { abs, rel: toRelative(realRoot, abs) };
     }
-    throw new FileError(404, "That file does not exist.");
+    throw new FileError(404, "That file does not exist.", "fileNotFound");
   }
   if (real !== realRoot && !real.startsWith(realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`)) {
     throw new FileError(403, "That file is outside this project.");

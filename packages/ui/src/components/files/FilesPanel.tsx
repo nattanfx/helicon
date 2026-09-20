@@ -22,7 +22,7 @@ import { shallowEqual, useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
 import { errorKind, errorMessage } from "../../client.js";
 import { fileDraftConflicts } from "../../model/fileDrafts.js";
-import { basenameOf, dirnameOf, fileKey, fileTarget, formatFileSize, isMarkdownPath, type LineRange } from "../../model/files.js";
+import { basenameOf, dirnameOf, fileKey, fileOpenProblem, fileTarget, formatFileSize, isMarkdownPath, type LineRange } from "../../model/files.js";
 import { DEFAULT_FILES_WIDTH } from "../../model/store.js";
 import type { FileContent, FileEntry } from "../../types.js";
 import { FileLinksContext, Markdown, languageFromPath, type FileLinks } from "../ui/Markdown.js";
@@ -473,8 +473,7 @@ function FileView(props: { sessionId: string; cwd: string; path: string; line: L
       <div className="min-h-0 flex-1 overflow-auto">
         {error ? (
           <FileProblem
-            title={error.kind === null && /does not exist/.test(error.message) ? "Este arquivo não foi encontrado" : "Não foi possível abrir este arquivo"}
-            detail={error.message}
+            {...fileOpenProblem(error.kind, error.message)}
             onRetry={() =>
               controller.store.set((s) => ({
                 ...s,

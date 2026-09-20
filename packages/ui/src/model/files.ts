@@ -141,6 +141,21 @@ export function fileKey(cwd: string, path: string): string {
   return `${cwd}\n${path}`;
 }
 
+/**
+ * Título e detalhe ao abrir um arquivo. Prefere `kind` estável; a frase inglesa só vale
+ * para servidores antigos sem código. Não infere a partir de outros kinds.
+ */
+export function fileOpenProblem(kind: string | null, message: string): { title: string; detail: string } {
+  const missing = kind === "fileNotFound" || (kind === null && /does not exist/i.test(message));
+  if (missing) {
+    return {
+      title: "Este arquivo não foi encontrado",
+      detail: "Esse caminho não existe neste projeto.",
+    };
+  }
+  return { title: "Não foi possível abrir este arquivo", detail: message };
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;

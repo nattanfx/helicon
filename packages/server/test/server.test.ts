@@ -1051,6 +1051,9 @@ describe("file viewer", () => {
     assert.equal((await fetch(`${base}/api/files/read?${q("../../etc/passwd")}`)).status, 403);
     assert.equal((await fetch(`${base}/api/files/read?${q("escape.txt")}`)).status, 403, "a symlink out of the project is refused");
     assert.equal((await fetch(`${base}/api/files/raw?${q("escape.txt")}`)).status, 403);
+    const missing = await fetch(`${base}/api/files/read?${q("nope.md")}`);
+    assert.equal(missing.status, 404);
+    assert.equal(((await missing.json()) as { kind: string }).kind, "fileNotFound");
     assert.equal((await fetch(`${base}/api/files/read?${q("/etc/passwd")}`)).status, 404, "an absolute path elsewhere resolves inside the project, where it is not");
     assert.equal((await fetch(`${base}/api/files/list?cwd=${encodeURIComponent("/etc")}&path=`)).status, 404);
     const write = await fetch(`${base}/api/files/write`, {
