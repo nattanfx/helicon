@@ -118,6 +118,62 @@ fn stable_port(data_dir: Option<&Path>) -> u16 {
     }
 }
 
+/// Cópia recuperável de edições de arquivo por instalação, fora da origem web da janela.
+/// O `localStorage` é por origem (esquema, host e porta); quando a porta anterior está ocupada e o
+/// servidor sobe noutra, a origem nova não enxerga a cópia guardada pela antiga. Este arquivo vive na
+/// pasta de dados do app — separada entre normal e Teste pelo identificador — então sobrevive à troca
+/// de porta. O conteúdo é texto opaco aqui; a interface valida ao carregar.
+const DRAFTS_FILE: &str = "file-drafts.json";
+/// A versão anterior a cada escrita, para restauração manual se o arquivo corromper.
+const DRAFTS_BACKUP_FILE: &str = "file-drafts.json.bak";
+
+fn drafts_paths(data_dir: Option<&Path>) -> Option<(PathBuf, PathBuf)> {
+    let dir = data_dir?;
+    std::fs::create_dir_all(dir).ok()?;
+    Some((plain_path(&dir.join(DRAFTS_FILE)), plain_path(&dir.join(DRAFTS_BACKUP_FILE))))
+}
+
+fn read_drafts_file(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok().filter(|text| !text.trim().is_empty())
+}
+
+fn load_drafts_from(data_dir: &Path) -> Option<String> {
+    let (path, _) = drafts_paths(Some(data_dir))?;
+    read_drafts_file(&path)
+}
+
+fn save_drafts_to(data_dir: &Path, content: &str) -> Result<(), String> {
+    let (path, backup) = drafts_paths(Some(data_dir)).ok_or_else(|| "pasta de dados indisponível".to_string())?;
+    if content.trim().is_empty() || content.trim() == "{}" {
+        let _ = std::fs::remove_file(&path);
+        return Ok(());
+    }
+    if path.exists() {
+        let _ = std::fs::copy(&path, &backup);
+    }
+    std::fs::write(&path, content).map_err(|error| format!("não foi possível guardar a cópia: {error}"))?;
+    Ok(())
+}
+
+/// Lê a cópia estável de edições; `None` = sem cópia (a interface usa o `localStorage` da origem atual).
+#[tauri::command]
+fn helicon_load_file_drafts(app: tauri::AppHandle) -> Option<String> {
+    let dir = app.path().app_data_dir().ok().map(|dir| plain_path(&dir))?;
+    load_drafts_from(&dir)
+}
+
+/// Guarda a cópia estável de edições; vazio remove o arquivo. Guarda a versão anterior em `.bak`.
+#[tauri::command]
+fn helicon_save_file_drafts(app: tauri::AppHandle, content: String) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| plain_path(&dir))
+        .ok_or_else(|| "pasta de dados indisponível".to_string())?;
+    save_drafts_to(&dir, &content)
+}
+
 /// Uma porta que nada está usando agora, lembrada para a próxima abertura. Retorna 0, qualquer porta livre, só
 /// quando nenhuma pode ser encontrada.
 fn fresh_port(data_dir: Option<&Path>) -> u16 {
@@ -517,6 +573,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(ServerChild(Arc::new(Mutex::new(None))))
+        .invoke_handler(tauri::generate_handler![helicon_load_file_drafts, helicon_save_file_drafts])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             install_zoom_menu(app)?;
@@ -594,8 +651,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_node_in, find_resource, fresh_port, parse_listening_url, plain_path, stable_port, start_with_retry, BootError, StartFailure,
-        PORT_FILE, SPLASH_PAGE,
+        bundled_node_in, find_resource, fresh_port, load_drafts_from, parse_listening_url, plain_path, save_drafts_to, stable_port,
+        start_with_retry, BootError, StartFailure, PORT_FILE, SPLASH_PAGE,
     };
     #[cfg(unix)]
     use super::{latest_nvm_node, prepend_to_path, select_probe_path, well_known_nodes_in};
@@ -678,6 +735,29 @@ mod tests {
         let fresh = fresh_port(Some(&dir));
         assert_eq!(std::fs::read_to_string(dir.join(PORT_FILE)).unwrap(), fresh.to_string());
         assert_ne!(stable_port(None), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stable_file_drafts_survive_a_fresh_dir_with_backup() {
+        // Cópia descartável: nunca toca nos dados reais do app.
+        let dir = std::env::temp_dir().join(format!("helicon-drafts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(load_drafts_from(&dir), None);
+        let first = r#"{"proj\nREADME.md":{"content":"# rascunho","baseMtimeMs":100}}"#;
+        save_drafts_to(&dir, first).unwrap();
+        assert_eq!(load_drafts_from(&dir).as_deref(), Some(first));
+        let second = r#"{"proj\nREADME.md":{"content":"# rascunho 2","baseMtimeMs":100}}"#;
+        save_drafts_to(&dir, second).unwrap();
+        assert_eq!(load_drafts_from(&dir).as_deref(), Some(second));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(super::DRAFTS_BACKUP_FILE)).unwrap(),
+            first,
+            "a versão anterior fica em .bak para restauração manual",
+        );
+        save_drafts_to(&dir, "{}").unwrap();
+        assert_eq!(load_drafts_from(&dir), None, "descartar limpa a cópia");
+        assert!(dir.join(super::DRAFTS_BACKUP_FILE).exists(), "o backup sobrevive ao descarte");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

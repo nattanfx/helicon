@@ -1,12 +1,12 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { HeliconApp, type AppIdentity } from "@helicon/ui";
+import { HeliconApp, type AppIdentity, type Platform } from "@helicon/ui";
 import { Connect } from "./Connect.js";
 import { desktopFrame, titlebarOverlay, bindDesktopZoom } from "./frame.js";
 import { resolveAppIdentity } from "./identity.js";
 import { bindDesktopLinks } from "./links.js";
 import { appNotifier } from "./notifier.js";
-import { appPlatform } from "./platform.js";
+import { appPlatform, appPlatformWithStableDrafts } from "./platform.js";
 import { WebHeliconClient } from "./webClient.js";
 import "./theme.css";
 
@@ -25,8 +25,28 @@ if (!root) {
 function Root() {
   const [connecting, setConnecting] = useState(window.location.hash === "#/connect");
   const [identity, setIdentity] = useState<AppIdentity | undefined>();
+  const [platform, setPlatform] = useState<Platform | null>(null);
   useEffect(() => {
     void resolveAppIdentity().then(setIdentity, () => undefined);
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    // O cofre estável de rascunhos é lido antes de montar o app, para a restauração já valer no arranque.
+    void appPlatformWithStableDrafts().then(
+      (ready) => {
+        if (alive) {
+          setPlatform(ready);
+        }
+      },
+      () => {
+        if (alive) {
+          setPlatform(appPlatform());
+        }
+      },
+    );
+    return () => {
+      alive = false;
+    };
   }, []);
   if (connecting) {
     return (
@@ -39,10 +59,13 @@ function Root() {
       />
     );
   }
+  if (!platform) {
+    return null;
+  }
   return (
     <HeliconApp
       client={new WebHeliconClient()}
-      platform={appPlatform()}
+      platform={platform}
       frame={desktopFrame()}
       titlebarOverlay={titlebarOverlay()}
       identity={identity}
