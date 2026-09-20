@@ -2,7 +2,7 @@ import { Archive, CircleStop, Code, Copy, Ellipsis, Folder, FolderOpen, FolderTr
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { CaptionSpacer, useOverlayDragProps } from "../../app/frame.js";
-import { basename, formatDuration } from "../../model/format.js";
+import { basename, displayTitle, formatDuration } from "../../model/format.js";
 import { backgroundTasks } from "../../model/plan.js";
 import { goalView } from "../../model/goal.js";
 import type { ThreadState } from "../../model/store.js";
@@ -70,10 +70,10 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
             data-no-drag
             {...noDrag}
             className="min-w-0 flex-1 cursor-text truncate overflow-hidden text-sm font-semibold text-nowrap text-ellipsis text-fg"
-            title={`${session.title} (clique duplo para renomear)`}
+            title={`${displayTitle(session)} (clique duplo para renomear)`}
             onDoubleClick={() => setRenaming(true)}
           >
-            {session.title}
+            {displayTitle(session)}
           </h1>
         )}
         <span className="hidden min-w-0 shrink @min-[420px]:flex">

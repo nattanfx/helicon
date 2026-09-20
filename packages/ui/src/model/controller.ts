@@ -18,7 +18,7 @@ import type {
   ViewEvent,
   WorkflowAction,
 } from "../types.js";
-import { CONTRIBUTOR_NOTICE, describeTool, modelDisplayName } from "./format.js";
+import { CONTRIBUTOR_NOTICE, describeTool, displayTitle, modelDisplayName } from "./format.js";
 import { fileKey, fileTarget, type LineRange } from "./files.js";
 import { goalPrompt } from "./goal.js";
 import {
@@ -747,7 +747,7 @@ export class HeliconController {
           const current = s.sessions[event.sessionId];
           return current ? { ...s, sessions: { ...s.sessions, [event.sessionId]: { ...current, live: event.live } } } : s;
         });
-        this.announce(event.sessionId, known.title, before, event.live);
+        this.announce(event.sessionId, displayTitle(known), before, event.live);
         // A única notícia que temos sobre uma conversa que este app nunca abriu: ela está esperando alguém.
         if (this.state.bypassAll && (event.live?.pendingApprovals ?? 0) > 0) {
           this.loadForBypass(event.sessionId);

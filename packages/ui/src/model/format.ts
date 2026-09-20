@@ -1,4 +1,4 @@
-import type { ApprovalRequest, MspItem } from "../types.js";
+import type { ApprovalRequest, MspItem, SessionSummary } from "../types.js";
 import { GOAL_TOOLS } from "./goal.js";
 
 /** Tempo relativo compacto para barras laterais: agora, 4min, 3h, 2d, 3sem, depois uma data curta. */
@@ -692,6 +692,11 @@ export function describeApproval(request: ApprovalRequest): ApprovalDescription 
         mono: true,
       };
   }
+}
+
+/** Título para exibir: placeholder vira "Nova conversa"; manual "New thread" é preservado pela origem. */
+export function displayTitle(session: Pick<SessionSummary, "title" | "titleSource">): string {
+  return session.titleSource === "placeholder" ? "Nova conversa" : session.title;
 }
 
 /** Tira o sufixo de nível do provedor para exibição; o nível ganha seu próprio selo. */

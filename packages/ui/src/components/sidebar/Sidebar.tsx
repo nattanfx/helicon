@@ -36,7 +36,7 @@ import {
 import { memo, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { shallowEqual, useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps, useTitlebarOverlay } from "../../app/frame.js";
-import { basename, formatElapsed, relativeTime } from "../../model/format.js";
+import { basename, displayTitle, formatElapsed, relativeTime } from "../../model/format.js";
 import { statusLabel } from "../../model/goal.js";
 import { PlanPill } from "../usage/PlanMeter.js";
 import {
@@ -640,7 +640,7 @@ export const ThreadRow = memo(
               onClick={() => controller.openThread(session.sessionId)}
               onDoubleClick={() => setRenaming(true)}
               aria-current={props.active ? "page" : undefined}
-              title={session.title}
+              title={displayTitle(session)}
               className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:outline-2 focus-visible:after:outline-offset-[-2px] focus-visible:after:outline-accent focus-visible:after:outline"
             >
               <span
@@ -650,7 +650,7 @@ export const ThreadRow = memo(
                   status === "unread" && !props.settled && "font-medium",
                 )}
               >
-                {session.title}
+                {displayTitle(session)}
               </span>
               {props.settled ? null : <RowMeta session={session} showProject={props.showProject} />}
               <span className="sr-only">{`, ${STATUS_LABEL[status]}`}</span>

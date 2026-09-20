@@ -1,7 +1,7 @@
 import { Check, ChevronDown, FolderPlus, RefreshCw } from "lucide-react";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
-import { relativeTime, shortenPath } from "../../model/format.js";
+import { displayTitle, relativeTime, shortenPath } from "../../model/format.js";
 import type { ProjectView } from "../../types.js";
 import { TopBar } from "../chrome.js";
 import { Composer, ComposerFooter } from "../composer/Composer.js";
@@ -54,7 +54,7 @@ export function NewThread(props: { cwd: string | null }) {
                       onClick={() => controller.openThread(session.sessionId)}
                       className="flex h-9 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-hover"
                     >
-                      <span className="min-w-0 flex-1 truncate text-sm text-muted">{session.title}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-muted">{displayTitle(session)}</span>
                       <span className="shrink-0 text-xs text-subtle tabular-nums">{relativeTime(session.activityAt, now)}</span>
                     </button>
                   </li>

@@ -2,7 +2,7 @@ import { Command } from "cmdk";
 import { FolderPlus, Folder, Layers, Monitor, Moon, PanelLeft, RefreshCw, RotateCcw, RotateCw, Search, SquarePen, Sun, ZoomIn, ZoomOut } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
-import { basename, relativeTime } from "../../model/format.js";
+import { basename, displayTitle, relativeTime } from "../../model/format.js";
 import { threadStatus } from "../../model/status.js";
 import { Modal } from "../ui/overlays.js";
 import { MOD, Shortcut } from "../ui/primitives.js";
@@ -125,13 +125,13 @@ export function CommandPalette() {
                 return (
                   <Item
                     key={session.sessionId}
-                    value={`${session.title} ${session.sessionId}`}
+                    value={`${displayTitle(session)} ${session.sessionId}`}
                     keywords={[basename(session.cwd)]}
                     icon={status === "idle" ? <span className="size-[7px] rounded-full bg-line-strong" /> : <StatusGlyph status={status} />}
                     onSelect={() => run(() => controller.openThread(session.sessionId))}
                     hint={relativeTime(session.activityAt, now)}
                   >
-                    <span className="truncate">{session.title}</span>
+                    <span className="truncate">{displayTitle(session)}</span>
                     <span className="shrink-0 truncate text-xs text-subtle">{basename(session.cwd)}</span>
                   </Item>
                 );

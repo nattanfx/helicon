@@ -8,6 +8,7 @@ import {
   diffFromEcho,
   diffLines,
   diffStats,
+  displayTitle,
   extractDiff,
   formatDuration,
   formatTokens,
@@ -299,6 +300,13 @@ describe("aprovações e modelos", () => {
     assert.equal(describeApproval({ ...base, subject: { kind: "fileAccess", access: "write", path: "/etc/hosts" } }).title, "Escrever em um arquivo");
     assert.equal(describeApproval({ ...base, subject: { kind: "network", host: "api.github.com", port: 443, protocol: "https" } }).detail, "https://api.github.com:443");
     assert.equal(describeApproval({ ...base, subject: { kind: "somethingNew", target: "x" } }).title, "Permitir something new");
+  });
+
+  it("mostra Nova conversa só para placeholder, sem traduzir título manual", () => {
+    assert.equal(displayTitle({ title: "New thread", titleSource: "placeholder" }), "Nova conversa");
+    assert.equal(displayTitle({ title: "New thread", titleSource: "user" }), "New thread");
+    assert.equal(displayTitle({ title: "Meu nome", titleSource: "user" }), "Meu nome");
+    assert.equal(displayTitle({ title: "Fix login", titleSource: "auto" }), "Fix login");
   });
 
   it("interpreta o catálogo real de modelos e marca níveis de colaborador", () => {
