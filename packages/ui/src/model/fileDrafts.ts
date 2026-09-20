@@ -17,7 +17,7 @@ function asDraft(value: unknown): FileDraft | null {
     return null;
   }
   const row = value as Record<string, unknown>;
-  if (typeof row.content !== "string" || !row.content) {
+  if (typeof row.content !== "string") {
     return null;
   }
   if (row.content.length > MAX_FILE_DRAFT_CHARS) {
@@ -48,11 +48,11 @@ export function parseFileDrafts(raw: unknown): Record<string, FileDraft> {
   return out;
 }
 
-/** Omite edições grandes demais para o armazenamento local. */
+/** Omite edições grandes demais para o armazenamento local. Vazio é edição válida; ausência/null descarta. */
 export function serializeFileDrafts(drafts: Record<string, FileDraft>): Record<string, FileDraft> {
   const out: Record<string, FileDraft> = {};
   for (const [key, draft] of Object.entries(drafts)) {
-    if (!isFileKey(key) || !draft.content || draft.content.length > MAX_FILE_DRAFT_CHARS) {
+    if (!isFileKey(key) || typeof draft.content !== "string" || draft.content.length > MAX_FILE_DRAFT_CHARS) {
       continue;
     }
     out[key] = { content: draft.content, baseMtimeMs: draft.baseMtimeMs };

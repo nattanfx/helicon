@@ -16,7 +16,6 @@ describe("cópias recuperáveis de arquivo", () => {
       parseFileDrafts({
         "/work/app\nREADME.md": { content: "# mine", baseMtimeMs: 10 },
         "nopath": { content: "x", baseMtimeMs: null },
-        "/work/app\nnotes.md": { content: "", baseMtimeMs: null },
         "/work/app\nbad.md": { content: "x", baseMtimeMs: "nope" },
         "/work/app\nok.md": { content: "ok", baseMtimeMs: null },
       }),
@@ -26,6 +25,16 @@ describe("cópias recuperáveis de arquivo", () => {
       },
     );
     assert.deepEqual(splitFileKey("/work/app\nREADME.md"), { cwd: "/work/app", path: "README.md" });
+  });
+
+  it("recupera edição que deixa o arquivo vazio; só ausência/null descarta", () => {
+    const key = "/work/app\nnotes.md";
+    assert.deepEqual(parseFileDrafts({ [key]: { content: "", baseMtimeMs: 1 } }), {
+      [key]: { content: "", baseMtimeMs: 1 },
+    });
+    const stored = serializeFileDrafts({ [key]: { content: "", baseMtimeMs: 1 } });
+    assert.deepEqual(stored, { [key]: { content: "", baseMtimeMs: 1 } });
+    assert.deepEqual(parseFileDrafts(stored), { [key]: { content: "", baseMtimeMs: 1 } });
   });
 
   it("omits oversized drafts from storage and never treats them as a disk conflict without a base", () => {
