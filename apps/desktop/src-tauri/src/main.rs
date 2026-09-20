@@ -744,10 +744,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("helicon-drafts-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(load_drafts_from(&dir), None);
-        let first = r#"{"proj\nREADME.md":{"content":"# rascunho","baseMtimeMs":100}}"#;
+        let first = r##"{"proj\nREADME.md":{"content":"# rascunho","baseMtimeMs":100}}"##;
         save_drafts_to(&dir, first).unwrap();
         assert_eq!(load_drafts_from(&dir).as_deref(), Some(first));
-        let second = r#"{"proj\nREADME.md":{"content":"# rascunho 2","baseMtimeMs":100}}"#;
+        let second = r##"{"proj\nREADME.md":{"content":"# rascunho 2","baseMtimeMs":100}}"##;
         save_drafts_to(&dir, second).unwrap();
         assert_eq!(load_drafts_from(&dir).as_deref(), Some(second));
         assert_eq!(
