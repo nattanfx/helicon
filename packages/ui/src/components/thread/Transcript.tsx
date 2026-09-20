@@ -16,7 +16,7 @@ import {
 } from "../../model/format.js";
 import { streamingSpeed, turnCosts, turnSpeeds, type TurnCost, type TurnSpeed } from "../../model/usage.js";
 import { formatCost } from "../../model/pricing.js";
-import { stuckThread } from "../../model/errors.js";
+import { stuckThread, turnErrorCopy } from "../../model/errors.js";
 import type { ThreadState } from "../../model/store.js";
 import type { AttachmentView, MspItem, OutgoingAttachment, ShellRun, UserInputAnswer } from "../../types.js";
 import { CodeBlock, FileLinksContext, type FileLinks } from "../ui/Markdown.js";
@@ -220,6 +220,7 @@ const TurnBlock = memo(
   }) {
     const { turn } = props;
     const info = turn.info;
+    const errorCopy = info?.error ? turnErrorCopy(info.error.kind, info.error.message, info.error.retryable) : null;
     const closed = useApp((s) => (turn.turnId ? s.prefs.dismissedTurnErrors.includes(`${props.sessionId}:${turn.turnId}`) : false));
     const failed = info?.terminal === "failed" && !info.dismissed && !closed;
     const cancelled = info?.terminal === "cancelled";
@@ -260,12 +261,13 @@ const TurnBlock = memo(
             <CircleAlert size={12} className="shrink-0 text-danger" />
             <span className="shrink-0">Falhou</span>
             <span aria-hidden="true">·</span>
-            <span className="min-w-0 truncate" title={info?.error?.message ?? undefined}>
-              {info?.error?.message ?? "A mensagem falhou."}
+            <span className="min-w-0 truncate" title={errorCopy?.technical ?? errorCopy?.explanation}>
+              {errorCopy?.title ?? "A mensagem falhou."}
             </span>
           </p>
         ) : failed ? (
           <TurnError
+            kind={info?.error?.kind ?? null}
             message={info?.error?.message ?? "A mensagem falhou."}
             retryable={info?.error?.retryable ?? true}
             prompt={props.isLast && !props.readOnly ? (turn.prompt?.displayText ?? turn.prompt?.text ?? null) : null}
@@ -653,6 +655,7 @@ function PendingPrompt(props: { echo: LocalEcho }) {
 }
 
 function TurnError(props: {
+  kind: string | null;
   message: string;
   retryable: boolean;
   prompt: string | null;
@@ -666,6 +669,7 @@ function TurnError(props: {
   const hadImages = props.files.some((file) => file.kind === "image");
   // Algumas falhas são sobre a conversa, não a mensagem: tentar de novo envia o mesmo histórico e falha do mesmo jeito.
   const stuck = stuckThread(props.message, { ownImages: hadImages });
+  const copy = turnErrorCopy(props.kind, props.message, props.retryable);
   /**
    * Envia o pedido de novo com os mesmos arquivos: seus bytes vivem no servidor, então são lidos de volta
    * em vez de omitidos, o que discretamente perguntaria outra coisa ao modelo. Nada vai se não puderem ser
@@ -695,9 +699,11 @@ function TurnError(props: {
     <div className="flex items-start gap-3 rounded-xl bg-danger-soft px-3.5 py-3" role="alert">
       <CircleAlert size={16} className="mt-0.5 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-fg">{stuck ? "Esta conversa não pode seguir como está" : "Esta mensagem falhou"}</p>
-        <p className="mt-0.5 text-sm break-words text-muted">{stuck ? stuck.message : props.message}</p>
-        {stuck ? <p className="mt-1 text-2xs break-words text-subtle">{props.message}</p> : null}
+        <p className="text-sm font-medium text-fg">{stuck ? "Esta conversa não pode seguir como está" : copy.title}</p>
+        <p className="mt-0.5 text-sm break-words text-muted">{stuck ? stuck.message : copy.explanation}</p>
+        {stuck || copy.technical ? (
+          <p className="mt-1 text-2xs break-words text-subtle">{stuck ? props.message : copy.technical}</p>
+        ) : null}
       </div>
       {stuck && stuck.remedy !== "none" && !props.readOnly ? (
         <Tip
@@ -747,7 +753,7 @@ function TurnError(props: {
             <RotateCcw size={13} /> Compactar a conversa
           </Button>
         </Tip>
-      ) : props.prompt && props.retryable ? (
+      ) : props.prompt && copy.offerRetry ? (
         <Tip label="Enviar o mesmo pedido de novo">
           <Button
             size="sm"

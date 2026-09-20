@@ -69,3 +69,57 @@ export function stuckThread(
   }
   return { kind: found.kind, remedy: found.remedy, message: found.message };
 }
+
+export interface TurnErrorCopy {
+  title: string;
+  explanation: string;
+  /** Texto original, sem credenciais, quando a explicação não o substitui por completo. */
+  technical: string | null;
+  offerRetry: boolean;
+}
+
+/** Kind estável que o Muse envia em `turn/completed` quando o plano estoura. */
+const QUOTA_KIND = "rateLimit";
+
+function isQuotaError(kind: string | null | undefined, message: string): boolean {
+  if (kind === QUOTA_KIND) {
+    return true;
+  }
+  // Servidores/hosts antigos: só a frase, e só se não houver outro código estável.
+  if (kind && kind !== "error") {
+    return false;
+  }
+  return /429|quota exhausted|rate[\s_-]?limit/i.test(message);
+}
+
+/** Tira tokens e ids de pedido do detalhe técnico; o usuário não precisa deles na tela. */
+export function sanitizeErrorDetail(message: string): string {
+  return message
+    .replace(/Bearer\s+\S+/gi, "Bearer …")
+    .replace(/\brequest_id[=:][^\s\]]+/gi, "request_id=…")
+    .replace(/\bapi[_-]?key[=:][^\s]+/gi, "api_key=…")
+    .trim();
+}
+
+/**
+ * Como explicar uma mensagem falha. Cota nunca oferece “tentar de novo” como se isso restaurasse o plano.
+ * Falhas de histórico (`stuckThread`) são tratadas à parte no cartão.
+ */
+export function turnErrorCopy(kind: string | null | undefined, message: string, retryable: boolean): TurnErrorCopy {
+  const text = sanitizeErrorDetail(message.trim() || "A mensagem falhou.");
+  if (isQuotaError(kind, message)) {
+    return {
+      title: "A cota do plano acabou",
+      explanation:
+        "O Muse recusou esta mensagem porque o limite do plano foi atingido. Tentar de novo agora não restaura a cota. Confira Uso para ver a janela atual, ou espere a renovação.",
+      technical: text,
+      offerRetry: false,
+    };
+  }
+  return {
+    title: "Esta mensagem falhou",
+    explanation: text,
+    technical: null,
+    offerRetry: retryable,
+  };
+}
