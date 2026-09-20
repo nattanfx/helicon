@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { HeliconError } from "../src/client.js";
-import { authErrorCopy, sanitizeErrorDetail, stuckThread, turnErrorCopy, userFacingError } from "../src/model/errors.js";
+import { authErrorCopy, sanitizeErrorDetail, sessionErrorCopy, stuckThread, turnErrorCopy, userFacingError } from "../src/model/errors.js";
 
 describe("conversas travadas", () => {
   it("sabe que uma imagem ilegível envenena todas as próximas mensagens", () => {
@@ -100,5 +100,25 @@ describe("falha de autenticação", () => {
     const text = userFacingError(error);
     assert.match(text, /não aceitou o acesso/);
     assert.doesNotMatch(text, /tok_live_secret/);
+  });
+});
+
+describe("falha de sessão", () => {
+  it("explains stream mismatch without promising that retry changes the model profile", () => {
+    const copy = sessionErrorCopy("sessionStreamMismatch", "stream mismatch");
+    assert.equal(copy?.title, "O fluxo desta conversa não bate");
+    assert.match(copy?.explanation ?? "", /não troca o perfil/);
+    assert.doesNotMatch(copy?.explanation ?? "", /troca o modelo/);
+    const legacy = sessionErrorCopy(null, "stream mismatch");
+    assert.equal(legacy?.title, copy?.title);
+  });
+
+  it("explains a session that is not loaded or is gone, and ignores other kinds", () => {
+    assert.match(sessionErrorCopy("sessionNotLoaded", "not loaded")?.explanation ?? "", /não troca o modelo nem o perfil/);
+    assert.match(sessionErrorCopy("sessionNotFound", "Unknown session.")?.explanation ?? "", /não a recria/);
+    assert.equal(sessionErrorCopy("unauthorized", "not loaded"), null);
+    const text = userFacingError(new HeliconError("stream mismatch", 409, "sessionStreamMismatch"));
+    assert.match(text, /Recarregar a conversa pode realinhar/);
+    assert.doesNotMatch(text, /Bearer /);
   });
 });

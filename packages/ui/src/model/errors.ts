@@ -140,11 +140,49 @@ export function authErrorCopy(kind: string | null | undefined, status: number, m
   return null;
 }
 
+export interface SessionErrorCopy {
+  title: string;
+  explanation: string;
+}
+
+/**
+ * Sessão não carregada, fluxo desalinhado ou conversa sumida. Recarregar pode realinhar o fluxo;
+ * não troca o modelo nem o perfil. Frases inglesas só se o kind vier vazio.
+ */
+export function sessionErrorCopy(kind: string | null | undefined, message: string): SessionErrorCopy | null {
+  const text = message.trim();
+  if (kind === "sessionNotFound" || (kind == null && /session not found|unknown session/i.test(text))) {
+    return {
+      title: "Esta conversa não foi encontrada",
+      explanation: "O servidor não conhece mais esta conversa. Recarregar não a recria e não troca o perfil do modelo.",
+    };
+  }
+  if (kind === "sessionStreamMismatch" || (kind == null && /stream mismatch/i.test(text))) {
+    return {
+      title: "O fluxo desta conversa não bate",
+      explanation:
+        "Esta janela perdeu o fluxo da conversa — outro cliente ou um recarregamento. Recarregar a conversa pode realinhar. Repetir a mesma mensagem não troca o perfil do modelo.",
+    };
+  }
+  if (kind === "sessionNotLoaded" || (kind == null && /not loaded/i.test(text))) {
+    return {
+      title: "Esta conversa não estava carregada",
+      explanation:
+        "O servidor não tinha esta conversa pronta. Recarregar tenta carregá-la de novo. Isso não troca o modelo nem o perfil.",
+    };
+  }
+  return null;
+}
+
 export function userFacingError(error: unknown): string {
   const kind = errorKind(error);
   const status = error instanceof HeliconError ? error.status : 0;
   const message = errorMessage(error);
-  return authErrorCopy(kind, status, message)?.explanation ?? sanitizeErrorDetail(message);
+  return (
+    authErrorCopy(kind, status, message)?.explanation ??
+    sessionErrorCopy(kind, message)?.explanation ??
+    sanitizeErrorDetail(message)
+  );
 }
 
 /** Tira tokens e ids de pedido do detalhe técnico; o usuário não precisa deles na tela. */

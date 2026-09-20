@@ -782,9 +782,11 @@ function LoadError(props: { sessionId: string; message: string | null }) {
         <p className="text-sm font-medium text-fg">Não foi possível abrir esta conversa</p>
         <p className="mt-0.5 text-sm break-words text-muted">{props.message ?? "O Muse não respondeu."}</p>
       </div>
-      <Button size="sm" onClick={() => void controller.loadThread(props.sessionId)}>
-        Tentar de novo
-      </Button>
+      <Tip label="Tenta abrir de novo. Não troca o modelo nem o perfil.">
+        <Button size="sm" onClick={() => void controller.loadThread(props.sessionId)}>
+          Recarregar conversa
+        </Button>
+      </Tip>
     </div>
   );
 }

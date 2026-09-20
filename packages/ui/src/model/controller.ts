@@ -697,7 +697,7 @@ export class HeliconController {
       this.setThread(sessionId, {
         ...(this.state.threads[sessionId] ?? blankThread()),
         load: "error",
-        error: errorMessage(error),
+        error: userFacingError(error),
       });
     }
   }
