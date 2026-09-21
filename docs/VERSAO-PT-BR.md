@@ -2,6 +2,14 @@
 
 Este fork não usa o plug-in de atualização automática do Tauri. Não há feed `latest.json` configurado, `createUpdaterArtifacts` permanece desligado e os identificadores das instalações não mudam.
 
+Instruções de download, Teste versus instalação normal, e a distinção entre a release pública e o código atual: [INSTALACAO.md](INSTALACAO.md).
+
+## Release pública versus o que a interface mostra
+
+- Última release **pública** deste fork: tag **[v0.12.4-pt4](https://github.com/nattanfx/helicon/releases/tag/v0.12.4-pt4)** (18/09/2026), commit `3709b6f`.
+- O número lido pelo Tauri (`version` em `tauri.conf.json`) continua `0.12.4`. A UI mostra esse número; **não** trata o HEAD de `prod` como se fosse a pt4 instalada, nem a pt4 como se já tivesse o código posterior.
+- Uma compilação nova do canal Teste traz o SHA em **Compilação** só se o workflow injetar `HELICON_BUILD`. A instalação normal da pt4 não anuncia o HEAD atual.
+
 ## O que a interface mostra
 
 - **Versão:** `getVersion()` do Tauri, lida de `apps/desktop/src-tauri/tauri.conf.json` (`version`, hoje `0.12.4`). Não é um número inventado na UI e não anuncia recursos do Helicon original.
@@ -27,6 +35,6 @@ O frontend compilado é o mesmo código para os dois canais; Teste e normal dist
 ## Como atualizar
 
 - **Helicon Teste:** Actions → Windows Teste → artefato `Helicon-Teste-Windows-…`. Instruções em `docs/TESTE-WINDOWS.md`.
-- **Instalação normal:** quando houver release deste fork, usar as releases de `https://github.com/nattanfx/helicon`. Não baixar o atualizador nem as notas do repositório original.
+- **Instalação normal:** a release pública atual é `v0.12.4-pt4`, em `https://github.com/nattanfx/helicon/releases`. Quando existir uma versão estável **nova deste fork**, baixar o instalador nessa mesma lista. Não baixar o atualizador nem as notas do repositório original.
 
-Abrir ou reabrir o aplicativo não consulta plug-in de atualização. A oferta automática (verificar / baixar / instalar ao fechar) só voltaria se um shell passasse de novo um `AppUpdater`.
+Abrir ou reabrir o aplicativo não consulta plug-in de atualização. A oferta automática (verificar / baixar / instalar ao fechar) só voltaria se um shell passasse de novo um `AppUpdater`. Não há data prometida para a próxima release.
