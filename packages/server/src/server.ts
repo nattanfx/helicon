@@ -44,7 +44,7 @@ import { FileError, listFolder, readProjectFile, resolveInRoot, searchProjectFil
 import { PathError, createDirectory, listDirectory, resolveUserPath, type PathContext } from "./paths.js";
 import { buildThreadTitlePrompt, deriveTitle, parseExecTitle, sanitizeThreadTitle } from "./threadTitles.js";
 
-export const HELICON_VERSION = "0.12.4";
+export const HELICON_VERSION = "0.12.5-pt5";
 
 export interface HostExit {
   code: number | null;

@@ -53,6 +53,7 @@ describe("app identity", () => {
     assert.equal(sanitizeBuild("0.12.4"), null);
     assert.equal(sanitizeBuild("0.14.3"), null);
     assert.equal(sanitizeBuild("v0.12.4-pt4"), null);
+    assert.equal(sanitizeBuild("0.12.5-pt5"), null);
     assert.equal(sanitizeBuild("latest"), null);
     assert.equal(shortBuild("7b983556954e883f6f80cafc67bd0b4c8ae4f0c8"), "7b98355");
   });
@@ -71,6 +72,16 @@ describe("app identity", () => {
     const web = webIdentity();
     assert.equal(web.version, "");
     assert.equal(identityHeading(web), "Helicon (navegador)");
+    const normal = {
+      version: "0.12.5-pt5",
+      channel: "normal" as const,
+      productName: "Helicon",
+      identifier: NORMAL_IDENTIFIER,
+      build: null,
+      updateUrl: FORK_RELEASES_URL,
+    };
+    assert.equal(identityHeading(normal), "Helicon 0.12.5-pt5");
+    assert.equal(identitySummary(normal), "Instalação normal deste fork");
     assert.equal(identitySummary(web), "Aberto no navegador");
   });
 });

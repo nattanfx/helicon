@@ -3,8 +3,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Rebuilds and republishes an existing tag: `gh workflow run release.yml --ref vX.Y.Z`. It runs the workflow file as
-  # it is at that tag, so it works for tags made after this line was added.
+  # Rebuilds an existing tag: `gh workflow run release.yml --ref vX.Y.Z`. It runs the workflow file as
+  # it is at that tag. This fork publishes a draft; publishing the release is a separate decision.
   workflow_dispatch:
 
 jobs:
@@ -21,63 +21,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - run: npm run build --workspace @helicon/daemon --workspace @helicon/ui --workspace @helicon/server
-      # Pinned to a commit: this step holds the updater signing key, so a moved tag must not change what runs.
+      # Pinned to a commit: a moved tag must not change what runs.
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           # Which Node.js sidecar beforeBuildCommand bundles (apps/desktop/scripts/fetch-node.mjs).
           HELICON_NODE_TARGET: x86_64-pc-windows-msvc
+          # Shown as Compilação when it is a git SHA. The app version comes from tauri.conf.json.
+          HELICON_BUILD: ${{ github.sha }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signs the installer for the in-app updater, which also publishes latest.json.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Helicon ${{ github.ref_name }}"
-          releaseBody: "Bundles Node.js, so the only requirement is the Muse CLI with muse login (Muse for Windows natively, or inside WSL2). macOS builds are not Apple-notarized yet, so the first launch needs a right-click, then Open."
-          releaseDraft: false
-          # A full release, so the updater's releases/latest/download/latest.json always points at it.
+          releaseBody: |
+            Pacote pessoal deste fork para Windows. Não é o Helicon original e o aplicativo não se atualiza sozinho.
+
+            A versão na interface é a de tauri.conf.json (0.12.5-pt5 neste pacote). Feche o Helicon antes de instalar. Faça backup das pastas de dados, como em docs/BACKUP.md, antes de atualizar a instalação normal. No instalador, não marque apagar os dados do aplicativo.
+
+            Em relação à v0.12.4-pt4: credencial no servidor local; no máximo uma tentativa de título por conversa nova; navegação e silêncio de conversa; rótulos conhecidos em português; edição de Markdown recuperável sem gravar o original até salvar.
+
+            Não inclui sandbox, YOLO nem contas do original. Não há instalador de macOS.
+          releaseDraft: true
           prerelease: false
-          # GitHub sometimes refuses a large asset upload ("Error saving asset"); retrying saves a manual job rerun.
           retryAttempts: 3
           args: --target x86_64-pc-windows-msvc
-
-  desktop-macos:
-    permissions:
-      contents: write
-    # After Windows, not beside it: both jobs merge their platform into the release's latest.json,
-    # which is a read-modify-write that concurrent jobs could clobber, silently dropping a platform
-    # from auto-update.
-    needs: desktop-windows
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          # universal-apple-darwin needs both halves installed; aarch64 is already the runner default.
-          targets: x86_64-apple-darwin
-      - run: npm ci
-      - run: npm run build --workspace @helicon/daemon --workspace @helicon/ui --workspace @helicon/server
-      # Pinned to a commit: this step holds the updater signing key, so a moved tag must not change what runs.
-      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
-        env:
-          # Which Node.js sidecar beforeBuildCommand bundles (apps/desktop/scripts/fetch-node.mjs).
-          HELICON_NODE_TARGET: universal-apple-darwin
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signs the installer for the in-app updater, which also publishes latest.json.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Helicon ${{ github.ref_name }}"
-          releaseBody: "Bundles Node.js, so the only requirement is the Muse CLI with muse login (Muse for Windows natively, or inside WSL2). macOS builds are not Apple-notarized yet, so the first launch needs a right-click, then Open."
-          releaseDraft: false
-          # A full release, so the updater's releases/latest/download/latest.json always points at it.
-          prerelease: false
-          # GitHub sometimes refuses a large asset upload ("Error saving asset"); retrying saves a manual job rerun.
-          retryAttempts: 3
-          # One universal binary for Apple Silicon and Intel; the macOS bundles come from tauri.macos.conf.json.
-          args: --target universal-apple-darwin

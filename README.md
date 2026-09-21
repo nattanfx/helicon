@@ -23,7 +23,7 @@ A última **release pública** deste fork é **[v0.12.4-pt4](https://github.com/
 - Baixe **neste** repositório: [nattanfx/helicon/releases](https://github.com/nattanfx/helicon/releases).
 - **Não** use [as releases do Helicon original](https://github.com/HarjjotSinghh/helicon/releases/latest) se quiser as mudanças em português deste fork.
 - A atualização é **manual**. O aplicativo **não** se atualiza sozinho.
-- O código em `prod` está **à frente** da pt4. Instalar a pt4 não instala o HEAD; o HEAD **não** é uma release publicada.
+- O código em `prod` está **à frente** da pt4 e declara a edição `0.12.5-pt5`. Instalar a pt4 não instala esse código; a tag e o instalador dessa edição **ainda não foram publicados**. Notas: [docs/NOTAS-0.12.5-pt5.md](docs/NOTAS-0.12.5-pt5.md).
 
 Passos, canal Teste versus instalação normal, e o que este fork não entrega: [docs/INSTALACAO.md](docs/INSTALACAO.md). Identidade na interface: [docs/VERSAO-PT-BR.md](docs/VERSAO-PT-BR.md).
 
