@@ -362,4 +362,26 @@ describe("SessionManager", () => {
     assert.equal(isApprovalMode("promptUnmatched"), true);
     assert.equal(isApprovalMode("yolo"), false);
   });
+
+  it("passes protocol errors through when the connection reports them, and says otherwise", () => {
+    const legacy = new SessionManager(new FakeConnection());
+    assert.equal(
+      legacy.onProtocolError(() => {}),
+      false,
+      "conexões antigas e dublês sem o gancho continuam valendo",
+    );
+
+    const seen: unknown[] = [];
+    const modern: CommandConnection = {
+      command: async () => ({ ok: true }),
+      onNotification: () => {},
+      onProtocolError: (handler) => handler(new Error("refused frame")),
+    };
+    const manager = new SessionManager(modern);
+    assert.equal(manager.onProtocolError((error) => void seen.push(error)), true);
+    assert.deepEqual(
+      seen.map((error) => (error instanceof Error ? error.message : String(error))),
+      ["refused frame"],
+    );
+  });
 });

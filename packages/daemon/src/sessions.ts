@@ -54,6 +54,9 @@ export interface MspNotification {
 
 export type NotificationHandler = (notification: MspNotification) => void;
 
+/** Um frame que o SDK não conseguiu entregar: malformado, grande demais ou recusado antes de virar notificação. */
+export type ProtocolErrorHandler = (error: unknown) => void;
+
 /**
  * The slice of the SDK connection Helicon uses. `command` mints a `commandId` for
  * state-changing verbs; `request` sends read-only queries (lists, reads, pages) as-is.
@@ -62,6 +65,8 @@ export interface CommandConnection {
   command(method: string, params?: Record<string, unknown>): Promise<unknown>;
   request?(method: string, params?: Record<string, unknown>): Promise<unknown>;
   onNotification(handler: NotificationHandler): void;
+  /** Opcional: conexões antigas e os dublês de teste não têm. */
+  onProtocolError?(handler: ProtocolErrorHandler): void;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -185,6 +190,18 @@ export class SessionManager {
 
   onNotification(handler: NotificationHandler): void {
     this.connection.onNotification(handler);
+  }
+
+  /**
+   * Frames que o SDK descartou antes de virarem notificações. Sem isto a perda é silenciosa,
+   * igual à queixa #42 do original. Retorna false quando a conexão não sabe informar.
+   */
+  onProtocolError(handler: ProtocolErrorHandler): boolean {
+    if (!this.connection.onProtocolError) {
+      return false;
+    }
+    this.connection.onProtocolError(handler);
+    return true;
   }
 
   /** Read-only queries go out without a minted `commandId` when the connection allows it. */

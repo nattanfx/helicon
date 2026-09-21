@@ -51,6 +51,17 @@ export interface HostExit {
   signal: string | null;
 }
 
+/** O que o feed de notificações de uma sessão já fez, para responder "ficou quieto ou estava parado?". */
+export interface SessionNotifyStats {
+  /** Época em milissegundos da última notificação encaminhada a esta sessão. */
+  lastAt: number;
+  count: number;
+  byMethod: Record<string, number>;
+}
+
+/** Quantas sessões mantêm estatísticas de notificação. As mais antigas saem primeiro; é ajuda de diagnóstico. */
+const NOTIFY_STATS_LIMIT = 200;
+
 export interface HostHandle {
   start(version: string): Promise<unknown>;
   connection: CommandConnection;
@@ -623,6 +634,18 @@ export class HeliconServer {
   /** The reasoning effort each session is known to be running at, so a turn only re-sets it when it changes. */
   private readonly effortApplied = new Map<string, ReasoningEffort>();
   private lastHostError: string | null = null;
+  /**
+   * Saúde por sessão do feed de notificações. A queixa #42 do original relatava notificações parando
+   * no meio da sessão enquanto o registro durável completava; nada aqui distinguia isso de um backend
+   * sem nada a dizer. Limitado às sessões vistas por último.
+   */
+  private readonly notifyStats = new Map<string, SessionNotifyStats>();
+  private protocolErrors = 0;
+  private lastProtocolError: string | null = null;
+  private forwardFailures = 0;
+  private lastForwardFailure: string | null = null;
+  /** Notificações sem sessionId, que nada pôde encaminhar. */
+  private unroutedByMethod = new Map<string, number>();
   /** Where Muse runs, once known; see `museRuntime`. */
   private runtimeKnown: MuseRuntime | null = null;
   private closed = false;
@@ -987,6 +1010,26 @@ export class HeliconServer {
         })),
         lastHostError: this.lastHostError,
         fingerprintWarnings: Object.fromEntries(this.fingerprints),
+        // Suficiente para responder "o feed desta sessão ficou quieto, e algo foi descartado?".
+        diagnostics: {
+          now: new Date().toISOString(),
+          protocolErrors: this.protocolErrors,
+          lastProtocolError: this.lastProtocolError,
+          forwardFailures: this.forwardFailures,
+          lastForwardFailure: this.lastForwardFailure,
+          unroutedByMethod: Object.fromEntries(this.unroutedByMethod),
+          sessions: Object.fromEntries(
+            [...this.notifyStats].map(([id, stats]) => [
+              id,
+              {
+                lastNotificationAt: new Date(stats.lastAt).toISOString(),
+                quietForMs: Date.now() - stats.lastAt,
+                count: stats.count,
+                byMethod: stats.byMethod,
+              },
+            ]),
+          ),
+        },
       });
       return true;
     }
@@ -2678,6 +2721,16 @@ export class HeliconServer {
     this.fingerprints.set(key, started?.fingerprintWarning ?? null);
     const manager = new SessionManager(handle.connection);
     manager.onNotification((notification) => this.forward(key, notification));
+    // Um frame que o SDK recusa nunca vira notificação; sem isto é indistinguível de um backend
+    // sem nada a enviar (#42 do original, H3).
+    const reportsProtocolErrors = manager.onProtocolError((error) => {
+      this.protocolErrors += 1;
+      this.lastProtocolError = error instanceof Error ? error.message : String(error);
+      this.log(`protocol error on host ${key}: ${this.lastProtocolError}`);
+    });
+    if (!reportsProtocolErrors) {
+      this.log(`host ${key} cannot report protocol errors; dropped frames stay invisible`);
+    }
     const serverInfo = asRecord(asRecord(started?.initializeResult)?.["serverInfo"]);
     const managed: ManagedHost = {
       key,
@@ -2757,19 +2810,56 @@ export class HeliconServer {
     return version ? nativeReleaseInfo({ binary, dir: win32.dirname(binary), version, launcher: null }) : null;
   }
 
+  /**
+   * Uma notificação vinda de um host. Tudo aqui é protegido: isto roda dentro do loop de leitura do
+   * SDK, então uma exceção derrubava a conexão do host inteiro e encerrava todas as sessões nele,
+   * não só a que produziu o frame ruim (#42 do original).
+   */
   private forward(hostKey: string, notification: { method: string; params?: unknown; emittedAtMs?: number }): void {
-    const params = asRecord(notification.params) ?? {};
-    if (notification.method === "usage/changed") {
-      this.observeUsage(parseSubscriptionUsage(params));
-      return;
+    try {
+      const params = asRecord(notification.params) ?? {};
+      if (notification.method === "usage/changed") {
+        this.observeUsage(parseSubscriptionUsage(params));
+        return;
+      }
+      const event = toWireEvent(notification.method, params, notification.emittedAtMs);
+      if (!event) {
+        // Sem sessionId, não há para onde encaminhar. Contado em vez de descartado em silêncio.
+        this.unroutedByMethod.set(notification.method, (this.unroutedByMethod.get(notification.method) ?? 0) + 1);
+        return;
+      }
+      this.sessionHosts.set(event.sessionId, hostKey);
+      this.noteNotification(event.sessionId, notification.method);
+      this.track(event.sessionId, notification.method, params);
+      this.emit("helicon", event);
+    } catch (error) {
+      this.forwardFailures += 1;
+      this.lastForwardFailure = `${notification.method}: ${error instanceof Error ? error.message : String(error)}`;
+      this.log(`forward(${notification.method}) threw: ${this.lastForwardFailure}`);
     }
-    const event = toWireEvent(notification.method, params, notification.emittedAtMs);
-    if (!event) {
-      return;
+  }
+
+  /** Registra que o feed de uma sessão está vivo, para um silêncio depois se distinguir de sessão parada. */
+  private noteNotification(sessionId: string, method: string): void {
+    let stats = this.notifyStats.get(sessionId);
+    if (!stats) {
+      if (this.notifyStats.size >= NOTIFY_STATS_LIMIT) {
+        const oldest = this.notifyStats.keys().next();
+        if (!oldest.done) {
+          this.notifyStats.delete(oldest.value);
+        }
+      }
+      stats = { lastAt: 0, count: 0, byMethod: {} };
+      this.notifyStats.set(sessionId, stats);
     }
-    this.sessionHosts.set(event.sessionId, hostKey);
-    this.track(event.sessionId, notification.method, params);
-    this.emit("helicon", event);
+    stats.lastAt = Date.now();
+    stats.count += 1;
+    stats.byMethod[method] = (stats.byMethod[method] ?? 0) + 1;
+  }
+
+  /** Tudo que vale ler depois vai para stderr, onde termina o log do daemon. */
+  private log(message: string): void {
+    process.stderr.write(`[helicon] ${new Date().toISOString()} ${message}\n`);
   }
 
   private track(sessionId: string, method: string, params: Record<string, unknown>): void {

@@ -1458,6 +1458,61 @@ describe("slash commands, skills and shell", () => {
     assert.equal(stripFrontmatter("\uFEFF---\nname: x\n---\nBody"), "Body");
     assert.equal(stripFrontmatter("No frontmatter"), "No frontmatter");
   });
+
+  it("counts the notification feed on /api/health without exposing prompt content", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+
+    connection.notify("turn/started", { sessionId: "s1", turnId: "t1" });
+    connection.notify("custom/ping", {});
+    const breaking = {};
+    Object.defineProperty(breaking, "session", {
+      enumerable: true,
+      get() {
+        throw new Error("boom");
+      },
+    });
+    connection.notify("turn/started", breaking as Record<string, unknown>);
+
+    // A falha de um frame não derruba a conexão do host: o próximo evento segue.
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t1", terminal: "completed" });
+
+    const diagnostics = (await get(base, "/api/health")).diagnostics;
+    assert.equal(diagnostics.forwardFailures, 1);
+    assert.match(diagnostics.lastForwardFailure, /turn\/started: boom/);
+    assert.deepEqual(diagnostics.unroutedByMethod, { "custom/ping": 1 });
+    const session = diagnostics.sessions["s1"];
+    assert.equal(session.count, 2);
+    assert.ok(Date.parse(session.lastNotificationAt) > 0);
+    assert.ok(typeof session.quietForMs === "number");
+    assert.deepEqual(session.byMethod, { "turn/started": 1, "turn/completed": 1 });
+    assert.ok(
+      !JSON.stringify(diagnostics).includes('"t1"'),
+      "conteúdo dos eventos (como ids de turno) não vaza para o diagnóstico",
+    );
+  });
+
+  it("counts protocol errors when the connection reports them", async () => {
+    class ProtocolConnection extends FakeConnection {
+      protocolHandler: ((error: unknown) => void) | null = null;
+      onProtocolError(handler: (error: unknown) => void): void {
+        this.protocolHandler = handler;
+      }
+      failProtocol(error: unknown): void {
+        this.protocolHandler?.(error);
+      }
+    }
+    const connection = new ProtocolConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.failProtocol(new Error("refused frame"));
+    const diagnostics = (await get(base, "/api/health")).diagnostics;
+    assert.equal(diagnostics.protocolErrors, 1);
+    assert.equal(diagnostics.lastProtocolError, "refused frame");
+  });
 });
 
 describe("wire helpers", () => {
