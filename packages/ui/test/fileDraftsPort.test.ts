@@ -46,7 +46,7 @@ function testPlatform(drafts: { load: () => unknown; save: (drafts: Record<strin
     writeHash: () => {},
     onHashChange: () => () => {},
     now: () => Date.now(),
-    schedule: (fn: () => void) => setTimeout(fn, 0),
+    schedule: (fn: () => void, ms: number) => setTimeout(fn, ms),
     cancel: (handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>),
     focused: () => false,
     loadFileDrafts: () => drafts.load(),
@@ -70,7 +70,6 @@ function stablePlatform(
   };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 15));
 const KEY = "/work/app\nREADME.md";
 
 describe("REV5 — recuperação independente da porta", () => {
@@ -83,15 +82,17 @@ describe("REV5 — recuperação independente da porta", () => {
     controllerB.dispose();
   });
 
-  it("recupera do cofre estável após a troca de porta, inclusive edição vazia", async () => {
+  it("recupera do cofre estável após a troca de porta, inclusive edição vazia", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
     const stable = { snapshot: null as unknown, save: (drafts: Record<string, FileDraft>) => {} };
     stable.save = (drafts) => {
       stable.snapshot = drafts;
     };
     const controllerA = new HeliconController(new FakeClient() as never, stablePlatform(originStorage(), stable));
+    t.after(() => controllerA.dispose());
     const stopA = controllerA.start();
     controllerA.setFileDraft("/work/app", "README.md", "", 100);
-    await settle();
+    t.mock.timers.tick(400);
     controllerA.dispose();
     stopA();
     assert.equal((stable.snapshot as Record<string, FileDraft>)[KEY]?.content, "", "vazio continua sendo edição válida");
@@ -100,6 +101,7 @@ describe("REV5 — recuperação independente da porta", () => {
       new FakeClient() as never,
       stablePlatform(originStorage(), stable),
     );
+    t.after(() => controllerB.dispose());
     assert.equal(controllerB.store.get().fileDrafts[KEY]?.content, "", "a mesma instalação recupera na origem nova");
     const stopB = controllerB.start();
     assert.ok(controllerB.store.get().toasts.some((toast) => /não gravadas/.test(toast.title)));
@@ -107,7 +109,8 @@ describe("REV5 — recuperação independente da porta", () => {
     stopB();
   });
 
-  it("não compartilha cópias entre instalações distintas", async () => {
+  it("não compartilha cópias entre instalações distintas", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
     const stableNormal = { snapshot: null as unknown, save: (drafts: Record<string, FileDraft>) => {} };
     stableNormal.save = (drafts) => {
       stableNormal.snapshot = drafts;
@@ -117,37 +120,42 @@ describe("REV5 — recuperação independente da porta", () => {
       stableTest.snapshot = drafts;
     };
     const normal = new HeliconController(new FakeClient() as never, stablePlatform(originStorage(), stableNormal));
+    t.after(() => normal.dispose());
     const stopNormal = normal.start();
     normal.setFileDraft("/work/app", "README.md", "# normal", 100);
-    await settle();
+    t.mock.timers.tick(400);
     normal.dispose();
     stopNormal();
 
     const teste = new HeliconController(new FakeClient() as never, stablePlatform(originStorage(), stableTest));
+    t.after(() => teste.dispose());
     assert.deepEqual(teste.store.get().fileDrafts, {}, "Teste e normal são cofres separados");
     teste.dispose();
   });
 
-  it("salvar e descartar limpam o cofre; grande demais não entra e avisa", async () => {
+  it("salvar e descartar limpam o cofre; grande demais não entra e avisa", async (t) => {
+    // Advance persistence without also expiring toasts or running the recurring watchdog.
+    t.mock.timers.enable({ apis: ["setTimeout"] });
     const stable = { snapshot: null as unknown, save: (drafts: Record<string, FileDraft>) => {} };
     stable.save = (drafts) => {
       stable.snapshot = drafts;
     };
     const controller = new HeliconController(new FakeClient() as never, stablePlatform(originStorage(), stable));
+    t.after(() => controller.dispose());
     const stop = controller.start();
     controller.setFileDraft("/work/app", "README.md", "# rascunho", 100);
-    await settle();
+    t.mock.timers.tick(400);
     assert.equal((stable.snapshot as Record<string, FileDraft>)[KEY]?.content, "# rascunho");
     assert.equal(await controller.saveFile("/work/app", "README.md"), 200);
     assert.deepEqual(stable.snapshot, {}, "salvar limpa a cópia");
 
     controller.setFileDraft("/work/app", "notes.md", "# outra", 50);
-    await settle();
+    t.mock.timers.tick(400);
     controller.setFileDraft("/work/app", "notes.md", null);
     assert.deepEqual(stable.snapshot, {}, "descartar limpa a cópia");
 
     controller.setFileDraft("/work/app", "big.md", "x".repeat(MAX_FILE_DRAFT_CHARS + 1), 1);
-    await settle();
+    t.mock.timers.tick(400);
     assert.equal(
       (stable.snapshot as Record<string, FileDraft>)["/work/app\nbig.md"],
       undefined,
