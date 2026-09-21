@@ -762,6 +762,37 @@ mod tests {
     }
 
     #[test]
+    fn remote_ui_may_invoke_the_drafts_vault_commands() {
+        // BUG-V1-F6: a UI é servida pelo servidor local em http://127.0.0.1:*, que o
+        // Tauri trata como conteúdo remoto. Comando do app sem concessão explícita é
+        // negado em origem remota, o frontend engole a recusa e o cofre nunca é usado
+        // no instalador (só o localStorage da origem, que se perde na troca de porta).
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let build = std::fs::read_to_string(root.join("build.rs")).unwrap();
+        let caps: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join("capabilities").join("main.json")).unwrap(),
+        )
+        .unwrap();
+        let permissions = caps["permissions"].as_array().unwrap();
+        for cmd in ["helicon_load_file_drafts", "helicon_save_file_drafts"] {
+            assert!(
+                build.contains(cmd),
+                "build.rs deve declarar {cmd} no AppManifest para gerar o allow-*"
+            );
+            let allow = format!("allow-{}", cmd.replace('_', "-"));
+            assert!(
+                permissions.iter().any(|p| p.as_str() == Some(allow.as_str())),
+                "capabilities/main.json deve conceder {allow} (comandos gerados em kebab-case)"
+            );
+        }
+        let urls = caps["remote"]["urls"].as_array().unwrap();
+        assert!(
+            urls.iter().any(|u| u.as_str() == Some("http://127.0.0.1:*")),
+            "a concessão precisa valer para o servidor local em qualquer porta"
+        );
+    }
+
+    #[test]
     fn retries_on_a_fresh_port_only_when_the_server_exits_at_once() {
         // Outro processo pegou a porta verificada antes de o servidor ligá-la: o servidor sai, a nova tentativa pousa.
         let mut tried = Vec::new();
