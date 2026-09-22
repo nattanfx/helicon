@@ -1,5 +1,13 @@
 # Controle de consumo dos títulos
 
+## Idioma
+
+A instrução do gerador do Helicon pede títulos em **português brasileiro (pt-BR)**, inclusive para pedidos em inglês ou com idiomas misturados. Nomes próprios, produtos e identificadores de código podem ser mantidos no idioma original. A resposta continua limitada a um título curto, sem explicações.
+
+Essa orientação vale para novas tentativas do gerador; não traduz títulos existentes nem cria outra chamada para corrigir o idioma. Títulos recebidos do próprio Muse ou de outro cliente continuam sendo sincronizados, e o texto usado como fallback sem modelo mantém o idioma da mensagem original. O idioma da resposta do modelo não é garantido por uma validação automática.
+
+## Tentativas e consumo
+
 Cada conversa criada no Helicon com **Gerar títulos** ligado recebe no máximo uma tentativa automática. A tentativa fica registrada antes da chamada ao Muse. Falhas, cota esgotada, resposta inválida, título igual ao primeiro pedido e interrupção do aplicativo não autorizam outra tentativa. O usuário pode continuar renomeando a conversa manualmente.
 
 Conversas antigas ou descobertas na CLI não recebem chamadas automáticas para renomeação. Seus títulos existentes e nomes manuais são preservados; uma conversa sem título ainda pode receber o texto do primeiro pedido, sem chamada ao modelo. Reativar a opção ou mudar o modelo não inicia um lote antigo. Nesta alteração não há botão para geração em lote.

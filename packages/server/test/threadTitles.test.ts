@@ -30,6 +30,8 @@ describe("buildThreadTitlePrompt", () => {
     const prompt = buildThreadTitlePrompt("Fix login redirect");
     assert.match(prompt, /^Generate a title/);
     assert.match(prompt, /Reply with ONLY the title text/);
+    assert.match(prompt, /Write the title in Brazilian Portuguese \(pt-BR\)/);
+    assert.match(prompt, /even when the user message is in English or mixes languages/);
     assert.match(prompt, /User message:\nFix login redirect$/);
   });
 
