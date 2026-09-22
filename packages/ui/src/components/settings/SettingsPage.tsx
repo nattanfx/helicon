@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowLeft, Minus, Plus, RefreshCw, RotateCw, SquareArrowOutUpRight } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, Minus, Plus, RefreshCw, RotateCw, ScrollText, SquareArrowOutUpRight } from "lucide-react";
 import { Switch } from "radix-ui";
 import { useState, type ReactNode } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
@@ -15,6 +15,7 @@ import { CODE_THEMES, ZOOM_MAX, ZOOM_MIN, type CodeTheme, type GroupBy, type The
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
 import { CODE_THEME_LABELS, updateSummary } from "../sidebar/Sidebar.js";
+import { NotasDaEdicao } from "../app/NotasDaEdicao.js";
 import { Modal } from "../ui/overlays.js";
 import { TopBar } from "../chrome.js";
 import { Button, IconButton, MOD, cn } from "../ui/primitives.js";
@@ -114,6 +115,7 @@ export function SettingsPage() {
   const bypassAll = useApp((s) => s.bypassAll);
   const armedThreads = useApp((s) => s.bypassThreads.length);
   const [confirmBypass, setConfirmBypass] = useState(false);
+  const [notasOpen, setNotasOpen] = useState(false);
   const now = useNow(60_000);
   const busy = updates?.status === "checking" || updates?.status === "downloading" || updates?.status === "installing";
   const collapsed = useApp((s) => s.prefs.sidebarCollapsed);
@@ -349,6 +351,14 @@ export function SettingsPage() {
         ) : null}
 
         <Section title="Ambiente">
+          <Row
+            label="Novidades desta edição"
+            description="As notas desta edição do fork, guardadas no próprio aplicativo. Ler não envia nada nem muda nada."
+          >
+            <Button size="sm" variant="secondary" onClick={() => setNotasOpen(true)}>
+              <ScrollText size={13} /> Ler
+            </Button>
+          </Row>
           <Fact label="Servidor" value={env?.version ?? "Desconhecido"} />
           <Fact label="Plataforma" value={env?.platform ?? "Desconhecido"} />
           {env?.platform === "win32" ? (
@@ -362,6 +372,7 @@ export function SettingsPage() {
         </Section>
       </div>
 
+      <NotasDaEdicao open={notasOpen} onClose={() => setNotasOpen(false)} />
       <Modal
         open={confirmBypass}
         onOpenChange={setConfirmBypass}
