@@ -205,6 +205,23 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
+/** Same stamp and every field equal: the same meter state, not worth another event. */
+function sameSubscriptionUsage(a: SubscriptionUsage, b: SubscriptionUsage): boolean {
+  if (a.tier !== b.tier || a.observedAtMs !== b.observedAtMs) {
+    return false;
+  }
+  for (const key of ["window", "weekly"] as const) {
+    const x = a[key];
+    const y = b[key];
+    const sameWindow =
+      x.usedPercent === y.usedPercent && x.resetsAtMs === y.resetsAtMs && x.windowDurationMins === y.windowDurationMins;
+    if (!sameWindow) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
@@ -3054,9 +3071,15 @@ export class HeliconServer {
     return false;
   }
 
-  /** A newer subscription window from any host replaces the one held, and every open window hears about it. */
+  /**
+   * A newer subscription window from any host replaces the one held, and every open window hears about it.
+   * An identical repeat stays silent; the same stamp carrying new content still counts as news.
+   */
   private observeUsage(usage: SubscriptionUsage | null): void {
     if (!usage || (this.planUsage && this.planUsage.observedAtMs > usage.observedAtMs)) {
+      return;
+    }
+    if (this.planUsage && sameSubscriptionUsage(this.planUsage, usage)) {
       return;
     }
     this.planUsage = usage;

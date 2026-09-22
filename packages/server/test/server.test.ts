@@ -725,6 +725,71 @@ describe("HeliconServer", () => {
     assert.equal(read.usage.window.usedPercent, 55);
     assert.equal(read.usage.weekly.windowDurationMins, null);
   });
+  it("emits one plan-usage event for a repeated identical reading", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const window = (percent: number, at: number) => ({
+      tier: "high",
+      observedAtMs: at,
+      window: { usedPercent: percent, resetsAtMs: at + 1000, windowDurationMins: 300 },
+      weekly: { usedPercent: 10, resetsAtMs: at + 9000 },
+    });
+    const { base } = await start(connection, { token: "secret" });
+    const auth = await fetch(`${base}/api/auth`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "secret" }),
+    });
+    assert.equal(auth.status, 200);
+    // The stream authenticates the way EventSource would: the cookie alone.
+    const stream = await fetch(`${base}/api/events`, { headers: { cookie: auth.headers.get("set-cookie") ?? "" } });
+    assert.equal(stream.status, 200);
+    const seen: number[] = [];
+    const reader = stream.body!.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    const pump = (async () => {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          return;
+        }
+        buf += decoder.decode(value, { stream: true });
+        let cut: number;
+        while ((cut = buf.indexOf("\n\n")) >= 0) {
+          const frame = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const data = frame
+            .split("\n")
+            .find((line) => line.startsWith("data: "))
+            ?.slice("data: ".length);
+          if (!data) {
+            continue;
+          }
+          const payload = JSON.parse(data) as { type?: string; usage?: { window?: { usedPercent?: number } } };
+          if (payload.type === "plan-usage" && typeof payload.usage?.window?.usedPercent === "number") {
+            seen.push(payload.usage.window.usedPercent);
+          }
+        }
+      }
+    })();
+    try {
+      await send(base, "/api/sessions?token=secret", { cwd: "/work/proj" });
+      connection.notify("usage/changed", window(40, 2_000));
+      connection.notify("usage/changed", window(40, 2_000));
+      connection.notify("usage/changed", window(5, 1_000));
+      connection.notify("usage/changed", {});
+      connection.notify("usage/changed", window(55, 3_000));
+      // Same stamp, new content: the update is kept, so only the exact duplicate stays silent.
+      connection.notify("usage/changed", window(60, 3_000));
+      await waitFor(() => seen.length >= 3, "three plan-usage events");
+      assert.deepEqual(seen, [40, 55, 60]);
+      assert.equal((await get(base, "/api/plan-usage?token=secret")).usage.window.usedPercent, 60);
+    } finally {
+      await reader.cancel();
+      await pump;
+    }
+  });
 
   it("gives Muse the name typed here, and takes the name Muse settles on", async () => {
     const connection = new FakeConnection();
