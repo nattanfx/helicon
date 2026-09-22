@@ -9,6 +9,7 @@ import type { ThreadState } from "../../model/store.js";
 import type { SessionSummary } from "../../types.js";
 import { SidebarToggle, TrafficLightSpacer } from "../chrome.js";
 import { Composer, ComposerFooter } from "../composer/Composer.js";
+import { TelemetryPills } from "../composer/TelemetryPills.js";
 import { ApprovalPanel, CloseCard, PlanPanel, QuestionPanel, QueuedList, ReadOnlyNotice, StalledNotice } from "../requests/Requests.js";
 import { GoalPanel } from "./GoalPanel.js";
 import { revealLabel } from "../sidebar/Sidebar.js";
@@ -284,6 +285,7 @@ function Dock(props: { session: SessionSummary; thread: ThreadState | null; runn
         <GoalPanel sessionId={session.sessionId} running={props.running} readOnly={Boolean(thread?.readOnly)} />
         {showPlan && todo ? <PlanPanel sessionId={session.sessionId} items={todo} /> : null}
         {queued.length > 0 ? <QueuedList sessionId={session.sessionId} items={queued} /> : null}
+        <TelemetryPills sessionId={session.sessionId} />
         <Composer
           sessionId={session.sessionId}
           cwd={session.cwd}

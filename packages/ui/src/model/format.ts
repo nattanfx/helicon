@@ -77,6 +77,12 @@ export function formatSpeed(tokensPerSecond: number): string {
   return `${tokensPerSecond < 10 ? tokensPerSecond.toFixed(1) : Math.round(tokensPerSecond)} tok/s`;
 }
 
+/** Velocidade média da sessão para as pílulas de telemetria: uma casa abaixo de 100, inteiro de lá pra cima. */
+export function formatTokensPerSecond(tokensPerSecond: number): string {
+  const value = tokensPerSecond < 100 ? tokensPerSecond.toFixed(1).replace(/\.0$/, "") : String(Math.round(tokensPerSecond));
+  return `${value} tok/s`;
+}
+
 /** Um cronômetro correndo como o T3 Code mostra: `42s`, depois `7min`, depois `1h 7min`. */
 export function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -103,6 +109,28 @@ export function formatTokens(value: number | null | undefined): string {
   }
   const m = value / 1_000_000;
   return `${m < 10 ? m.toFixed(1).replace(/\.0$/, "") : Math.round(m)}M`;
+}
+
+/** Uma contagem exata de tokens com separador de milhar, para o diálogo de uso. */
+export function formatExactTokens(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "0";
+  }
+  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/**
+ * Tokens compactos para as pílulas de telemetria: como formatTokens, mas com uma casa até as
+ * dezenas de milhar, para uma sessão com 18.400 tokens ler `18.4k` em vez de `18k`.
+ */
+export function formatCompactTokens(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "0";
+  }
+  if (value >= 1000 && value < 100_000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return formatTokens(value);
 }
 
 export function basename(path: string): string {

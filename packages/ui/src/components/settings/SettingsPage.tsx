@@ -166,6 +166,16 @@ export function SettingsPage() {
               </IconButton>
             </div>
           </Row>
+          <Row
+            label="Estatísticas da sessão"
+            description="Pílulas acima do composer: turnos, velocidade e tokens da conversa aberta. Desligado por padrão."
+          >
+            <Toggle
+              checked={prefs.showTelemetry}
+              label="Estatísticas da sessão"
+              onChange={(on) => controller.setPrefs({ showTelemetry: on })}
+            />
+          </Row>
         </Section>
 
         <Section title="Novas conversas">

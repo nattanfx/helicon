@@ -1,6 +1,6 @@
 import type { ContextUsage, ModelOption, MspItem } from "../types.js";
 import { HIDDEN_KINDS, type CallUsage, type ThreadFold, type TurnInfo } from "./fold.js";
-import { diffStats, extractDiff } from "./format.js";
+import { diffStats, extractDiff, formatCompactTokens, formatTokensPerSecond, modelDisplayName } from "./format.js";
 
 /**
  * Uso de contexto e de sessão para o painel de contexto do composer. O Muse informa o total de contexto,
@@ -424,4 +424,112 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
     subagents: subagents.sort((a, b) => b.tokens - a.tokens),
     compactions,
   };
+}
+/** Totais por modelo atrás dos diálogos de telemetria, agrupados como sessionUsage agrupa. */
+export interface TelemetryModelUsage {
+  modelId: string;
+  /** O id do modelo em forma de exibição, ex. sem o sufixo do nível de contribuidor. */
+  name: string;
+  calls: number;
+  outputTokens: number;
+}
+
+/** Totais ao vivo por conversa para as pílulas de telemetria acima do composer. */
+export interface SessionTelemetry {
+  /** Detalhes por chamada cobrem só o histórico carregado. */
+  partial: boolean;
+  /** Tokens acumulados quando disponíveis, senão a soma das chamadas carregadas. */
+  totalTokens: number;
+  totalsComplete: boolean;
+  /** Turnos que o fold conhece, incluindo o que ainda está rodando. */
+  turns: number;
+  /** Chamadas ao modelo que a sessão fez. */
+  steps: number;
+  /** Chamadas que informaram quanto tempo o modelo gastou nelas. */
+  timedCalls: number;
+  /** O tempo do próprio modelo, somado só sobre as chamadas cronometradas. */
+  durationMs: number;
+  /** Tokens de saída sobre o tempo das chamadas cronometradas; nulo quando nenhuma tem tempo. */
+  tokensPerSecond: number | null;
+  promptTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  /** Entrada sem cache nas chamadas carregadas, na mesma convenção de cacheHitPct. */
+  uncachedTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  /** Fração dos tokens de prompt servidos do cache, arredondada 0–100; nula antes de qualquer prompt. */
+  cacheHitPct: number | null;
+  models: TelemetryModelUsage[];
+}
+
+/**
+ * O que as pílulas de telemetria mostram, dos mesmos registros por chamada que sessionUsage lê. A contagem
+ * de turnos é a do próprio fold, então uma conversa no meio de um turno também conta; velocidade e tempo só
+ * cobrem as chamadas que informaram duração, como turnSpeed mede, mas na sessão inteira.
+ */
+export function sessionTelemetry(fold: ThreadFold, truncated = false): SessionTelemetry {
+  const calls = Object.values(fold.meta.calls);
+  let timedCalls = 0;
+  let durationMs = 0;
+  let timedOutput = 0;
+  let promptTokens = 0;
+  let outputTokens = 0;
+  let cachedTokens = 0;
+  let cacheWriteTokens = 0;
+  let reasoningTokens = 0;
+  const byModel = new Map<string, TelemetryModelUsage>();
+  for (const call of calls) {
+    promptTokens += call.promptTokens;
+    outputTokens += call.outputTokens;
+    cachedTokens += cacheReads(call);
+    cacheWriteTokens += call.cacheWriteTokens;
+    reasoningTokens += call.reasoningTokens;
+    if (call.durationMs !== null) {
+      timedCalls += 1;
+      durationMs += call.durationMs;
+      timedOutput += call.outputTokens;
+    }
+    const id = call.modelId ?? "desconhecido";
+    const entry = byModel.get(id) ?? { modelId: id, name: modelDisplayName(id), calls: 0, outputTokens: 0 };
+    entry.calls += 1;
+    entry.outputTokens += call.outputTokens;
+    byModel.set(id, entry);
+  }
+  const totals = fold.meta.tokenTotals;
+  const partial = truncated || Boolean(totals && (totals.promptTokens > promptTokens || totals.outputTokens > outputTokens));
+  return {
+    partial,
+    totalTokens: totals?.totalTokens ?? promptTokens + outputTokens,
+    totalsComplete: totals !== null || !partial,
+    turns: Object.keys(fold.turns).length,
+    steps: calls.length,
+    timedCalls,
+    durationMs,
+    tokensPerSecond: timedCalls > 0 && durationMs > 0 ? (timedOutput / durationMs) * 1000 : null,
+    promptTokens: totals?.promptTokens ?? promptTokens,
+    outputTokens: totals?.outputTokens ?? outputTokens,
+    cachedTokens,
+    uncachedTokens: Math.max(0, promptTokens - cachedTokens),
+    cacheWriteTokens,
+    reasoningTokens,
+    cacheHitPct: promptTokens > 0 ? Math.round((cachedTokens / promptTokens) * 100) : null,
+    models: [...byModel.values()].sort((a, b) => b.outputTokens - a.outputTokens),
+  };
+}
+
+/** O rótulo da pílula de tempo: `3 turnos · 8 etapas · 62 tok/s`, sem velocidade quando nada cronometrou. */
+export function timePillLabel(t: SessionTelemetry): string {
+  const speed = t.tokensPerSecond === null ? "" : ` · ${formatTokensPerSecond(t.tokensPerSecond)}`;
+  const turns = `${t.turns} ${t.turns === 1 ? "turno" : "turnos"}`;
+  const steps = `${t.steps} ${t.steps === 1 ? "etapa" : "etapas"}`;
+  return `${t.partial ? "Parcial · " : ""}${turns} · ${steps}${speed}`;
+}
+
+/** O rótulo da pílula de uso: `252k tokens · Cache 87%`, sem cache antes de qualquer prompt. */
+export function usagePillLabel(t: SessionTelemetry): string {
+  const total = formatCompactTokens(t.totalTokens);
+  const hit = t.partial || t.cacheHitPct === null ? "" : ` · Cache ${t.cacheHitPct}%`;
+  const noun = t.totalTokens === 1 ? "token" : "tokens";
+  return `${total}${t.totalsComplete ? "" : "+"} ${noun}${hit}`;
 }
