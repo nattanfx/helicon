@@ -1,9 +1,10 @@
 import { Gauge } from "lucide-react";
+import { Tooltip } from "radix-ui";
 import { useEffect, useMemo } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { relativeTime } from "../../model/format.js";
 import { planView, type PlanTone, type PlanView } from "../../model/plan.js";
-import { Tip } from "../ui/overlays.js";
+import { FLOATING } from "../ui/overlays.js";
 import { cn } from "../ui/primitives.js";
 
 const FILL: Record<PlanTone, string> = {
@@ -98,29 +99,63 @@ function updatedLabel(view: PlanView, now: number): string {
   return `Informado pelo Muse há ${age}`;
 }
 
-/** A porcentagem da janela móvel, pequena para o rodapé da barra; abre a página de uso. */
+/** Percentuais da janela móvel e semanal, compactos no rodapé; abre a página de uso. */
 export function PlanPill() {
   const controller = useController();
   const view = usePlan();
   const first = view?.rows[0];
+  const weekly = view?.rows.find((row) => row.key === "weekly");
   if (!view || !first) {
     return null;
   }
   const label = view.rows.map((row) => `${row.label}: ${row.percent}% usados, ${row.resets.toLowerCase()}`).join(". ");
   return (
-    <Tip label={label} side="top">
-      <button
-        type="button"
-        aria-label={`Uso do plano. ${label}`}
-        onClick={() => controller.navigate({ kind: "usage" })}
-        className={cn(
-          "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-2xs font-medium tabular-nums transition-colors duration-100 hover:bg-hover",
-          TEXT[first.tone],
-        )}
-      >
-        <Gauge size={12} />
-        {first.percent}%
-      </button>
-    </Tip>
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <button
+          type="button"
+          aria-label={`Uso do plano. ${label}`}
+          onClick={() => controller.navigate({ kind: "usage" })}
+          className={cn(
+            "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-2xs font-medium tabular-nums transition-colors duration-100 hover:bg-hover",
+            TEXT[first.tone],
+          )}
+        >
+          <Gauge size={12} />
+          <span>{first.percent}%</span>
+          {weekly ? (
+            <>
+              <span aria-hidden="true" className="mx-1 h-3 w-px shrink-0 bg-line-strong" />
+              <span className={TEXT[weekly.tone]}>{weekly.percent}%</span>
+            </>
+          ) : null}
+        </button>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content
+          side="top"
+          sideOffset={8}
+          {...FLOATING}
+          className="pop z-[var(--z-tooltip)] w-[280px] max-w-[calc(100dvw-24px)] rounded-xl border border-[#42484c] bg-[#181a1b] px-4 py-3 text-xs text-[#eceef0] shadow-lg"
+        >
+          <div className="divide-y divide-[#42484c]">
+            {view.rows.map((row) => (
+              <div key={row.key} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-baseline justify-between gap-3 font-medium">
+                  <span>{row.label}</span>
+                  <span className="shrink-0 tabular-nums">{row.percent}% usados</span>
+                </div>
+                <p className="mt-1 text-[#adb3b8] tabular-nums">{row.resets}</p>
+              </div>
+            ))}
+          </div>
+          <Tooltip.Arrow asChild width={16} height={8}>
+            <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden="true">
+              <path d="M0 0 L8 8 L16 0" fill="#181a1b" stroke="#42484c" strokeWidth="1" />
+            </svg>
+          </Tooltip.Arrow>
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
   );
 }

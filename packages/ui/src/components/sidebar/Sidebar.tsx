@@ -11,11 +11,8 @@ import {
   FolderOpen,
   FolderPlus,
   GitBranch,
-  Info,
   Layers,
   ListFilter,
-  Monitor,
-  Moon,
   PanelLeftClose,
   Pause,
   Pencil,
@@ -24,11 +21,9 @@ import {
   Play,
   RefreshCw,
   RotateCw,
-  ChartColumn,
   Search,
   Settings,
   SquarePen,
-  Sun,
   Target,
   Undo2,
   X,
@@ -49,12 +44,8 @@ import {
   type ProjectGroup,
   type SidebarEntry,
 } from "../../model/status.js";
-import {
-  identityHeading,
-  identitySummary,
-  type AppIdentity,
-} from "../../model/identity.js";
-import { CODE_THEMES, DEFAULT_SIDEBAR_WIDTH, type CodeTheme } from "../../model/store.js";
+import { identityHeading } from "../../model/identity.js";
+import { DEFAULT_SIDEBAR_WIDTH, type CodeTheme } from "../../model/store.js";
 import type { UpdateState } from "../../model/updates.js";
 import type { ProjectView, SessionSummary } from "../../types.js";
 import { Menu, MenuCheck, MenuContent, MenuItem, MenuOption, MenuRadioGroup, MenuSeparator, MenuTrigger, Tip } from "../ui/overlays.js";
@@ -853,18 +844,12 @@ function SidebarFooter() {
         </IconButton>
       </Tip>
       <PlanPill />
-      <Tip label="Uso e custo" side="top">
-        <IconButton label="Uso e custo" onClick={() => controller.navigate({ kind: "usage" })}>
-          <ChartColumn size={14} />
-        </IconButton>
-      </Tip>
       <Tip label="Configurações" side="top">
         <IconButton label="Configurações" onClick={() => controller.navigate({ kind: "settings" })}>
           <Settings size={14} />
         </IconButton>
       </Tip>
-      {identity ? <IdentityMenu identity={identity} /> : <UpdatesMenu />}
-      <ThemeMenu />
+      {!identity ? <UpdatesMenu /> : null}
     </div>
   );
 }
@@ -891,38 +876,6 @@ export function updateSummary(updates: UpdateState, autoUpdate: boolean, paused:
     default:
       return paused ? "Atualizações pausadas" : autoUpdate ? "O Helicon se atualiza sozinho" : "Atualizações automáticas desligadas";
   }
-}
-
-function IdentityMenu(props: { identity: AppIdentity }) {
-  const { identity } = props;
-  return (
-    <Menu>
-      <Tip label={identityHeading(identity)} side="top">
-        <MenuTrigger asChild>
-          <IconButton label="Versão" className="relative">
-            <Info size={15} />
-          </IconButton>
-        </MenuTrigger>
-      </Tip>
-      <MenuContent side="top" align="start" className="w-[290px]">
-        <div className="px-2 pt-1.5 pb-2">
-          <p className="text-sm font-medium text-fg">{identityHeading(identity)}</p>
-          <p className="mt-0.5 text-xs text-muted">{identitySummary(identity)}</p>
-        </div>
-        <MenuSeparator />
-        <div className="px-2 py-1.5">
-          <a
-            href={identity.updateUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block rounded-md px-1 py-1 text-xs text-accent-text hover:underline"
-          >
-            Como atualizar este fork
-          </a>
-        </div>
-      </MenuContent>
-    </Menu>
-  );
 }
 
 /** Atualizações do app desktop. O ícone do rodapé mostra um ponto enquanto uma nova versão espera. */
@@ -1003,44 +956,6 @@ export const CODE_THEME_LABELS: Record<CodeTheme, string> = {
   cursor: "Cursor",
   catppuccin: "Catppuccin",
 };
-
-function ThemeMenu() {
-  const controller = useController();
-  const theme = useApp((s) => s.prefs.theme);
-  const codeTheme = useApp((s) => s.prefs.codeTheme);
-  const icon = theme === "light" ? <Sun size={15} /> : theme === "dark" ? <Moon size={15} /> : <Monitor size={15} />;
-  return (
-    <Menu>
-      <Tip label="Tema" side="top">
-        <MenuTrigger asChild>
-          <IconButton label="Tema">{icon}</IconButton>
-        </MenuTrigger>
-      </Tip>
-      <MenuContent side="top" align="end" className="min-w-[160px]">
-        <MenuRadioGroup value={theme} onValueChange={(v) => controller.setTheme(v === "light" || v === "dark" ? v : "system")}>
-          <MenuOption value="system" icon={<Monitor size={14} />} label="Sistema" />
-          <MenuOption value="light" icon={<Sun size={14} />} label="Claro" />
-          <MenuOption value="dark" icon={<Moon size={14} />} label="Escuro" />
-        </MenuRadioGroup>
-        <MenuSeparator />
-        <p className="px-2.5 pt-1 pb-1.5 text-2xs font-medium text-subtle">Código</p>
-        <MenuRadioGroup
-          value={codeTheme}
-          onValueChange={(v) => controller.setCodeTheme(CODE_THEMES.includes(v as CodeTheme) ? (v as CodeTheme) : "helicon")}
-        >
-          {CODE_THEMES.map((name) => (
-            <MenuOption
-              key={name}
-              value={name}
-              icon={<span aria-hidden="true" className={cn("size-2.5 rounded-[3px]", `code-swatch-${name}`)} />}
-              label={CODE_THEME_LABELS[name]}
-            />
-          ))}
-        </MenuRadioGroup>
-      </MenuContent>
-    </Menu>
-  );
-}
 
 function ResizeHandle() {
   const controller = useController();

@@ -572,6 +572,17 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                // Mantém tamanho/posição normais e maximização; não restaura uma janela oculta
+                // nem a moldura nativa usada temporariamente pelas páginas de erro.
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .manage(ServerChild(Arc::new(Mutex::new(None))))
         .invoke_handler(tauri::generate_handler![helicon_load_file_drafts, helicon_save_file_drafts])
         .setup(|app| {
