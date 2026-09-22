@@ -55,6 +55,15 @@ O Helicon original envolve o Muse Code numa interface no estilo Codex/Claude. Ne
 
 Não há instalador Linux publicado por este fork, nem suporte a macOS. A release pt4 também anexa um DMG; isso **não** significa suporte. Não há atualizador assinado nem feed `latest.json`.
 
+## Mudanças recentes no código de prod
+
+Estado conferido em 22/09/2026 no commit `6306632`: [CI 94](https://github.com/nattanfx/helicon/actions/runs/35721942356) e [Windows Teste 9](https://github.com/nattanfx/helicon/actions/runs/35725840859) aprovados. Estes recursos estão no código e no build Teste desse commit; não fazem parte do instalador público pt4.
+
+- **Estatísticas da sessão:** ative nas Configurações para ver turnos, etapas, velocidade, tokens e cache da conversa aberta. Desligadas por padrão; os indicadores usam dados já carregados e identificam cobertura parcial. Não representam cota ou cobrança oficial.
+- **Novidades desta edição:** em Configurações → Ambiente → Ler, abre as notas incluídas no aplicativo, sem consulta à rede. Não abre automaticamente ao iniciar.
+- **Uso do plano:** leituras idênticas deixam de emitir eventos duplicados; conteúdo diferente com o mesmo timestamp continua atualizando. Isso não reduz consultas nem consumo do Muse.
+- **Títulos automáticos:** a instrução de geração pede português brasileiro, mantendo nomes próprios e termos técnicos e o limite de uma tentativa por conversa elegível.
+
 ## Origem e créditos
 
 - **Original:** [HarjjotSinghh/helicon](https://github.com/HarjjotSinghh/helicon) — Helicon, de Harjot Singh Rana e contribuidores.
@@ -67,6 +76,7 @@ Instruções, releases e o atualizador do original valem para o original. Aqui, 
 
 ```
 packages/ui      interface React compartilhada (desktop e web)
+packages/server  API HTTP, autenticação e eventos SSE
 packages/daemon  serviço Node: inicia `muse serve` por pasta, fala MSP (JSON-RPC/stdio)
 apps/desktop     casca Tauri 2
 apps/web         a mesma interface contra um daemon

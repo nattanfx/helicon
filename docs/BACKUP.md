@@ -1,5 +1,7 @@
 # Backup e restauração dos dados
 
+Para validar a passagem da pt4 para a pt5 em ambiente separado, siga [VALIDACAO-UPGRADE-PT5.md](VALIDACAO-UPGRADE-PT5.md). O ensaio de cópia/restauração não substitui o teste do instalador.
+
 As conversas, projetos e preferências não ficam na pasta do programa. Feche o Helicon antes de copiar ou restaurar. O script não escolhe essas pastas sozinho e não lê o conteúdo do banco.
 
 Há duas pastas por instalação. As duas entram no backup.

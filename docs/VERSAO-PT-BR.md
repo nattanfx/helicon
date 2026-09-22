@@ -23,6 +23,12 @@ Instruções de download, Teste versus instalação normal, e a distinção entr
 
 A edição preparada é `0.12.5-pt5`. Isso não cria a tag, não publica a release e não troca o identificador da instalação normal (`app.helicon.desktop`).
 
+## Builds da mesma edição
+
+R1, os títulos em português e I1/I2/I4 mantêm a versão `0.12.5-pt5`. O número de versão sozinho não identifica os recursos de um instalador Teste. Em 22/09/2026, o HEAD `6306632` passou no [CI 94](https://github.com/nattanfx/helicon/actions/runs/35721942356) e no [Windows Teste 9](https://github.com/nattanfx/helicon/actions/runs/35725840859); confira **Compilação** ou `BUILD.txt` para identificar esse build.
+
+Os manifests npm ainda declaram `0.12.4`; eles não são a fonte do campo **Versão** do desktop. As notas são conteúdo local em `packages/ui/src/model/notas.ts`, conferido por teste contra `docs/NOTAS-0.12.5-pt5.md`. Ao revisar as notas, atualizar ambas as cópias. Essa revisão textual só aparece no aplicativo depois de uma nova compilação.
+
 ## Como o SHA entra no instalador
 
 1. Os workflows **Windows Teste** e **Release** definem `HELICON_BUILD` como `${{ github.sha }}` na compilação Tauri.

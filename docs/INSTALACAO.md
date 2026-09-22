@@ -27,6 +27,8 @@ O instalador já inclui Node.js. Não há atualização automática depois da in
 
 A mesma release no GitHub também lista um DMG e um `.app.tar.gz`. Este fork **não** oferece suporte a macOS nem a Linux; não use esses anexos como caminho suportado.
 
+Para a edição pt5, use o [roteiro de validação do upgrade](VALIDACAO-UPGRADE-PT5.md) antes de atualizar o perfil principal. O instalador Teste não valida a atualização da instalação normal.
+
 ## Como atualizar (manual)
 
 O aplicativo **não** verifica, baixa nem instala versões sozinho. Não há `latest.json` nem artefatos do plug-in Tauri. Abrir ou reabrir o Helicon não consulta atualizador.
