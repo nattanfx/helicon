@@ -1,5 +1,7 @@
 # Design
 
+> Herdado do [Helicon original](https://github.com/HarjjotSinghh/helicon), em inglês como recebido. Documenta o sistema visual de base; onde um ajuste do fork divergir, vale o comportamento do fork.
+
 The visual system behind Helicon's web and desktop UI. Strategy and audience live in [PRODUCT.md](PRODUCT.md); this file is the how.
 
 ## Visual theme

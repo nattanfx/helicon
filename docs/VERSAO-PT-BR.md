@@ -7,7 +7,7 @@ Instruções de download, Teste versus instalação normal, e a distinção entr
 ## Release pública versus o que a interface mostra
 
 - Última release **pública** deste fork: tag **[v0.12.4-pt4](https://github.com/nattanfx/helicon/releases/tag/v0.12.4-pt4)** (18/09/2026), commit `3709b6f`. Essa instalação mostra `0.12.4`.
-- O número lido pelo Tauri (`version` em `tauri.conf.json`) neste código é `0.12.5-pt5`. A interface mostra esse número. A tag `v0.12.5-pt5` ainda não existe; o HEAD não é a release instalada.
+- O número lido pelo Tauri (`version` em `tauri.conf.json`) neste código é `0.12.5-pt5`. A interface mostra esse número. A tag `v0.12.5-pt5` existe no commit `757317c`; a release segue como rascunho, não publicada, e o HEAD (`bf72a7a`) já está além da tag.
 - `0.12.5-pt5` é maior que `0.12.4` na comparação semver do instalador NSIS (Tauri 2.11). O campo numérico interno do Windows fica `0.12.5.0`; o texto de **Versão** no aplicativo é `0.12.5-pt5`.
 - Uma compilação nova traz o SHA em **Compilação** só se o build injetar `HELICON_BUILD`. A instalação normal da pt4 não anuncia o HEAD atual.
 
@@ -21,11 +21,11 @@ Instruções de download, Teste versus instalação normal, e a distinção entr
 - **Compilação:** SHA Git injetado em `HELICON_BUILD` no build do frontend. Só aparece se o valor for hexadecimal de 7 a 40 caracteres. Builds locais sem a variável omitem o campo; a UI não preenche um SHA fictício.
 - **Servidor:** a seção Ambiente mostra `HELICON_VERSION` em `packages/server/src/server.ts`, com o rótulo **Servidor**. Neste código o valor é o mesmo `0.12.5-pt5` da versão do instalador. Esse texto também segue no `clientInfo` enviado ao Muse ao abrir o host.
 
-A edição preparada é `0.12.5-pt5`. Isso não cria a tag, não publica a release e não troca o identificador da instalação normal (`app.helicon.desktop`).
+A edição preparada é `0.12.5-pt5`. A tag existe, mas a release não está publicada, e o identificador da instalação normal (`app.helicon.desktop`) não muda.
 
 ## Builds da mesma edição
 
-R1, os títulos em português e I1/I2/I4 mantêm a versão `0.12.5-pt5`. O número de versão sozinho não identifica os recursos de um instalador Teste. Em 22/09/2026, o HEAD `6306632` passou no [CI 94](https://github.com/nattanfx/helicon/actions/runs/35721942356) e no [Windows Teste 9](https://github.com/nattanfx/helicon/actions/runs/35725840859); confira **Compilação** ou `BUILD.txt` para identificar esse build.
+R1, os títulos em português e I1/I2/I4 mantêm a versão `0.12.5-pt5`. O número de versão sozinho não identifica os recursos de um instalador Teste. Em 22/09/2026, o HEAD `6306632` passou no [CI 94](https://github.com/nattanfx/helicon/actions/runs/35721942356) e no [Windows Teste 9](https://github.com/nattanfx/helicon/actions/runs/35725840859); confira **Compilação** ou `BUILD.txt` para identificar esse build. No mesmo dia, a tag `v0.12.5-pt5` foi criada no commit `757317c`, com [CI 95](https://github.com/nattanfx/helicon/actions/runs/35730111032) e workflow [Release](https://github.com/nattanfx/helicon/actions/runs/35737639479) aprovados; o instalador `Helicon_0.12.5-pt5_x64-setup.exe` ficou num rascunho de release, não publicado.
 
 Os manifests npm ainda declaram `0.12.4`; eles não são a fonte do campo **Versão** do desktop. As notas são conteúdo local em `packages/ui/src/model/notas.ts`, conferido por teste contra `docs/NOTAS-0.12.5-pt5.md`. Ao revisar as notas, atualizar ambas as cópias. Essa revisão textual só aparece no aplicativo depois de uma nova compilação.
 

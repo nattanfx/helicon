@@ -1,5 +1,7 @@
 # Product
 
+> Herdado do [Helicon original](https://github.com/HarjjotSinghh/helicon), em inglês como recebido. Descreve o produto de base; este fork mantém interface em português, atualização manual e políticas próprias — ver [README](../README.md).
+
 ## Register
 
 product

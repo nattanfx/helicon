@@ -1,5 +1,7 @@
 # Changelog
 
+> Herdado do [Helicon original](https://github.com/HarjjotSinghh/helicon), em inglês como recebido. Descreve as releases do original; as edições deste fork têm notas próprias em [NOTAS-0.12.5-pt5.md](NOTAS-0.12.5-pt5.md).
+
 ## 0.12.4
 
 ### Fixed

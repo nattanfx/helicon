@@ -19,7 +19,7 @@ O fluxo gera um arquivo de teste retido por 14 dias. Não cria tag, release nem 
 4. Crie uma pasta descartável, por exemplo `Documentos/Helicon-Teste`, com um arquivo `exemplo.txt`. Adicione essa pasta como projeto no aplicativo. Se a interface disponibilizar o explorador de arquivos sem conversa, abra o arquivo e confira o conteúdo; caso contrário, registre este item como pendente.
 5. Feche o aplicativo completamente e abra **Helicon Teste** outra vez. Confira que abre normalmente e mantém seu projeto de teste.
 
-Não é preciso enviar mensagem para esta primeira conferência. A opção de títulos automáticos pode realizar chamadas ao encontrar conversas anteriores; desative **Gerar títulos** antes de adicionar projetos reais ou iniciar conversas. Não há isolamento da conta do Muse.
+Não é preciso enviar mensagem para esta primeira conferência. Conversas anteriores encontradas recebem no máximo um título local do primeiro pedido, sem chamada ao modelo; só conversas novas criadas com **Gerar títulos** ligado usam uma tentativa automática (ver [TITULOS-AUTOMATICOS.md](TITULOS-AUTOMATICOS.md)). Para uma conferência sem consumo, mantenha a opção desligada. Não há isolamento da conta do Muse.
 
 ## Conferência final com o Muse
 

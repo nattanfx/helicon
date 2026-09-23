@@ -5,16 +5,19 @@ Preparação em 22/09/2026. O objetivo é verificar a atualização da instalaç
 ## Estado da preparação
 
 - Código analisado: `6306632`, com I1/I2/I4. CI 94 e Windows Teste 9 aprovados nesse commit.
-- Revisão documental posterior ainda precisa de commit pelo usuário. Escolher o SHA candidato depois desse commit e verificar seu CI. Não usar automaticamente `14cb64f`: ele não contém as melhorias posteriores.
+- Revisão documental commitada em `757317c`, com tag `v0.12.5-pt5` criada e enviada em 22/09/2026. [CI 95](https://github.com/nattanfx/helicon/actions/runs/35730111032) e workflow [Release](https://github.com/nattanfx/helicon/actions/runs/35737639479) aprovados. Não usar `14cb64f`: ele não contém as melhorias posteriores. Não confundir com o HEAD posterior (`bf72a7a`).
+- Instalador normal pt5 candidato obtido: `Helicon_0.12.5-pt5_x64-setup.exe`, 26287332 bytes, SHA-256 `4cd8495c31c4059662b4f0b47faa05dac9c44de026defae299a285971954bdb4`, conferido com o asset do GitHub. Release em rascunho, não publicada.
 - Ensaio local de cópia/restauração aprovado com arquivos fictícios: hash, arquivo aninhado, rascunho vazio, recusa de destino existente e preservação da pasta anterior. Esse ensaio não testa SQLite, WebView ou o instalador NSIS.
-- Upgrade do canal normal: **não executado**. Instalador normal pt5 candidato: **ainda não obtido nesta etapa**.
+- Upgrade do canal normal: **não executado**. O ensaio abaixo continua pendente.
 
 ## Preparar o candidato
 
-1. Revisar e commitar a documentação, incluindo a cópia das notas em `packages/ui/src/model/notas.ts`, e enviar pelo fluxo habitual do usuário.
-2. Registrar o SHA completo e aguardar o CI desse commit. O CI de `6306632` não cobre as edições posteriores.
-3. Gerar o instalador **Helicon**, identificador `app.helicon.desktop`, para esse SHA. O workflow Release existente cria rascunho; a criação/envio da tag e execução desse workflow ficam para decisão explícita do usuário. Se usar `v0.12.5-pt5`, conferir antes se ela já existe e seu destino; não mover tag existente.
-4. Manter a release em rascunho durante o ensaio. Registrar nome do instalador, SHA-256, URL do workflow e SHA do código. Conferir **Compilação** após instalar. Não usar o instalador **Helicon Teste** como substituto.
+Passos 1–3 concluídos em 22/09/2026, por decisão explícita do usuário; preservados aqui como registro do que foi feito.
+
+1. ~~Revisar e commitar a documentação~~ — feito no commit `757317c`, incluindo a cópia das notas em `packages/ui/src/model/notas.ts`.
+2. ~~Registrar o SHA e aguardar o CI~~ — SHA `757317cd37f09a93ef4f58b8974c69714579afd4`; CI 95 aprovado nesse commit.
+3. ~~Gerar o instalador **Helicon**~~ — gerado pelo workflow Release para esse SHA (tag `v0.12.5-pt5`, já existente; não mover). Identificador `app.helicon.desktop`.
+4. Manter a release em rascunho durante o ensaio. Conferir **Compilação** após instalar. Não usar o instalador **Helicon Teste** como substituto.
 
 ## Ensaio em ambiente separado
 

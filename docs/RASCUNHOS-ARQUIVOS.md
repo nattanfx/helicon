@@ -26,6 +26,15 @@ C4 sobre `cad7a8c`. O rascunho da caixa de mensagem já sobrevive em `helicon.dr
 4. Fechar a janela com rascunho: desktop pergunta; navegador usa o aviso genérico de saída. Fechar não escreve o arquivo original.
 5. Acima de 1 milhão de caracteres a cópia não entra no armazenamento; falha de quota não derruba o app. Sem migração de banco.
 
+## Avisos que a interface mostra
+
+Textos em `packages/ui/src/model/fileDrafts.ts`; comportamento em `persistFileDrafts`/`allowClose` no controlador. O limite é por arquivo: conteúdo acima de 1.000.000 de caracteres não é guardado (1.000.000 exatos ainda cabem); vazio continua válido.
+
+- Edição acima do limite: toast **Cópia recuperável não foi guardada**, informando o tamanho da cópia local e que a edição continua só nesta sessão. O aviso repete somente após uma gravação limpa.
+- Falha de escrita (quota ou erro do armazenamento): o mesmo título de toast, informando que a edição continua nesta sessão e pode se perder ao reiniciar. O aplicativo não trava.
+- Fechar com rascunhos no desktop: pergunta de confirmação. Se todas as cópias foram guardadas, o texto confirma que a cópia recuperável fica no aparelho; se alguma não tem cópia (muito grande ou falha de escrita), o texto avisa que fechar pode perdê-la.
+- Ao reabrir com cópias guardadas: toast **Edições de arquivo não gravadas**, orientando abrir o arquivo no visualizador; nada foi escrito no disco.
+
 ## REV5 — cópia fora da origem web no desktop
 
 O `localStorage` é por origem (esquema, host e porta). Quando a porta anterior está ocupada, o

@@ -1,5 +1,7 @@
 # PRD: Helicon v1 - Desktop + Web ADE for Muse Code CLI
 
+> Herdado do [Helicon original](https://github.com/HarjjotSinghh/helicon), em inglês como recebido. É um rascunho de planejamento anterior ao fork; algumas afirmações estão superadas (ex.: existe CLI nativa no Windows, e este fork é Windows em português, sem suporte a terceiros).
+
 > Status: draft · Scope: desktop + web together · Daemon: local-first, self-hosted remote supported · Approvals: configurable · Tests: deep modules
 
 ## Problem Statement

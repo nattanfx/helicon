@@ -2,7 +2,7 @@
 
 Pacote pessoal deste fork, para o Windows. Não é o Helicon original, não oferece suporte a terceiros e não se atualiza sozinho.
 
-A tag prevista é `v0.12.5-pt5`. Ela ainda não foi criada. A última release pública continua sendo [v0.12.4-pt4](https://github.com/nattanfx/helicon/releases/tag/v0.12.4-pt4). Instalar a pt4 não instala esta edição.
+A tag é `v0.12.5-pt5`, criada no commit `757317c`. A release segue como rascunho, não publicado. A última release pública continua sendo [v0.12.4-pt4](https://github.com/nattanfx/helicon/releases/tag/v0.12.4-pt4). Instalar a pt4 não instala esta edição.
 
 O número `0.12.5-pt5` é o que a interface passa a mostrar em **Versão**. Ele é maior que `0.12.4` na comparação do instalador, então a atualização da pt4 é tratada como upgrade. Não usar a tag `v0.12.5`: ela pertence a uma release do original e não a este fork.
 
@@ -34,7 +34,7 @@ Opção de desativar o sandbox, modo YOLO e gerenciamento de múltiplas contas d
 
 1. Feche o Helicon. O Helicon Teste pode continuar fechado também se for mexer na pasta dele.
 2. Copie as duas pastas da instalação normal, cada uma para um destino novo, com [BACKUP.md](BACKUP.md).
-3. Só então execute o instalador `Helicon_0.12.5-pt5_x64-setup.exe` desta edição, quando ele existir.
+3. Só então execute o instalador `Helicon_0.12.5-pt5_x64-setup.exe` desta edição, obtido no rascunho da release (não publicado).
 4. Na tela de manutenção, não marque apagar os dados do aplicativo. A desinstalação prévia do programa, se o instalador oferecer, não apaga essas pastas enquanto essa caixa estiver desmarcada.
 5. Abra Configurações e confira **Helicon 0.12.5-pt5**. A linha **Servidor** mostra o mesmo número.
 

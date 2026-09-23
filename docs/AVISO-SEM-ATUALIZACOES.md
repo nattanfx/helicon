@@ -15,4 +15,4 @@ Não foram importados os contadores de diagnóstico nem as alterações de conex
 
 Validação local: UI **189/189**, web **8/8**, build web de produção aprovado e `git diff --check` sem erros. Quatro novos testes cobrem limite/renovação manual, retomada dos eventos, término/troca de turno e falha/eventos durante recarga. Testes simulados, sem chamada ao Muse. Validação visual e funcional no instalador Windows ainda pendente.
 
-Próximos passos: commit/push pelo usuário, CI e novo Windows Teste antes de avaliar release estável. O Helicon Teste 3 instalado não contém este aviso.
+Estado: incorporado ao código da pt5 (base `3dfd8a8`, anterior ao Teste 9). A validação citada acima é da época da implementação, com testes simulados.

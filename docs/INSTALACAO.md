@@ -9,11 +9,11 @@ A identidade que a interface mostra (versão, canal, compilação) está em [VER
 | Estado | O que é | O que não é |
 | --- | --- | --- |
 | **[v0.12.4-pt4](https://github.com/nattanfx/helicon/releases/tag/v0.12.4-pt4)** | Última release **pública** deste fork (18/09/2026). Commit `3709b6f`. Instalador Windows: `Helicon_0.12.4_x64-setup.exe`. A interface dessa instalação mostra `0.12.4`. | Não contém o código posterior em `prod`. |
-| Branch `prod` | Código mais recente do clone. O pacote declara `0.12.5-pt5` em `tauri.conf.json`. Notas em [NOTAS-0.12.5-pt5.md](NOTAS-0.12.5-pt5.md). | **Não** é uma release instalada. A tag `v0.12.5-pt5` ainda não foi criada. |
+| Branch `prod` | Código mais recente do clone. O pacote declara `0.12.5-pt5` em `tauri.conf.json`. Notas em [NOTAS-0.12.5-pt5.md](NOTAS-0.12.5-pt5.md). | **Não** é a release pública. A tag `v0.12.5-pt5` existe no commit `757317c`, com instalador em rascunho de release não publicado; o HEAD (`bf72a7a`) já está além da tag. |
 
-A pt4 instalada e um build deste código não mostram o mesmo número. A edição pública continua a pt4 até alguém publicar o pacote novo. Backup antes de atualizar a instalação normal: [BACKUP.md](BACKUP.md).
+A pt4 instalada e um build deste código não mostram o mesmo número. A edição pública continua a pt4 até o rascunho pt5 ser publicado. Backup antes de atualizar a instalação normal: [BACKUP.md](BACKUP.md).
 
-Confira a [página de releases](https://github.com/nattanfx/helicon/releases) antes de baixar. Se existir uma tag mais nova, ela passa a ser a release pública; até lá, documente e use a pt4.
+Confira a [página de releases](https://github.com/nattanfx/helicon/releases) antes de baixar. Existir a tag `v0.12.5-pt5` não a torna pública: enquanto a release for rascunho, documente e use a pt4.
 
 ## Instalação normal no Windows
 
@@ -33,7 +33,7 @@ Para a edição pt5, use o [roteiro de validação do upgrade](VALIDACAO-UPGRADE
 
 O aplicativo **não** verifica, baixa nem instala versões sozinho. Não há `latest.json` nem artefatos do plug-in Tauri. Abrir ou reabrir o Helicon não consulta atualizador.
 
-- **Instalação normal:** quando houver uma release **nova deste fork**, baixe o instalador em [nattanfx/helicon/releases](https://github.com/nattanfx/helicon/releases), feche o aplicativo e execute o instalador. Hoje a release pública continua sendo a pt4. O código já prepara a edição `0.12.5-pt5`, ainda sem tag e sem instalador publicado. Antes de instalar essa edição sobre a pt4, copie as pastas de dados como em [BACKUP.md](BACKUP.md). Em Configurações, **Abrir página de atualização** aponta para essa lista de releases.
+- **Instalação normal:** quando houver uma release **nova deste fork**, baixe o instalador em [nattanfx/helicon/releases](https://github.com/nattanfx/helicon/releases), feche o aplicativo e execute o instalador. Hoje a release pública continua sendo a pt4. A edição `0.12.5-pt5` tem tag (`v0.12.5-pt5` em `757317c`) e instalador em rascunho de release, ainda não publicado. Antes de instalar essa edição sobre a pt4, copie as pastas de dados como em [BACKUP.md](BACKUP.md). Em Configurações, **Abrir página de atualização** aponta para essa lista de releases.
 - **Helicon Teste:** baixe o artefato do workflow [Windows Teste](https://github.com/nattanfx/helicon/actions/workflows/test-windows.yml) (Actions → Windows Teste). Não use as releases estáveis para atualizar o Teste, nem o Teste para substituir a pt4.
 - **Não** use o atualizador, as notas nem o `latest` do repositório original.
 
