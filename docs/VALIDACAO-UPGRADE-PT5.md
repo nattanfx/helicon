@@ -5,7 +5,7 @@ Preparação em 22/09/2026. O objetivo é verificar a atualização da instalaç
 ## Estado da preparação
 
 - Código analisado: `6306632`, com I1/I2/I4. CI 94 e Windows Teste 9 aprovados nesse commit.
-- Revisão documental commitada em `757317c`, com tag `v0.12.5-pt5` criada e enviada em 22/09/2026. [CI 95](https://github.com/nattanfx/helicon/actions/runs/35730111032) e workflow [Release](https://github.com/nattanfx/helicon/actions/runs/35737639479) aprovados. Não usar `14cb64f`: ele não contém as melhorias posteriores. Não confundir com o HEAD posterior (`bf72a7a`).
+- Revisão documental commitada em `757317c`, com tag `v0.12.5-pt5` criada e enviada em 22/09/2026. [CI 95](https://github.com/nattanfx/helicon/actions/runs/35730111032) e workflow [Release](https://github.com/nattanfx/helicon/actions/runs/35737639479) aprovados. Não usar `14cb64f`: ele não contém as melhorias posteriores. Não confundir o candidato com commits posteriores (HEAD em 23/09/2026: `0edbb9f`).
 - Instalador normal pt5 candidato obtido: `Helicon_0.12.5-pt5_x64-setup.exe`, 26287332 bytes, SHA-256 `4cd8495c31c4059662b4f0b47faa05dac9c44de026defae299a285971954bdb4`, conferido com o asset do GitHub. Release em rascunho, não publicada.
 - Ensaio local de cópia/restauração aprovado com arquivos fictícios: hash, arquivo aninhado, rascunho vazio, recusa de destino existente e preservação da pasta anterior. Esse ensaio não testa SQLite, WebView ou o instalador NSIS.
 - Upgrade do canal normal: **não executado**. O ensaio abaixo continua pendente.
