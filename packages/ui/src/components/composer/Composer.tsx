@@ -839,7 +839,7 @@ function SpeedReadout(props: { sessionId: string }) {
   }, shallowEqual);
   const live = useSampled(() => {
     const fold = controller.store.get().threads[props.sessionId]?.fold;
-    return fold?.activeTurnId ? streamingSpeed(fold.turns[fold.activeTurnId]) : null;
+    return fold?.activeTurnId ? streamingSpeed(fold.turns[fold.activeTurnId], Date.now()) : null;
   }, running);
   if (running && live !== null) {
     return (

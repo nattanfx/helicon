@@ -31,6 +31,7 @@ import {
 import { memo, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { shallowEqual, useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps, useTitlebarOverlay } from "../../app/frame.js";
+import { isTurnFinalizing } from "../../model/fold.js";
 import { basename, displayTitle, formatElapsed, relativeTime } from "../../model/format.js";
 import { statusLabel } from "../../model/goal.js";
 import { PlanPill } from "../usage/PlanMeter.js";
@@ -519,12 +520,16 @@ function WorkingFor(props: { session: SessionSummary }) {
     const fold = s.threads[props.session.sessionId]?.fold;
     return fold?.activeTurnId ? (fold.turns[fold.activeTurnId]?.startedAt ?? null) : null;
   });
+  const finalizing = useApp((s) => {
+    const fold = s.threads[props.session.sessionId]?.fold;
+    return fold ? isTurnFinalizing(fold, fold.activeTurnId) : false;
+  });
   const liveStart = props.session.live?.turnStartedAt ? Date.parse(props.session.live.turnStartedAt) : null;
   const start = foldStart ?? liveStart;
   const now = useNow(1000);
   return (
     <span className="text-accent-text">
-      Trabalhando
+      {finalizing ? "Finalizando…" : "Trabalhando"}
       {start ? <span className="ml-1">{formatElapsed(now - start)}</span> : null}
     </span>
   );

@@ -2,6 +2,7 @@ import { Archive, CircleStop, Code, Copy, Ellipsis, Folder, FolderOpen, FolderTr
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { CaptionSpacer, useOverlayDragProps } from "../../app/frame.js";
+import { isTurnFinalizing } from "../../model/fold.js";
 import { basename, displayTitle, formatDuration } from "../../model/format.js";
 import { backgroundTasks } from "../../model/plan.js";
 import { goalView } from "../../model/goal.js";
@@ -45,6 +46,7 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
   const { session, thread } = props;
   const [renaming, setRenaming] = useState(false);
   const fold = thread?.fold ?? null;
+  const finalizing = fold ? isTurnFinalizing(fold, fold.activeTurnId) : false;
   const waiting = fold ? Object.keys(fold.approvals).length + Object.keys(fold.userInputs).length > 0 : false;
   const startedAt = fold?.activeTurnId ? fold.turns[fold.activeTurnId]?.startedAt : undefined;
   const now = useNow(1000, props.running && startedAt !== undefined);
@@ -95,7 +97,7 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
       ) : props.running ? (
         <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs text-muted" role="status">
           <Spinner size={11} className="text-accent-text" />
-          <span className="@max-[420px]:hidden">Trabalhando</span>
+          <span className="@max-[420px]:hidden">{finalizing ? "Finalizando…" : "Trabalhando"}</span>
           {startedAt ? <span className="text-subtle tabular-nums">{formatDuration(now - startedAt)}</span> : null}
         </span>
       ) : thread?.readOnly ? (

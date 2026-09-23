@@ -8,6 +8,7 @@ import {
   emptyFold,
   foldFromLoad,
   gateFor,
+  isTurnFinalizing,
   updateEcho,
 } from "../src/model/fold.js";
 import type { ViewEvent } from "../src/types.js";
@@ -285,5 +286,51 @@ describe("subagent children", () => {
     }
     assert.deepEqual(fold.order, []);
     assert.ok(Date.now() - started < 2_000, `20k subagent children took ${Date.now() - started}ms`);
+  });
+});
+
+describe("turno finalizando", () => {
+  const started: ViewEvent = { method: "turn/started", params: { turnId: "t1" }, at: 0 };
+  const doneText: ViewEvent = {
+    method: "item/completed",
+    params: { item: { itemId: "a1", kind: "agentMessage", status: "completed", revision: 1, turnId: "t1", text: "ok" } },
+    at: 100,
+  };
+
+  it("aponta turno ativo sem item visível em andamento", () => {
+    const fold = applyEvents(emptyFold(), [started, doneText]);
+    assert.equal(fold.activeTurnId, "t1");
+    assert.equal(isTurnFinalizing(fold, "t1"), true);
+  });
+
+  it("não aponta quando algo visível ainda roda, nem turno parado", () => {
+    const running: ViewEvent = {
+      method: "item/started",
+      params: { item: { itemId: "x1", kind: "toolCall", status: "inProgress", revision: 1, turnId: "t1", tool: "bash" } },
+      at: 50,
+    };
+    assert.equal(isTurnFinalizing(applyEvents(emptyFold(), [started, running]), "t1"), false);
+    assert.equal(isTurnFinalizing(applyEvents(emptyFold(), [started, doneText]), null), false);
+    const promptOnly: ViewEvent = {
+      method: "item/completed",
+      params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, turnId: "t1", text: "oi" } },
+      at: 10,
+    };
+    assert.equal(isTurnFinalizing(applyEvents(emptyFold(), [started, promptOnly]), "t1"), false, "só o prompt, sem nada do agente, ainda é trabalho");
+    const closed = applyEvents(applyEvents(emptyFold(), [started, doneText]), [
+      { method: "turn/completed", params: { turnId: "t1", terminal: "completed" }, at: 200 },
+    ]);
+    assert.equal(isTurnFinalizing(closed, "t1"), false);
+  });
+
+  it("ignora filhos-lembrete, que a UI nunca mostra", () => {
+    const reminder: ViewEvent = {
+      method: "item/started",
+      params: { item: { itemId: "r1", kind: "reminderChild", status: "inProgress", revision: 1, turnId: "t1" } },
+      at: 50,
+    };
+    const fold = applyEvents(emptyFold(), [started, doneText, reminder]);
+    assert.equal(fold.order.includes("r1"), false);
+    assert.equal(isTurnFinalizing(fold, "t1"), true);
   });
 });

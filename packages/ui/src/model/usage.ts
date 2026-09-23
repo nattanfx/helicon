@@ -1,5 +1,5 @@
 import type { ContextUsage, ModelOption, MspItem } from "../types.js";
-import { HIDDEN_KINDS, type CallUsage, type ThreadFold, type TurnInfo } from "./fold.js";
+import { HIDDEN_KINDS, STREAM_GAP_MS, type CallUsage, type ThreadFold, type TurnInfo } from "./fold.js";
 import { diffStats, extractDiff, formatCompactTokens, formatTokensPerSecond, modelDisplayName } from "./format.js";
 
 /**
@@ -253,10 +253,13 @@ export function turnCosts(fold: ThreadFold, models: readonly ModelOption[]): Rec
   return costs;
 }
 
-/** Uma velocidade ao vivo aproximada para o texto chegando agora: caracteres sobre quatro, por segundo da rajada. */
-export function streamingSpeed(info: TurnInfo | null | undefined): number | null {
+/** Uma velocidade ao vivo aproximada para o texto chegando agora: caracteres sobre quatro, por segundo da rajada. Com `now`, uma rajada fria apaga em vez de congelar. */
+export function streamingSpeed(info: TurnInfo | null | undefined, now?: number): number | null {
   const stream = info?.stream;
   if (!stream) {
+    return null;
+  }
+  if (now !== undefined && now - stream.lastAt > STREAM_GAP_MS) {
     return null;
   }
   const ms = stream.lastAt - stream.startAt;

@@ -105,6 +105,23 @@ describe("contexto e uso da sessão", () => {
     assert.equal(fold.turns["t1"]?.stream?.chars, 40, "uma pausa longa começa uma rajada nova, e saída de ferramenta não é texto de modelo");
   });
 
+  it("apaga a velocidade ao vivo quando a rajada esfria", () => {
+    const delta = (at: number, text: string): ViewEvent => ({
+      method: "item/delta",
+      params: { itemId: "a1", turnId: "t1", field: "text", delta: text },
+      at,
+    });
+    const fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 0 },
+      delta(1000, "x".repeat(400)),
+      delta(3000, "x".repeat(400)),
+    ]);
+    const info = fold.turns["t1"];
+    assert.ok(streamingSpeed(info, 3500) !== null, "rajada recente ainda mede");
+    assert.equal(streamingSpeed(info, 5001), null, "2 s sem delta encerram a leitura em vez de congelá-la");
+    assert.ok(streamingSpeed(info) !== null, "sem relógio, mantém o comportamento antigo");
+  });
+
   it("só conta o que resta no contexto após uma compactação", () => {
     const events: ViewEvent[] = [
       { method: "item/completed", params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, text: "x".repeat(4000) } } },

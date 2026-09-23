@@ -384,7 +384,7 @@ function appendDelta(draft: Draft, params: Record<string, unknown>): void {
 }
 
 /** A pause longer than this between text chunks means a new model call, so its speed is measured afresh. */
-const STREAM_GAP_MS = 2000;
+export const STREAM_GAP_MS = 2000;
 
 /** Counts streamed model text (replies and reasoning, not tool output) per turn, in bursts. */
 function trackStream(draft: Draft, params: Record<string, unknown>, at: number | undefined): void {
@@ -722,6 +722,27 @@ export function updateEcho(fold: ThreadFold, localId: string, patch: Partial<Loc
 export function removeEcho(fold: ThreadFold, localId: string): ThreadFold {
   const echoes = fold.echoes.filter((e) => e.localId !== localId);
   return echoes.length === fold.echoes.length ? fold : { ...fold, echoes };
+}
+
+/** Um turno ativo cujo trabalho visível terminou: algo do agente concluído, nada em andamento, `turn/completed` ainda por chegar. */
+export function isTurnFinalizing(fold: ThreadFold, turnId: string | null): boolean {
+  if (!turnId || fold.activeTurnId !== turnId) {
+    return false;
+  }
+  let done = false;
+  for (const id of fold.order) {
+    const item = fold.items[id];
+    if (!item || item.turnId !== turnId || HIDDEN_KINDS.has(item.kind)) {
+      continue;
+    }
+    if (item.status === "inProgress") {
+      return false;
+    }
+    if (item.kind !== "userMessage") {
+      done = true;
+    }
+  }
+  return done;
 }
 
 /** One turn as the transcript renders it. */

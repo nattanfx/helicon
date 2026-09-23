@@ -459,7 +459,7 @@ function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
   const { turn } = props;
   const infoRef = useRef(turn.info);
   infoRef.current = turn.info;
-  const speed = useSampled(() => streamingSpeed(infoRef.current), true);
+  const speed = useSampled(() => streamingSpeed(infoRef.current, Date.now()), true);
   const startedAt = turn.info?.startedAt;
   const elapsed = startedAt ? formatDuration(now - startedAt) : null;
   const waiting = turn.entries.some((e) => props.gates[e.itemId]);
@@ -475,6 +475,9 @@ function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
     label = "Pensando";
   } else if (last?.kind === "agentMessage" && last.status === "inProgress") {
     label = "Escrevendo";
+  } else if (turn.entries.length > 0 && !turn.entries.some((e) => e.status === "inProgress")) {
+    // Texto e ferramentas terminaram; o turno segue aberto por trabalho que a UI não mostra.
+    label = "Finalizando…";
   }
   return (
     <div className="flex h-8 items-center gap-2.5 text-sm" role="status">
