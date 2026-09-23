@@ -323,6 +323,26 @@ function promptTexts(item: MspItem): Set<string> {
   return new Set([item.displayText, item.text].filter((t): t is string => Boolean(t)).map((t) => normalizeText(t)));
 }
 
+/**
+ * Whether a prompt item is an echo's server copy. Text decides, except for echoes carrying
+ * attachments: an image-only prompt echoes back empty, and attached files arrive appended as
+ * `@.helicon/attachments/...` mentions, so a turn-linked echo then matches by identity instead.
+ */
+function echoMatchesItem(echo: LocalEcho, item: MspItem, texts: Set<string>): boolean {
+  const echoText = normalizeText(echo.text);
+  if (texts.has(echoText)) {
+    return true;
+  }
+  if (!echo.attachments?.length) {
+    return false;
+  }
+  if (echo.turnId !== null && (echo.turnId === item.turnId || echo.turnId === item.commandId)) {
+    return echoText === "" || [...texts].some((text) => text.startsWith(echoText));
+  }
+  // Before the ack names its turn, only an equally attachment-only prompt can be this echo.
+  return echo.turnId === null && echoText === "" && texts.size === 0;
+}
+
 function matchEcho(draft: Draft, item: MspItem): void {
   const echoes = draft.fold.echoes;
   if (echoes.length === 0) {
@@ -330,14 +350,46 @@ function matchEcho(draft: Draft, item: MspItem): void {
   }
   const texts = promptTexts(item);
   let index = echoes.findIndex(
-    (e) => e.turnId !== null && (e.turnId === item.turnId || e.turnId === item.commandId) && texts.has(normalizeText(e.text)),
+    (e) => e.turnId !== null && (e.turnId === item.turnId || e.turnId === item.commandId) && echoMatchesItem(e, item, texts),
   );
   if (index < 0) {
-    index = echoes.findIndex((e) => texts.has(normalizeText(e.text)));
+    index = echoes.findIndex((e) => texts.has(normalizeText(e.text)) || (e.turnId === null && echoMatchesItem(e, item, texts)));
   }
   if (index >= 0) {
     draft.removeEcho(index);
   }
+}
+
+/** Drops every local copy of a turn's prompts: steers share their turn's id, so one removal is not enough. */
+function removeEchoesForTurn(draft: Draft, turnId: string): void {
+  const echoes = draft.fold.echoes;
+  for (let index = echoes.length - 1; index >= 0; index -= 1) {
+    if (echoes[index]?.turnId === turnId) {
+      draft.removeEcho(index);
+    }
+  }
+}
+
+/**
+ * Whether a carried echo is already settled by the loaded history: its turn finished, or its prompt is
+ * already in the transcript. Anything still pending â€” a queued turn the host has not started, a send still
+ * in flight â€” is kept.
+ */
+function echoSettledInLoad(fold: ThreadFold, echo: LocalEcho): boolean {
+  if (echo.turnId === null) {
+    return false;
+  }
+  if (fold.turns[echo.turnId]?.terminal) {
+    return true;
+  }
+  return fold.order.some((id) => {
+    const item = fold.items[id];
+    return (
+      item?.kind === "userMessage" &&
+      (item.turnId === echo.turnId || item.commandId === echo.turnId) &&
+      echoMatchesItem(echo, item, promptTexts(item))
+    );
+  });
 }
 
 function appendDelta(draft: Draft, params: Record<string, unknown>): void {
@@ -463,12 +515,9 @@ function applyOne(draft: Draft, event: ViewEvent): void {
       if (d.activeTurnId === turnId) {
         d.activeTurnId = null;
       }
-      // The turn is over, so its local copy has done its job: the prompt is either in the transcript or it
-      // never will be. Keeping it would leave a bubble stuck on "Sending" for the rest of the thread.
-      const echo = d.echoes.findIndex((e) => e.turnId === turnId);
-      if (echo >= 0) {
-        draft.removeEcho(echo);
-      }
+      // The turn is over, so its local copies have done their job: the prompts are either in the transcript or
+      // they never will be. Keeping them would leave bubbles stuck on "Sending" for the rest of the thread.
+      removeEchoesForTurn(draft, turnId);
       break;
     }
     case "turn/retryScheduled": {
@@ -499,10 +548,7 @@ function applyOne(draft: Draft, event: ViewEvent): void {
       const turnId = str(params["turnId"]);
       if (turnId) {
         d.turns[turnId] = { ...d.turns[turnId], turnId, terminal: "unqueued" };
-        const echo = d.echoes.findIndex((e) => e.turnId === turnId);
-        if (echo >= 0) {
-          draft.removeEcho(echo);
-        }
+        removeEchoesForTurn(draft, turnId);
       }
       break;
     }
@@ -675,7 +721,9 @@ export function foldFromLoad(load: TranscriptLoad, previous?: ThreadFold | null)
     approvals,
     userInputs,
     activeTurnId: load.msp ? load.msp.activeTurnId : fold.activeTurnId,
-    echoes: previous?.echoes ?? [],
+    // A reload must not resurrect prompts the history already settled: echoes whose turn finished or whose
+    // prompt is already in the transcript would otherwise sit stuck for the rest of the thread.
+    echoes: (previous?.echoes ?? []).filter((echo) => !echoSettledInLoad(fold, echo)),
     meta: {
       ...fold.meta,
       // History pages carry no context readings; the session's own fill in until the next live one.
@@ -702,12 +750,13 @@ export function updateEcho(fold: ThreadFold, localId: string, patch: Partial<Loc
   // If the stream already echoed this prompt back, the local copy is done.
   if (patch.turnId && patch.disposition !== "queued") {
     const echo = fold.echoes[index] as LocalEcho;
+    const turnId = patch.turnId as string;
     const landed = fold.order.some((id) => {
       const item = fold.items[id];
       return (
         item?.kind === "userMessage" &&
-        (item.turnId === patch.turnId || item.commandId === patch.turnId) &&
-        promptTexts(item).has(normalizeText(echo.text))
+        (item.turnId === turnId || item.commandId === turnId) &&
+        echoMatchesItem({ ...echo, turnId }, item, promptTexts(item))
       );
     });
     if (landed) {

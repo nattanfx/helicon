@@ -201,6 +201,44 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(raced.echoes.length, 0, "an echo whose prompt already landed is dropped on ack");
   });
 
+  it("drops an image-only echo once its empty prompt lands", () => {
+    const preview = { name: "print.png", mediaType: "image/png", kind: "image" as const, url: "blob:local/1" };
+    let fold = addEcho(emptyFold(), { localId: "l1", text: "", turnId: null, disposition: "sending", createdAt: 1, attachments: [preview] });
+    fold = updateEcho(fold, "l1", { turnId: "t1", disposition: "started" });
+    assert.equal(fold.echoes.length, 1);
+    fold = applyEvent(fold, {
+      method: "item/completed",
+      params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, turnId: "t1", text: "" } },
+    });
+    assert.equal(fold.echoes.length, 0, "no duplicate while the turn runs");
+
+    let raced = applyEvent(emptyFold(), {
+      method: "item/completed",
+      params: { item: { itemId: "u2", kind: "userMessage", status: "completed", revision: 1, turnId: "t2" } },
+    });
+    raced = addEcho(raced, { localId: "l2", text: "", turnId: null, disposition: "sending", createdAt: 1, attachments: [preview] });
+    raced = updateEcho(raced, "l2", { turnId: "t2", disposition: "started" });
+    assert.equal(raced.echoes.length, 0, "an echo whose empty prompt already landed is dropped on ack");
+  });
+
+  it("matches a file echo whose prompt carries attachment mentions", () => {
+    const preview = { name: "notes.txt", mediaType: "text/plain", kind: "file" as const, url: null };
+    let fold = addEcho(emptyFold(), { localId: "l1", text: "look", turnId: null, disposition: "sending", createdAt: 1, attachments: [preview] });
+    fold = updateEcho(fold, "l1", { turnId: "t1", disposition: "started" });
+    fold = applyEvent(fold, {
+      method: "item/completed",
+      params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, turnId: "t1", text: "look\n\n@.helicon/attachments/notes.txt" } },
+    });
+    assert.equal(fold.echoes.length, 0);
+
+    let stray = addEcho(emptyFold(), { localId: "l2", text: "", turnId: "t2", disposition: "started", createdAt: 1, attachments: [preview] });
+    stray = applyEvent(stray, {
+      method: "item/completed",
+      params: { item: { itemId: "u2", kind: "userMessage", status: "completed", revision: 1, turnId: "t9", text: "" } },
+    });
+    assert.equal(stray.echoes.length, 1, "another turn's empty prompt is not this echo");
+  });
+
   it("clears a slash turn's echo once a revision carries the shown text, or once its turn finishes", () => {
     let fold = addEcho(emptyFold(), { localId: "l1", text: "/plan tidy", turnId: null, disposition: "sending", createdAt: 1 });
     // The live start carries only the instructions the model got.
@@ -235,6 +273,54 @@ describe("thread fold against a real muse transcript", () => {
     fold = addEcho(fold, { localId: "q2", text: "later", turnId: "t6", disposition: "queued", createdAt: 2 });
     fold = applyEvent(fold, { method: "turn/unqueued", params: { turnId: "t6", commandId: "t6" } });
     assert.deepEqual(fold.echoes.map((e) => e.localId), ["q1"]);
+  });
+
+  it("clears every echo of a turn when it ends, not just the first", () => {
+    let fold = addEcho(emptyFold(), { localId: "s1", text: "first steer", turnId: "t1", disposition: "steered", createdAt: 1 });
+    fold = addEcho(fold, { localId: "s2", text: "second steer", turnId: "t1", disposition: "steered", createdAt: 2 });
+    fold = applyEvent(fold, { method: "turn/completed", params: { turnId: "t1", terminal: "completed" }, at: 3 });
+    assert.deepEqual(fold.echoes.map((e) => e.localId), [], "no steered bubble may outlive its turn");
+  });
+
+  it("clears every echo of a turn when it leaves the queue", () => {
+    let fold = addEcho(emptyFold(), { localId: "q1", text: "next", turnId: "t5", disposition: "queued", createdAt: 1 });
+    fold = addEcho(fold, { localId: "q2", text: "next again", turnId: "t5", disposition: "queued", createdAt: 2 });
+    fold = applyEvent(fold, { method: "turn/unqueued", params: { turnId: "t5", commandId: "t5" } });
+    assert.deepEqual(fold.echoes.map((e) => e.localId), []);
+  });
+
+  it("reloads without echoes whose turn finished or prompt already landed", () => {
+    const events: ViewEvent[] = [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "completed" }, at: 2 },
+      { method: "turn/started", params: { turnId: "t2" }, at: 3 },
+      {
+        method: "item/completed",
+        params: { item: { itemId: "u2", kind: "userMessage", status: "completed", revision: 1, turnId: "t2", text: "queued thing" } },
+        at: 4,
+      },
+      { method: "turn/completed", params: { turnId: "t2", terminal: "completed" }, at: 5 },
+    ];
+    const loaded = addEcho(
+      addEcho(
+        addEcho(
+          addEcho(emptyFold(), { localId: "done", text: "old", turnId: "t1", disposition: "started", createdAt: 1 }),
+          { localId: "ran", text: "queued thing", turnId: "t2", disposition: "queued", createdAt: 1 },
+        ),
+        { localId: "waiting", text: "later", turnId: "t9", disposition: "queued", createdAt: 1 },
+      ),
+      { localId: "flying", text: "typing", turnId: null, disposition: "sending", createdAt: 1 },
+    );
+    const fold = foldFromLoad({
+      session: null,
+      msp: { status: "idle", activeTurnId: null, modelId: null, approvalMode: null, workspaceRoot: null, turnCount: 2 },
+      events,
+      truncated: false,
+      pending: { approvals: [], userInputs: [] },
+      readOnly: false,
+      readOnlyReason: null,
+    }, loaded);
+    assert.deepEqual(fold.echoes.map((e) => e.localId), ["waiting", "flying"]);
   });
 
   it("builds a fold from a resume load with the server's pending set", () => {
