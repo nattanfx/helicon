@@ -931,7 +931,25 @@ export class HeliconController {
       if (applied === null) {
         continue;
       }
-      if (staleThreadReason(turnId, this.state.sessions[id]?.live?.activeTurnId ?? null, applied, now) === null) {
+      // A turn waiting on the user is quiet because it should be, not because the stream died (#54).
+      // Reloading it sends session/resume into a live session mid-question, which is how a turn that
+      // was fine came to be reported failed. Treat the wait as activity, so the grace period starts
+      // over once the answer goes in rather than firing the moment it does.
+      const live = this.state.sessions[id]?.live;
+      const waiting =
+        Object.keys(thread.fold.userInputs).length > 0 ||
+        Object.keys(thread.fold.approvals).length > 0 ||
+        (live?.pendingInputs ?? 0) > 0 ||
+        (live?.pendingApprovals ?? 0) > 0;
+      if (waiting) {
+        this.appliedAt.set(id, now);
+        this.staleReloads.delete(id);
+        if (thread.stalled) {
+          this.setThread(id, { ...thread, stalled: false });
+        }
+        continue;
+      }
+      if (staleThreadReason(turnId, live?.activeTurnId ?? null, applied, now) === null) {
         continue;
       }
       const spent = this.staleReloads.get(id);

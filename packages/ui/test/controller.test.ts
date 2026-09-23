@@ -4,7 +4,7 @@ import { HeliconError, type EventHandler, type HeliconClient } from "../src/clie
 import { HeliconController, staleThreadReason, type Platform } from "../src/model/controller.js";
 import { buildTurns } from "../src/model/fold.js";
 import { ZOOM_MAX, ZOOM_MIN } from "../src/model/store.js";
-import type { SessionSummary, SkillEntry, TranscriptLoad } from "../src/types.js";
+import type { SessionSummary, SkillEntry, TranscriptLoad, UserInputRequest } from "../src/types.js";
 import { historyEvents } from "./fixtures/probe.js";
 
 const SESSION: SessionSummary = {
@@ -1832,6 +1832,34 @@ describe("stale thread watchdog", () => {
     assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, null);
     await controller.abandonStalledTurn("s1");
     assert.deepEqual(client.cancelled, []);
+    stop();
+  });
+
+  it("leaves a turn alone while it waits on the user, however long that takes (#54)", async () => {
+    const client = new FakeClient();
+    let loads = 0;
+    client.transcript = async () => {
+      loads += 1;
+      return load({
+        msp: { status: "running", activeTurnId: "live-1", modelId: "muse-spark-1.3", approvalMode: "onRequest", workspaceRoot: "/work/app", turnCount: 4 },
+        events: [...historyEvents, { method: "turn/started", params: { turnId: "live-1" }, at: 1 }],
+        // On load the server's pending set is what the fold trusts, not the event log.
+        pending: {
+          approvals: [],
+          userInputs: [{ userInputId: "q1", turnId: "live-1", questions: [{ question: "Which one?", options: [] }] } as unknown as UserInputRequest],
+        },
+      });
+    };
+    const { controller, stop, setNow, runStaleChecks } = await startedWatching(client);
+    assert.equal(loads, 1);
+    for (const minutes of [2, 5, 10, 30]) {
+      setNow(1_000_000 + minutes * 60_000);
+      runStaleChecks();
+      await settle();
+      await settle();
+    }
+    assert.equal(loads, 1, "a question left unanswered for half an hour is never reloaded");
+    assert.equal(controller.store.get().threads["s1"]?.stalled, false, "and never reported as stalled");
     stop();
   });
 });
