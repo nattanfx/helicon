@@ -329,6 +329,10 @@ export class HeliconController {
   private toastSeq = 0;
   /** Incrementada a cada pedido de configuração de títulos, para aplicar apenas a resposta ou reversão mais recente. */
   private titleSettingsRev = 0;
+  /** Incrementada a cada pedido de configuração da sandbox, para aplicar apenas a resposta ou reversão mais recente. */
+  private sandboxSettingsRev = 0;
+  /** PATCHs da sandbox andam em fila para que viradas opostas rápidas persistam em ordem. */
+  private sandboxSettingsChain: Promise<void> = Promise.resolve();
   /** A rota principal para a qual o Voltar sai das páginas de configurações/uso; limpa ao voltar para uma rota principal. */
   private returnRoute: Route | null = null;
 
@@ -488,6 +492,7 @@ export class HeliconController {
       void this.discoverAll(true);
       void this.loadModels();
       void this.loadTitleSettings();
+      void this.loadSandboxSettings();
       void this.loadPlanUsage();
     } catch (error) {
       this.update((s) => ({ ...s, boot: "error", bootError: userFacingError(error) }));
@@ -581,6 +586,18 @@ export class HeliconController {
     }
   }
 
+  private async loadSandboxSettings(): Promise<void> {
+    const rev = ++this.sandboxSettingsRev;
+    try {
+      const sandboxSettings = await this.client.getSandboxSettings();
+      if (rev === this.sandboxSettingsRev) {
+        this.update((s) => ({ ...s, sandboxSettings }));
+      }
+    } catch {
+      /* abrir Configurações tenta carregar novamente */
+    }
+  }
+
   // ---------------------------------------------------------------- routing
 
   navigate(route: Route): void {
@@ -635,8 +652,13 @@ export class HeliconController {
       }
     } else if (route.kind === "new" && route.cwd) {
       this.setPrefs({ lastProject: route.cwd });
-    } else if (route.kind === "settings" && this.state.titleSettings === null) {
-      void this.loadTitleSettings();
+    } else if (route.kind === "settings") {
+      if (this.state.titleSettings === null) {
+        void this.loadTitleSettings();
+      }
+      if (this.state.sandboxSettings === null) {
+        void this.loadSandboxSettings();
+      }
     }
   }
 
@@ -767,6 +789,9 @@ export class HeliconController {
         if (event.state === "failed" || event.state === "exited") {
           this.update((s) => ({ ...s, hostError: event.message }));
           this.toast("error", event.state === "failed" ? "Muse não pôde iniciar" : "Muse parou de repente", event.message);
+        } else if (event.state === "restarted") {
+          this.update((s) => ({ ...s, hostError: null }));
+          this.toast("info", "Servidores Muse reiniciados", event.message);
         }
         break;
     }
@@ -1484,6 +1509,30 @@ export class HeliconController {
       if (rev === this.titleSettingsRev) {
         this.update((s) => ({ ...s, titleSettings: previous }));
         this.toast("error", "Não foi possível alterar o modelo dos títulos", userFacingError(error));
+      }
+    }
+  }
+
+  async setSandboxDisabled(disabled: boolean): Promise<void> {
+    const previous = this.state.sandboxSettings;
+    const rev = ++this.sandboxSettingsRev;
+    this.update((s) => ({ ...s, sandboxSettings: { disabled } }));
+    // A revisão abaixo descarta respostas velhas, mas não ordena os pedidos. Os PATCHs andam
+    // em fila para que uma desativação lenta nunca persista depois de uma reativação rápida.
+    const run = this.sandboxSettingsChain.then(() => this.client.setSandboxSettings({ disabled }));
+    this.sandboxSettingsChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    try {
+      const sandboxSettings = await run;
+      if (rev === this.sandboxSettingsRev) {
+        this.update((s) => ({ ...s, sandboxSettings }));
+      }
+    } catch (error) {
+      if (rev === this.sandboxSettingsRev) {
+        this.update((s) => ({ ...s, sandboxSettings: previous }));
+        this.toast("error", "Não foi possível alterar a configuração da sandbox", userFacingError(error));
       }
     }
   }

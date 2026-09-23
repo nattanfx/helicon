@@ -1,6 +1,7 @@
 import {
   HeliconError,
   parseModelList,
+  parseSandboxSettings,
   parseTitleSettings,
   type ApprovalDecisionInput,
   type ApprovalMode,
@@ -19,6 +20,7 @@ import {
   type PlanUsage,
   type ProjectView,
   type ReasoningEffort,
+  type SandboxSettings,
   type SessionSummary,
   type ShellRun,
   type SkillCatalog,
@@ -288,6 +290,14 @@ export class WebHeliconClient implements HeliconClient {
 
   async setTitleSettings(patch: { enabled?: boolean; modelId?: string | null }): Promise<TitleSettings> {
     return parseTitleSettings(await call<unknown>("PATCH", "/api/title-settings", patch));
+  }
+
+  async getSandboxSettings(): Promise<SandboxSettings> {
+    return parseSandboxSettings(await call<unknown>("GET", "/api/sandbox-settings"));
+  }
+
+  async setSandboxSettings(patch: { disabled?: boolean }): Promise<SandboxSettings> {
+    return parseSandboxSettings(await call<unknown>("PATCH", "/api/sandbox-settings", patch));
   }
 
   async setSessionModel(sessionId: string, modelId: string): Promise<void> {

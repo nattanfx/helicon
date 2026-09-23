@@ -89,6 +89,21 @@ describe("serve planning", () => {
       distro: null,
     });
   });
+
+  it("adds --disable-sandbox when asked, on every route", () => {
+    const direct = planServe({
+      platform: "win32",
+      distro: "Ubuntu",
+      musePath: "/home/harjot/.local/bin/muse",
+      cwd: "D:\\work\\helicon",
+      sandboxDisabled: true,
+    });
+    assert.deepEqual(direct.args, ["-d", "Ubuntu", "--", "/home/harjot/.local/bin/muse", "serve", "--disable-sandbox"]);
+    const loginShell = planServe({ platform: "win32", cwd: "D:\\work\\helicon", sandboxDisabled: true });
+    assert.deepEqual(loginShell.args, ["-d", "Ubuntu", "--", "sh", "-lc", "muse serve --disable-sandbox"]);
+    const native = planServe({ platform: "linux", cwd: "/work/proj", sandboxDisabled: true });
+    assert.deepEqual(native.args, ["serve", "--disable-sandbox"]);
+  });
 });
 
 describe("environment probe", () => {

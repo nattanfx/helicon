@@ -838,6 +838,155 @@ describe("HeliconServer", () => {
     assert.deepEqual(await get(base, "/api/title-settings"), { enabled: true, modelId: "m1" }, "a rejected patch changes nothing");
   });
 
+  it("keeps sandbox settings behind a boolean switch, defaulting to sandbox-on", async () => {
+    const connection = new FakeConnection();
+    const { base } = await start(connection);
+    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: false });
+
+    const patched = await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    assert.equal(patched.status, 200);
+    assert.deepEqual(patched.json, { disabled: true });
+    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: true });
+
+    const bad = await send(base, "/api/sandbox-settings", { disabled: "yes" }, "PATCH");
+    assert.equal(bad.status, 400);
+    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: true }, "a rejected patch changes nothing");
+  });
+
+  it("spawns hosts with --disable-sandbox, restarting them when the switch flips", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    let closes = 0;
+    const inner = fakeFactory(connection, probe);
+    const counting = (target: ServeTarget): HostHandle => {
+      const handle = inner(target);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        closes += 1;
+        return close();
+      };
+      return handle;
+    };
+    const { base } = await start(connection, { hostFactory: counting });
+
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve"]]);
+
+    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await waitFor(() => closes === 1, "the live host closing");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(
+      probe.targets.map((t) => t.args),
+      [["serve"], ["serve", "--disable-sandbox"]],
+      "the respawned host carries the new posture",
+    );
+
+    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(closes, 1, "an unchanged switch restarts nothing");
+  });
+
+  it("drops --disable-sandbox from respawned hosts when the switch flips back on", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    let closes = 0;
+    const inner = fakeFactory(connection, probe);
+    const counting = (target: ServeTarget): HostHandle => {
+      const handle = inner(target);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        closes += 1;
+        return close();
+      };
+      return handle;
+    };
+    const { base } = await start(connection, { hostFactory: counting });
+
+    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox"]]);
+
+    await send(base, "/api/sandbox-settings", { disabled: false }, "PATCH");
+    await waitFor(() => closes === 1, "the live host closing");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(
+      probe.targets.map((t) => t.args),
+      [["serve", "--disable-sandbox"], ["serve"]],
+      "the respawned host drops --disable-sandbox",
+    );
+  });
+
+  it("marks sessions with their creation posture, inherited by forks", async () => {
+    const connection = new FakeConnection();
+    let started = 0;
+    connection.replies.set("session/start", () => ({ session: { sessionId: `s${(started += 1)}` } }));
+    const { base } = await start(connection);
+
+    const plain = await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.equal(plain.json.session.sandboxDisabled, false);
+
+    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    const lifted = await send(base, "/api/sessions", { cwd: "/work/other" });
+    assert.equal(lifted.json.session.sandboxDisabled, true, "a session records its creating host's flags");
+
+    connection.replies.set("session/fork", { session: { sessionId: "s3" } });
+    const fork = await send(base, "/api/sessions/s2/fork", {});
+    assert.equal(fork.json.session.sandboxDisabled, true, "a fork inherits its source's posture");
+
+    const sessions = (await get(base, "/api/sessions")).sessions as { sessionId: string; sandboxDisabled: boolean | null }[];
+    assert.equal(
+      sessions.find((s) => s.sessionId === "s1")?.sandboxDisabled,
+      false,
+      "flipping the switch never rewrites old rows",
+    );
+  });
+
+  it("never starts a session on a host retired by a flip", async () => {
+    const connection = new FakeConnection();
+    let started = 0;
+    connection.replies.set("session/start", () => ({ session: { sessionId: `s${(started += 1)}` } }));
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    let releaseClose!: () => void;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    const inner = fakeFactory(connection, probe);
+    let first = true;
+    const counting = (target: ServeTarget): HostHandle => {
+      const handle = inner(target);
+      const gateThis = first;
+      first = false;
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        if (gateThis) {
+          await closeGate;
+        }
+        return close();
+      };
+      return handle;
+    };
+    const { base } = await start(connection, { hostFactory: counting });
+
+    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox"]]);
+
+    await send(base, "/api/sandbox-settings", { disabled: false }, "PATCH");
+    const pending = send(base, "/api/sessions", { cwd: "/work/proj" });
+    try {
+      const raced = await Promise.race([pending.then((r) => r), new Promise((r) => setTimeout(() => r("waiting"), 50))]);
+      assert.equal(raced, "waiting", "creation waits for the flip's restart");
+    } finally {
+      // Always unblock the retired host: teardown closes it even when the test fails.
+      releaseClose();
+    }
+    const created = await pending;
+    assert.equal(created.status, 200);
+    assert.equal(created.json.session.sandboxDisabled, false, "the session lands on the new posture's host");
+  });
+
   it("upgrades an echo title with one muse exec call, and pushes the name back", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });

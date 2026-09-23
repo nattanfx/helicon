@@ -786,9 +786,18 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
         open={confirming}
         onOpenChange={setConfirming}
         title="Dar acesso total ao Muse?"
-        description="Toda chamada de ferramenta, incluindo comandos e escrita de arquivos, vai executar sem perguntar antes. Use isto só num ambiente descartável."
+        description="Toda chamada de ferramenta, incluindo comandos e escrita de arquivos, vai executar sem perguntar antes. A sandbox do sistema continua confinando os shells, a menos que esta conversa tenha começado com a sandbox desligada nas Configurações. Use isto só num ambiente descartável."
       >
         <div className="mt-6 flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setConfirming(false);
+              controller.navigate({ kind: "settings" });
+            }}
+          >
+            Configurações da sandbox
+          </Button>
           <Button variant="ghost" onClick={() => setConfirming(false)}>
             Continuar perguntando
           </Button>

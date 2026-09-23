@@ -147,6 +147,21 @@ describe("web client", () => {
     assert.deepEqual(JSON.parse(String(patch?.init?.body)), { enabled: false, modelId: "m9" });
   });
 
+  it("reads and writes the sandbox switch", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+    const client = new WebHeliconClient();
+
+    assert.deepEqual(await client.getSandboxSettings(), { disabled: false });
+    assert.equal(world.calls.at(-1)?.url, "/api/sandbox-settings");
+
+    await client.setSandboxSettings({ disabled: true });
+    const patch = world.calls.at(-1);
+    assert.equal(patch?.url, "/api/sandbox-settings");
+    assert.equal(patch?.init?.method, "PATCH");
+    assert.deepEqual(JSON.parse(String(patch?.init?.body)), { disabled: true });
+  });
+
   it("rebuilds a stream that has gone quiet", async () => {
     browser();
     const { WebHeliconClient } = await freshClient();

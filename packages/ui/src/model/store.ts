@@ -7,6 +7,7 @@ import type {
   PlanUsage,
   ProjectView,
   ReasoningEffort,
+  SandboxSettings,
   SessionSummary,
   ShellRun,
   SkillEntry,
@@ -199,6 +200,8 @@ export interface AppState {
   models: ModelOption[];
   /** Ativação e modelo dos títulos, mantidos pelo servidor; null até a resposta do carregamento inicial. */
   titleSettings: TitleSettings | null;
+  /** Proteção da sandbox, mantida pelo servidor; null até a resposta do carregamento inicial. */
+  sandboxSettings: SandboxSettings | null;
   prefs: Prefs;
   toasts: Toast[];
   paletteOpen: boolean;
@@ -261,6 +264,7 @@ export function initialState(prefs: Prefs): AppState {
     threads: {},
     models: [],
     titleSettings: null,
+    sandboxSettings: null,
     prefs,
     toasts: [],
     paletteOpen: false,

@@ -109,12 +109,14 @@ export function SettingsPage() {
   const prefs = useApp((s) => s.prefs);
   const models = useApp((s) => s.models);
   const titleSettings = useApp((s) => s.titleSettings);
+  const sandboxSettings = useApp((s) => s.sandboxSettings);
   const env = useApp((s) => s.env);
   const identity = useApp((s) => s.identity);
   const updates = useApp((s) => s.updates);
   const bypassAll = useApp((s) => s.bypassAll);
   const armedThreads = useApp((s) => s.bypassThreads.length);
   const [confirmBypass, setConfirmBypass] = useState(false);
+  const [confirmSandbox, setConfirmSandbox] = useState(false);
   const [notasOpen, setNotasOpen] = useState(false);
   const now = useNow(60_000);
   const busy = updates?.status === "checking" || updates?.status === "downloading" || updates?.status === "installing";
@@ -131,7 +133,7 @@ export function SettingsPage() {
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold text-fg">Configurações</h1>
-          <p className="text-xs text-muted">Guardado neste aparelho. Nada aqui muda uma conversa que já está rodando.</p>
+          <p className="text-xs text-muted">Guardado neste aparelho. A maioria não mexe nas conversas em execução; o interruptor da sandbox reinicia os servidores Muse na hora.</p>
         </div>
       </header>
 
@@ -258,6 +260,23 @@ export function SettingsPage() {
               )}
             </Row>
           ) : null}
+        </Section>
+
+        <Section title="Sandbox">
+          <Row
+            label="Desativar a sandbox"
+            description="Os shells do Muse rodam isolados: acesso a arquivos e rede é confinado. Desligar isto remove o confinamento das novas conversas; as abertas mantêm a proteção com que começaram. Mudar isto reinicia os servidores Muse em execução, interrompendo seus turnos."
+          >
+            {sandboxSettings ? (
+              <Toggle
+                checked={sandboxSettings.disabled}
+                label="Desativar a sandbox"
+                onChange={(on) => (on ? setConfirmSandbox(true) : void controller.setSandboxDisabled(false))}
+              />
+            ) : (
+              <p className="text-xs text-subtle">Carregando…</p>
+            )}
+          </Row>
         </Section>
 
         <Section title="Aprovações">
@@ -391,6 +410,28 @@ export function SettingsPage() {
             }}
           >
             Responda por mim
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={confirmSandbox}
+        onOpenChange={setConfirmSandbox}
+        title="Desativar a sandbox do Muse?"
+        description="Os shells das novas conversas vão rodar sem confinamento de arquivos ou rede, e os servidores Muse em execução reiniciam, interrompendo seus turnos. As conversas já abertas mantêm o confinamento atual. Só faça isto num ambiente descartável."
+      >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmSandbox(false)}>
+            Manter a sandbox
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setConfirmSandbox(false);
+              void controller.setSandboxDisabled(true);
+            }}
+          >
+            Desativar a sandbox
           </Button>
         </div>
       </Modal>

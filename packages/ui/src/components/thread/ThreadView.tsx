@@ -1,4 +1,4 @@
-import { Archive, CircleStop, Code, Copy, Ellipsis, Folder, FolderOpen, FolderTree, PanelBottomOpen, GitBranch, Lock, Minimize2, Pencil, Square, SquarePen } from "lucide-react";
+import { Archive, CircleStop, Code, Copy, Ellipsis, Folder, FolderOpen, FolderTree, PanelBottomOpen, GitBranch, Lock, Minimize2, Pencil, ShieldOff, Square, SquarePen } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { CaptionSpacer, useOverlayDragProps } from "../../app/frame.js";
@@ -89,6 +89,15 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
           </span>
         ) : null}
       </div>
+      {session.sandboxDisabled === true ? (
+        <Tip label="Esta conversa começou com a sandbox desligada, então seus shells rodam sem confinamento">
+          <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs font-medium text-warn-text">
+            <ShieldOff size={12} aria-hidden="true" />
+            <span className="sr-only">Sandbox desligada</span>
+            <span aria-hidden="true" className="@max-[420px]:hidden">Sandbox desligada</span>
+          </span>
+        </Tip>
+      ) : null}
       {waiting ? (
         <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs font-medium text-warn-text">
           <span className="attention-pulse size-1.5 rounded-full bg-warn" aria-hidden="true" />

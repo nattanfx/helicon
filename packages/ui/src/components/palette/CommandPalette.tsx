@@ -1,5 +1,5 @@
 import { Command } from "cmdk";
-import { FolderPlus, Folder, Layers, Monitor, Moon, PanelLeft, RefreshCw, RotateCcw, RotateCw, Search, SquarePen, Sun, ZoomIn, ZoomOut } from "lucide-react";
+import { FolderPlus, Folder, Layers, Monitor, Moon, PanelLeft, RefreshCw, RotateCcw, RotateCw, Search, ShieldOff, SquarePen, Sun, ZoomIn, ZoomOut } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { basename, displayTitle, relativeTime } from "../../model/format.js";
@@ -132,6 +132,12 @@ export function CommandPalette() {
                     hint={relativeTime(session.activityAt, now)}
                   >
                     <span className="truncate">{displayTitle(session)}</span>
+                    {session.sandboxDisabled === true ? (
+                      <span title="Sandbox desligada" className="flex shrink-0 items-center gap-1 text-warn-text">
+                        <ShieldOff size={12} aria-hidden="true" />
+                        <span className="sr-only">, sandbox desligada</span>
+                      </span>
+                    ) : null}
                     <span className="shrink-0 truncate text-xs text-subtle">{basename(session.cwd)}</span>
                   </Item>
                 );

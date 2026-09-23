@@ -34,6 +34,8 @@ export interface SessionRecord {
   settledOverride: SettledOverride | null;
   settledAt: string | null;
   unsettledAt: string | null;
+  /** Sandbox posture at creation: null for sessions recorded before tracking. */
+  sandboxDisabled: boolean | null;
 }
 
 export type SettledOverride = "settled" | "active";
@@ -56,6 +58,8 @@ export interface RecordSessionInput {
   turnCount?: number;
   createdAt?: string;
   activityAt?: string;
+  /** Creation posture; later touches never overwrite it. */
+  sandboxDisabled?: boolean | null;
 }
 
 export interface SessionPatch {
@@ -80,6 +84,13 @@ export interface TitleSettings {
 }
 
 export const DEFAULT_TITLE_SETTINGS: TitleSettings = { enabled: true, modelId: null };
+
+/** Server-owned Muse sandbox posture: whether `muse serve` hosts spawn with `--disable-sandbox`. Off by default. */
+export interface SandboxSettings {
+  disabled: boolean;
+}
+
+export const DEFAULT_SANDBOX_SETTINGS: SandboxSettings = { disabled: false };
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -191,6 +202,8 @@ const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
   { table: "sessions", column: "settled_override", ddl: "ALTER TABLE sessions ADD COLUMN settled_override TEXT" },
   { table: "sessions", column: "settled_at", ddl: "ALTER TABLE sessions ADD COLUMN settled_at TEXT" },
   { table: "sessions", column: "unsettled_at", ddl: "ALTER TABLE sessions ADD COLUMN unsettled_at TEXT" },
+  // NULL for sessions recorded before posture tracking; only new rows carry a value.
+  { table: "sessions", column: "sandbox_disabled", ddl: "ALTER TABLE sessions ADD COLUMN sandbox_disabled INTEGER" },
 ];
 
 type Row = Record<string, string | number | null>;
@@ -314,6 +327,33 @@ export class HeliconStore {
     };
     this.db
       .prepare(`INSERT INTO settings (key, value) VALUES ('title', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .run(JSON.stringify(next));
+    return next;
+  }
+
+  /** Malformed rows fall back to sandbox-on rather than breaking host startup. */
+  getSandboxSettings(): SandboxSettings {
+    const row = this.db.prepare(`SELECT value FROM settings WHERE key = 'sandbox'`).get() as Row | undefined;
+    if (!row) {
+      return { ...DEFAULT_SANDBOX_SETTINGS };
+    }
+    try {
+      const parsed = JSON.parse(String(row["value"])) as Partial<SandboxSettings>;
+      return {
+        disabled: typeof parsed.disabled === "boolean" ? parsed.disabled : DEFAULT_SANDBOX_SETTINGS.disabled,
+      };
+    } catch {
+      return { ...DEFAULT_SANDBOX_SETTINGS };
+    }
+  }
+
+  setSandboxSettings(patch: Partial<SandboxSettings>): SandboxSettings {
+    const current = this.getSandboxSettings();
+    const next: SandboxSettings = {
+      disabled: patch.disabled ?? current.disabled,
+    };
+    this.db
+      .prepare(`INSERT INTO settings (key, value) VALUES ('sandbox', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
       .run(JSON.stringify(next));
     return next;
   }
@@ -552,8 +592,8 @@ export class HeliconStore {
       this.db
         .prepare(
           `INSERT INTO sessions (id, project_id, title, title_source, status, turn_count, model_id, origin,
-             archived, created_at, updated_at, activity_at)
-           VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)`,
+             archived, sandbox_disabled, created_at, updated_at, activity_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?, ?)`,
         )
         .run(
           input.id,
@@ -563,6 +603,7 @@ export class HeliconStore {
           input.turnCount ?? 0,
           input.modelId ?? null,
           input.origin ?? "helicon",
+          input.sandboxDisabled === undefined || input.sandboxDisabled === null ? null : input.sandboxDisabled ? 1 : 0,
           input.createdAt ?? now,
           now,
           input.activityAt ?? input.createdAt ?? now,
@@ -755,6 +796,7 @@ export class HeliconStore {
       settledOverride: row["settled_override"] === "settled" || row["settled_override"] === "active" ? row["settled_override"] : null,
       settledAt: row["settled_at"] === null || row["settled_at"] === undefined ? null : String(row["settled_at"]),
       unsettledAt: row["unsettled_at"] === null || row["unsettled_at"] === undefined ? null : String(row["unsettled_at"]),
+      sandboxDisabled: row["sandbox_disabled"] === null || row["sandbox_disabled"] === undefined ? null : Number(row["sandbox_disabled"]) === 1,
     };
   }
 }

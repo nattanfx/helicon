@@ -21,6 +21,7 @@ const SESSION: SessionSummary = {
   settled: false,
   settledAt: null,
   unsettledAt: null,
+  sandboxDisabled: false,
   live: null,
 };
 
@@ -132,6 +133,26 @@ class FakeClient implements HeliconClient {
       modelId: patch.modelId !== undefined ? patch.modelId : this.titleSettings.modelId,
     };
     return { ...this.titleSettings };
+  }
+  sandboxSettings = { disabled: false };
+  sandboxError: Error | null = null;
+  sandboxGate: Promise<void> | null = null;
+  sandboxCalls: (boolean | undefined)[] = [];
+  async getSandboxSettings() {
+    return { ...this.sandboxSettings };
+  }
+  async setSandboxSettings(patch: { disabled?: boolean }) {
+    this.sandboxCalls.push(patch.disabled);
+    if (this.sandboxGate) {
+      await this.sandboxGate;
+    }
+    if (this.sandboxError) {
+      const error = this.sandboxError;
+      this.sandboxError = null;
+      throw error;
+    }
+    this.sandboxSettings = { disabled: patch.disabled ?? this.sandboxSettings.disabled };
+    return { ...this.sandboxSettings };
   }
   async setSessionModel() {}
   async setApprovalMode() {}
@@ -300,6 +321,58 @@ describe("HeliconController", () => {
     await controller.setTitleEnabled(false);
     assert.deepEqual(controller.store.get().titleSettings, { enabled: true, modelId: null }, "a failed flip rolls back");
     assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Não foi possível alterar os títulos das conversas/);
+    stop();
+  });
+
+  it("loads the sandbox switch at boot and flips it with rollback", async () => {
+    const client = new FakeClient();
+    client.sandboxSettings = { disabled: true };
+    const { controller, stop } = await started(client);
+    assert.deepEqual(controller.store.get().sandboxSettings, { disabled: true });
+
+    await controller.setSandboxDisabled(false);
+    assert.deepEqual(controller.store.get().sandboxSettings, { disabled: false });
+
+    client.sandboxError = new Error("daemon away");
+    await controller.setSandboxDisabled(true);
+    assert.deepEqual(controller.store.get().sandboxSettings, { disabled: false }, "a failed flip rolls back");
+    assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Não foi possível alterar a configuração da sandbox/);
+    stop();
+  });
+
+  it("sends rapid sandbox flips to the server in order", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      let release!: () => void;
+      client.sandboxGate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const first = controller.setSandboxDisabled(true);
+      const second = controller.setSandboxDisabled(false);
+      try {
+        await new Promise((r) => setTimeout(r, 0));
+        assert.deepEqual(client.sandboxCalls, [true], "the second PATCH waits for the first");
+      } finally {
+        release();
+      }
+      await Promise.all([first, second]);
+      assert.deepEqual(client.sandboxCalls, [true, false]);
+      assert.deepEqual(client.sandboxSettings, { disabled: false }, "the server ends at the latest flip");
+      assert.deepEqual(controller.store.get().sandboxSettings, { disabled: false });
+    } finally {
+      stop();
+    }
+  });
+
+  it("clears the host error and toasts when hosts restart for the sandbox switch", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    client.handler?.({ type: "host", key: "k", state: "failed", message: "boom" });
+    assert.equal(controller.store.get().hostError, "boom");
+    client.handler?.({ type: "host", key: "k", state: "restarted", message: "The Muse host restarted." });
+    assert.equal(controller.store.get().hostError, null);
+    assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Servidores Muse reiniciados/);
     stop();
   });
 

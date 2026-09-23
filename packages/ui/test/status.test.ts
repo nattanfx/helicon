@@ -21,6 +21,7 @@ function session(id: string, patch: Partial<SessionSummary> = {}, live: Partial<
     settled: false,
     settledAt: null,
     unsettledAt: null,
+    sandboxDisabled: false,
     live: live
       ? { activeTurnId: null, turnStartedAt: null, pendingApprovals: 0, pendingInputs: 0, lastTerminal: null, lastError: null, ...live }
       : null,

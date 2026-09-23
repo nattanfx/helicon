@@ -51,6 +51,8 @@ export interface SessionSummary {
   settledAt: string | null;
   /** When it was last brought back from the shelf; keeps its place in the active list. */
   unsettledAt: string | null;
+  /** Proteção da sandbox ao criar; null para conversas gravadas antes desse registro. */
+  sandboxDisabled: boolean | null;
   live: LiveView | null;
 }
 
@@ -267,6 +269,11 @@ export interface ModelOption {
 export interface TitleSettings {
   enabled: boolean;
   modelId: string | null;
+}
+
+/** Proteção da sandbox do Muse, mantida pelo servidor: se os servidores sobem com `--disable-sandbox`. */
+export interface SandboxSettings {
+  disabled: boolean;
 }
 
 /** A skill Muse can load in a workspace, from `muse skills list`. Skills switched off are left out. */

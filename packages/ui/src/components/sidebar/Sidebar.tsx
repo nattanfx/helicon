@@ -23,6 +23,7 @@ import {
   RotateCw,
   Search,
   Settings,
+  ShieldOff,
   SquarePen,
   Target,
   Undo2,
@@ -641,15 +642,20 @@ export const ThreadRow = memo(
             >
               <span
                 className={cn(
-                  "block truncate text-sm",
+                  "flex min-w-0 items-center gap-1.5 text-sm",
                   props.settled ? "text-subtle" : emphasized ? "text-fg" : "text-muted",
                   status === "unread" && !props.settled && "font-medium",
                 )}
               >
-                {displayTitle(session)}
+                {session.sandboxDisabled === true ? (
+                  <span title="Sandbox desligada" className="flex shrink-0 text-warn-text">
+                    <ShieldOff size={12} aria-hidden="true" />
+                  </span>
+                ) : null}
+                <span className="min-w-0 flex-1 truncate">{displayTitle(session)}</span>
               </span>
               {props.settled ? null : <RowMeta session={session} showProject={props.showProject} />}
-              <span className="sr-only">{`, ${STATUS_LABEL[status]}`}</span>
+              <span className="sr-only">{`, ${STATUS_LABEL[status]}${session.sandboxDisabled === true ? ", sandbox desligada" : ""}`}</span>
             </button>
           )}
           {renaming ? null : (
