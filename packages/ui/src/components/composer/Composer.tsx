@@ -28,6 +28,7 @@ import {
   type ReactNode,
 } from "react";
 import { AttachButton, AttachmentTray, readFiles, restoreFiles, toOutgoing, toPreview, type PendingFile } from "./attachments.js";
+import { DRAFT_FILES_PREFIX, parseDraftFiles, restoreDraftFiles, serializeDraftFiles } from "../../model/draftFiles.js";
 import { CostMeter } from "./CostPanel.js";
 import { Popover, Slider, Switch } from "radix-ui";
 import { shallowEqual, useApp, useController } from "../../app/context.js";
@@ -77,6 +78,50 @@ function useDraft(key: string): [string, (value: string) => void] {
     [key],
   );
   return [value, set];
+}
+
+function readDraftFiles(key: string): PendingFile[] {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_FILES_PREFIX + key);
+    return raw === null ? [] : restoreDraftFiles(parseDraftFiles(raw));
+  } catch {
+    return [];
+  }
+}
+
+/** Os anexos do rascunho, persistidos como o texto; acima do teto ou sem armazenamento, ficam só na memória. */
+function useDraftFiles(key: string): [PendingFile[], (action: PendingFile[] | ((current: PendingFile[]) => PendingFile[])) => void] {
+  const [state, setState] = useState(() => ({ key, files: readDraftFiles(key) }));
+  const files = state.key === key ? state.files : readDraftFiles(key);
+  if (state.key !== key) {
+    setState({ key, files });
+  }
+  useEffect(() => {
+    try {
+      if (files.length === 0) {
+        window.localStorage.removeItem(DRAFT_FILES_PREFIX + key);
+      } else {
+        const raw = serializeDraftFiles(files);
+        if (raw === null) {
+          window.localStorage.removeItem(DRAFT_FILES_PREFIX + key);
+        } else {
+          window.localStorage.setItem(DRAFT_FILES_PREFIX + key, raw);
+        }
+      }
+    } catch {
+      /* rascunhos são melhor-esforço */
+    }
+  }, [key, files]);
+  const set = useCallback(
+    (action: PendingFile[] | ((current: PendingFile[]) => PendingFile[])) => {
+      setState((prev) => {
+        const base = prev.key === key ? prev.files : readDraftFiles(key);
+        return { key, files: typeof action === "function" ? action(base) : action };
+      });
+    },
+    [key],
+  );
+  return [files, set];
 }
 
 /** O menu de barra para um rascunho, com o que escolher uma linha escreve na frente do nome do comando. */
@@ -171,7 +216,7 @@ export function Composer(props: ComposerProps) {
   const shell = !props.readOnly && /^!\s*\S/.test(text);
 
   // Arquivos pegam carona na próxima mensagem: o Muse vê imagens ele mesmo, qualquer outra coisa cai na pasta do projeto.
-  const [files, setFiles] = useState<PendingFile[]>([]);
+  const [files, setFiles] = useDraftFiles(draftKey);
   const addFiles = (incoming: Iterable<File>) => {
     if (props.readOnly) {
       return;
