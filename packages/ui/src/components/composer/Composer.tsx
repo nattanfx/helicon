@@ -33,7 +33,7 @@ import { CostMeter } from "./CostPanel.js";
 import { Popover, Slider, Switch } from "radix-ui";
 import { shallowEqual, useApp, useController } from "../../app/context.js";
 import { useSampled } from "../../app/sampled.js";
-import { basename, CONTRIBUTOR_LABEL, CONTRIBUTOR_NOTICE, formatDuration, formatSpeed, formatTokens, modelDisplayName } from "../../model/format.js";
+import { basename, CONTRIBUTOR_LABEL, CONTRIBUTOR_NOTICE, emptyAttachmentWarning, formatDuration, formatSpeed, formatTokens, modelDisplayName } from "../../model/format.js";
 import { matchSlash, parseSlash, resolveSlash, slashCommands, type SlashCommand } from "../../model/slash.js";
 import type { SkillsState } from "../../model/store.js";
 import { lastTurnSpeed, streamingSpeed } from "../../model/usage.js";
@@ -288,6 +288,12 @@ export function Composer(props: ComposerProps) {
     }
     const value = text;
     const outgoing = files;
+    const empty = outgoing.filter((file) => file.size === 0 || file.base64.length === 0);
+    const warning = emptyAttachmentWarning(empty.map((file) => file.name));
+    if (warning) {
+      controller.toast("error", warning.title, warning.detail);
+      return;
+    }
     if (!tryConsume(value, outgoing)) {
       return;
     }

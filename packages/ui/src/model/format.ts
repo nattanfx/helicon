@@ -96,6 +96,33 @@ export function formatElapsed(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
 }
 
+/** Texto do prompt como o usuário o escreveu: sem os marcadores `[Image #n]` que o host anexa ao texto. Exibição e repetição — só o casamento de ecos usa o texto completo. */
+export function stripImageMarkers(text: string): string {
+  return text.replace(/\[Image #\d+\]/g, "").trim();
+}
+
+/** Texto do prompt como o usuário o escreveu: sem as menções `@.helicon/attachments/<arquivo>` que o servidor acrescenta ao texto. Exibição e repetição — só o casamento de ecos usa o texto completo. */
+export function stripAttachmentMentions(text: string): string {
+  return text.replace(/@\.helicon\/attachments\/[A-Za-z0-9._-]+/g, "").trim();
+}
+
+/** Aviso em português quando a mensagem traz arquivos vazios (0 B): o envio é barrado antes de sair. Nulo quando não há vazios. */
+export function emptyAttachmentWarning(names: readonly string[]): { title: string; detail: string } | null {
+  if (names.length === 0) {
+    return null;
+  }
+  if (names.length === 1) {
+    return {
+      title: "Arquivo vazio",
+      detail: `"${names[0]}" não tem conteúdo (0 B), então a mensagem não foi enviada. Remova o arquivo da mensagem ou escolha um arquivo com conteúdo.`,
+    };
+  }
+  return {
+    title: "Arquivos vazios",
+    detail: `${names.map((name) => `"${name}"`).join(", ")} não têm conteúdo (0 B), então a mensagem não foi enviada. Remova-os da mensagem ou escolha arquivos com conteúdo.`,
+  };
+}
+
 export function formatTokens(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "0";

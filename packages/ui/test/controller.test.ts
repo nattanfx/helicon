@@ -469,6 +469,19 @@ describe("HeliconController", () => {
     stop();
   });
 
+  it("retries with the typed text, without server-appended markers or mentions", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      await controller.retryTurn("s1", "veja os prints[Image #1][Image #2]");
+      assert.equal(client.sent.at(-1)?.text, "veja os prints");
+      await controller.retryTurn("s1", "leia\n\n@.helicon/attachments/relatorio.txt");
+      assert.equal(client.sent.at(-1)?.text, "leia");
+    } finally {
+      stop();
+    }
+  });
+
   it("turns a double-pressed Enter into one send, and the duplicate still reports sent", async () => {
     const client = new FakeClient();
     const releases: ((ack: { turnId: string | null; disposition: string | null }) => void)[] = [];

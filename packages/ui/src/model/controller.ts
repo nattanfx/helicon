@@ -18,7 +18,14 @@ import type {
   ViewEvent,
   WorkflowAction,
 } from "../types.js";
-import { CONTRIBUTOR_NOTICE, describeTool, displayTitle, modelDisplayName } from "./format.js";
+import {
+  CONTRIBUTOR_NOTICE,
+  describeTool,
+  displayTitle,
+  modelDisplayName,
+  stripAttachmentMentions,
+  stripImageMarkers,
+} from "./format.js";
 import { fileKey, fileTarget, type LineRange } from "./files.js";
 import { goalPrompt } from "./goal.js";
 import {
@@ -1218,17 +1225,20 @@ export class HeliconController {
       // Nomeado, não lido da rota: o usuário pode ter ido para outra conversa enquanto as skills carregavam.
       sessionId,
     };
+    // O texto gravado traz o que o host/servidor anexou ([Image #n], menções de anexo), e os arquivos vão junto de
+    // novo: reenviar como está duplicaria os sufixos. A repetição manda o texto digitado; cada lado anexa outra vez.
+    const clean = stripAttachmentMentions(stripImageMarkers(prompt));
     // Uma mensagem começada por `/plan …` ou `/init` mostra o comando, então repetir roda o comando de novo.
-    const parsed = parseSlash(prompt);
+    const parsed = parseSlash(clean);
     const cwd = this.state.sessions[sessionId]?.cwd ?? null;
     if (parsed && cwd) {
       await this.loadSkills(cwd);
       const skills = this.state.skills[cwd]?.skills ?? [];
       if (resolveSlash(parsed, slashCommands(skills, { inThread: true }), skills).kind !== "unknown") {
-        return this.runSlash(prompt, parsed, delivery);
+        return this.runSlash(clean, parsed, delivery);
       }
     }
-    return this.sendToThread(sessionId, prompt, delivery, false);
+    return this.sendToThread(sessionId, clean, delivery, false);
   }
 
   // ---------------------------------------------------------------- approvals and questions

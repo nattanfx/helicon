@@ -9,6 +9,7 @@ import {
   diffLines,
   diffStats,
   displayTitle,
+  emptyAttachmentWarning,
   extractDiff,
   formatDuration,
   formatTokens,
@@ -20,6 +21,8 @@ import {
   modelDisplayName,
   relativeTime,
   shortenPath,
+  stripAttachmentMentions,
+  stripImageMarkers,
   withoutDiffEcho,
 } from "../src/model/format.js";
 import type { MspItem } from "../src/types.js";
@@ -94,6 +97,40 @@ describe("formatação", () => {
     assert.equal(formatTokens(21177), "21k");
     assert.equal(formatTokens(1500), "1.5k");
     assert.equal(formatTokens(1_007_997), "1M");
+  });
+
+  it("esconde marcadores de imagem do texto exibido do prompt", () => {
+    assert.equal(stripImageMarkers("olá[Image #1]"), "olá");
+    assert.equal(stripImageMarkers("[Image #1]"), "");
+    assert.equal(stripImageMarkers("a[Image #1] b[Image #12]"), "a b");
+    assert.equal(stripImageMarkers("texto\n\n[Image #1]"), "texto");
+    assert.equal(stripImageMarkers("sem marcador"), "sem marcador");
+    assert.equal(stripImageMarkers("[Image #x]"), "[Image #x]");
+    assert.equal(stripImageMarkers("[image #1]"), "[image #1]");
+    assert.equal(stripImageMarkers(""), "");
+  });
+
+  it("esconde menções de anexo do texto exibido do prompt", () => {
+    assert.equal(stripAttachmentMentions("texto\n\n@.helicon/attachments/relatorio.txt"), "texto");
+    assert.equal(stripAttachmentMentions("@.helicon/attachments/Novo-a-Documento-de-Texto.txt"), "");
+    assert.equal(stripAttachmentMentions("a@.helicon/attachments/a.txt b@.helicon/attachments/c-2.md"), "a b");
+    assert.equal(stripAttachmentMentions("sem menção"), "sem menção");
+    assert.equal(stripAttachmentMentions("@alguem"), "@alguem");
+    assert.equal(stripAttachmentMentions("@.helicon/outros/x.txt"), "@.helicon/outros/x.txt");
+    assert.equal(stripAttachmentMentions(""), "");
+  });
+
+  it("avisa em português quando a mensagem traz arquivo vazio", () => {
+    assert.equal(emptyAttachmentWarning([]), null);
+    assert.deepEqual(emptyAttachmentWarning(["vazio.txt"]), {
+      title: "Arquivo vazio",
+      detail:
+        '"vazio.txt" não tem conteúdo (0 B), então a mensagem não foi enviada. Remova o arquivo da mensagem ou escolha um arquivo com conteúdo.',
+    });
+    const two = emptyAttachmentWarning(["a.txt", "b.txt"]);
+    assert.equal(two?.title, "Arquivos vazios");
+    assert.ok(two?.detail.includes('"a.txt", "b.txt"'));
+    assert.ok(two?.detail.includes("0 B"));
   });
 
   it("encurta caminhos longos pelo meio", () => {

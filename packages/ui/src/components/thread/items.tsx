@@ -35,6 +35,8 @@ import {
   lastLine,
   mergeDiffLines,
   parseArgs,
+  stripAttachmentMentions,
+  stripImageMarkers,
   withoutDiffEcho,
   type DiffLine,
   type DiffView,
@@ -843,11 +845,15 @@ export function GenericRow(props: { item: MspItem }) {
 }
 
 export function SteerBubble(props: { item: MspItem }) {
+  const text = stripAttachmentMentions(stripImageMarkers(props.item.displayText ?? props.item.text ?? ""));
+  if (!text) {
+    return null;
+  }
   return (
     <div className="enter-up flex flex-col items-end gap-1">
       <span className="text-2xs font-medium text-subtle">Você adicionou</span>
       <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-active px-3.5 py-2 text-sm whitespace-pre-wrap text-fg">
-        {props.item.displayText ?? props.item.text}
+        {text}
       </div>
     </div>
   );

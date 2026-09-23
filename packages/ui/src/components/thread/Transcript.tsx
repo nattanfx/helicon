@@ -12,6 +12,8 @@ import {
   formatSpeed,
   formatTokens,
   parseArgs,
+  stripAttachmentMentions,
+  stripImageMarkers,
   toolKind,
 } from "../../model/format.js";
 import { streamingSpeed, turnCosts, turnSpeeds, type TurnCost, type TurnSpeed } from "../../model/usage.js";
@@ -561,7 +563,7 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
 }
 
 function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: AttachmentView[] }) {
-  const text = props.item.displayText ?? props.item.text ?? "";
+  const text = stripAttachmentMentions(stripImageMarkers(props.item.displayText ?? props.item.text ?? ""));
   const long = text.split("\n").length > 12 || text.length > 900;
   const [expanded, setExpanded] = useState(false);
   const files = props.files ?? [];
@@ -569,14 +571,16 @@ function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: Att
     <div className="flex justify-end">
       <div className="group/prompt flex max-w-[85%] flex-col items-end gap-1">
         {files.length > 0 ? <SentAttachments files={files} className="pb-0.5" /> : null}
-        <div
-          className={cn(
-            "relative rounded-2xl rounded-tr-md bg-active px-4 py-2.5 text-md leading-relaxed whitespace-pre-wrap text-fg [overflow-wrap:anywhere]",
-            long && !expanded && "max-h-[16.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
-          )}
-        >
-          {text}
-        </div>
+        {text ? (
+          <div
+            className={cn(
+              "relative rounded-2xl rounded-tr-md bg-active px-4 py-2.5 text-md leading-relaxed whitespace-pre-wrap text-fg [overflow-wrap:anywhere]",
+              long && !expanded && "max-h-[16.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
+            )}
+          >
+            {text}
+          </div>
+        ) : null}
         <div className="flex h-6 items-center gap-1">
           <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/prompt:opacity-100 focus-within:opacity-100">
             {long ? (
