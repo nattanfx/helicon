@@ -811,6 +811,28 @@ describe("HeliconController", () => {
     stop();
   });
 
+  it("reloads plan usage on manual refresh", async () => {
+    const client = new FakeClient();
+    const reading = (percent: number, at: number) => ({
+      tier: "high",
+      observedAtMs: at,
+      window: { usedPercent: percent, resetsAtMs: at + 1, windowDurationMins: 300 },
+      weekly: { usedPercent: 3, resetsAtMs: at + 2, windowDurationMins: null },
+    });
+    client.plan = reading(20, 100);
+    const { controller, stop } = await started(client);
+    // A failure before stop() would leave the stale-check timer rescheduling forever and hang the runner.
+    try {
+      assert.equal(controller.store.get().planUsage?.window.usedPercent, 20);
+      client.plan = reading(45, 300);
+      await controller.discoverAll();
+      assert.equal(controller.store.get().planUsage?.window.usedPercent, 45, "manual refresh reloads the meter");
+      assert.equal(controller.store.get().toasts.at(-1)?.title, "Conversas atualizadas");
+    } finally {
+      stop();
+    }
+  });
+
   it("asks for the open thread's own skills and reloads them when Muse says they changed", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
