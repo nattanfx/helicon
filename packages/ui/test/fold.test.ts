@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  abandonTurn,
   addEcho,
   applyEvent,
   applyEvents,
@@ -287,6 +288,34 @@ describe("thread fold against a real muse transcript", () => {
     fold = addEcho(fold, { localId: "q2", text: "next again", turnId: "t5", disposition: "queued", createdAt: 2 });
     fold = applyEvent(fold, { method: "turn/unqueued", params: { turnId: "t5", commandId: "t5" } });
     assert.deepEqual(fold.echoes.map((e) => e.localId), []);
+  });
+
+  it("abandons a turn the host never closes, keeping other turns' queued prompts", () => {
+    let fold = applyEvent(emptyFold(), { method: "turn/started", params: { turnId: "t1" }, at: 1 });
+    fold = addEcho(fold, { localId: "s1", text: "steer", turnId: "t1", disposition: "steered", createdAt: 2 });
+    fold = addEcho(fold, { localId: "q1", text: "next", turnId: "t2", disposition: "queued", createdAt: 3 });
+    fold = abandonTurn(fold, "t1");
+    assert.equal(fold.activeTurnId, null);
+    assert.equal(fold.turns["t1"]?.terminal, "cancelled");
+    assert.deepEqual(fold.echoes.map((e) => e.localId), ["q1"], "the queue behind the dead turn survives");
+    assert.equal(buildTurns(fold).some((view) => view.running), false);
+  });
+
+  it("leaves alone a turn that is not active or already finished", () => {
+    const started = applyEvent(emptyFold(), { method: "turn/started", params: { turnId: "t1" }, at: 1 });
+    assert.equal(abandonTurn(started, "t2"), started);
+    const finished = applyEvent(started, { method: "turn/completed", params: { turnId: "t1", terminal: "completed" }, at: 2 });
+    assert.equal(abandonTurn(finished, "t1"), finished);
+  });
+
+  it("lets a late host ending overwrite an abandoned turn without reopening it", () => {
+    let fold = applyEvent(emptyFold(), { method: "turn/started", params: { turnId: "t1" }, at: 1 });
+    fold = abandonTurn(fold, "t1");
+    fold = applyEvent(fold, { method: "turn/completed", params: { turnId: "t1", terminal: "failed", error: { kind: "error", message: "late", retryable: false } }, at: 2 });
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+    assert.equal(fold.activeTurnId, null);
+    fold = applyEvent(fold, { method: "turn/started", params: { turnId: "t1" }, at: 3 });
+    assert.equal(fold.activeTurnId, null, "a stale start for an abandoned turn reopens nothing");
   });
 
   it("reloads without echoes whose turn finished or prompt already landed", () => {

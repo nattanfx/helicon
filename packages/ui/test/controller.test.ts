@@ -103,6 +103,16 @@ class FakeClient implements HeliconClient {
   }
   async interruptTurn() {}
   async unqueueTurn() {}
+  cancelled: { sessionId: string; turnId: string }[] = [];
+  cancelError: Error | null = null;
+  async cancelTurn(sessionId: string, turnId: string) {
+    this.cancelled.push({ sessionId, turnId });
+    if (this.cancelError) {
+      const error = this.cancelError;
+      this.cancelError = null;
+      throw error;
+    }
+  }
   decided: { approvalId: string; choiceId: string }[] = [];
   async decideApproval(input: { approvalId: string; choiceId: string }) {
     this.decided.push({ approvalId: input.approvalId, choiceId: input.choiceId });
@@ -1755,5 +1765,73 @@ describe("stale thread watchdog", () => {
     assert.equal(controller.store.get().identity?.channel, "teste");
     assert.equal(controller.store.get().identity?.version, "0.12.4");
     assert.equal(controller.store.get().updates, null);
+  });
+
+  it("abandons a stalled turn on request, asking the host to cancel it", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, "live-1");
+    await controller.abandonStalledTurn("s1");
+    assert.deepEqual(client.cancelled, [{ sessionId: "s1", turnId: "live-1" }]);
+    const after = controller.store.get().threads["s1"];
+    assert.equal(after?.fold.activeTurnId, null);
+    assert.equal(after?.fold.turns["live-1"]?.terminal, "cancelled");
+    assert.equal(after?.stalled, false);
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Turno abandonado");
+    stop();
+  });
+
+  it("abandons locally when the host does not answer the cancel", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    client.cancelError = new Error("host gone");
+    await controller.abandonStalledTurn("s1");
+    assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, null);
+    assert.equal(controller.store.get().threads["s1"]?.fold.turns["live-1"]?.terminal, "cancelled");
+    assert.equal(controller.store.get().threads["s1"]?.stalled, false);
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Turno abandonado localmente");
+    stop();
+  });
+
+  it("keeps an abandoned turn down across reloads that still report it active", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    await controller.abandonStalledTurn("s1");
+    await controller.loadThread("s1");
+    assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, null);
+    assert.equal(controller.store.get().threads["s1"]?.fold.turns["live-1"]?.terminal, "cancelled");
+    assert.equal(controller.store.get().threads["s1"]?.stalled, false);
+    stop();
+  });
+
+  it("forgets an abandoned turn once history carries a real ending", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    await controller.abandonStalledTurn("s1");
+    client.transcript = async () => ({
+      ...runningLoad(),
+      events: [
+        ...historyEvents,
+        { method: "turn/started", params: { turnId: "live-1" }, at: 1 },
+        { method: "turn/completed", params: { turnId: "live-1", terminal: "failed", error: { kind: "error", message: "host gave up", retryable: false } }, at: 2 },
+      ],
+    });
+    await controller.loadThread("s1");
+    assert.equal(controller.store.get().threads["s1"]?.fold.turns["live-1"]?.terminal, "failed");
+    assert.equal(controller.store.get().threads["s1"]?.stalled, false);
+    stop();
+  });
+
+  it("abandoning without an active turn calls nothing", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await startedWatching(client);
+    assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, null);
+    await controller.abandonStalledTurn("s1");
+    assert.deepEqual(client.cancelled, []);
+    stop();
   });
 });

@@ -100,6 +100,8 @@ export interface HeliconClient {
     options?: TurnOptions,
   ): Promise<{ turnId: string | null; disposition: string | null; attachments?: import("./types.js").AttachmentView[] }>;
   interruptTurn(sessionId: string, turnId?: string): Promise<void>;
+  /** Pede ao host que descarte um turno; a recuperação de conversa parada usa como melhor esforço. */
+  cancelTurn(sessionId: string, turnId: string): Promise<void>;
   unqueueTurn(sessionId: string, turnId: string): Promise<void>;
   decideApproval(input: ApprovalDecisionInput): Promise<void>;
   answerUserInput(sessionId: string, userInputId: string, answers: UserInputAnswer[]): Promise<void>;

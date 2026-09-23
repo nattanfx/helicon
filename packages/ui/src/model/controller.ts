@@ -40,6 +40,7 @@ import {
   type ParsedSlash,
 } from "./slash.js";
 import {
+  abandonTurn,
   addEcho,
   applyEvents,
   emptyFold,
@@ -331,6 +332,8 @@ export class HeliconController {
   private readonly appliedAt = new Map<string, number>();
   /** Reloads already spent on a thread's current stuck turn, so a hopeless one is not refetched forever. */
   private readonly staleReloads = new Map<string, { turnId: string; count: number }>();
+  /** Turno que o usuário abandonou por conversa, para um recarregamento não ressuscitar o que o host nunca fechou. */
+  private readonly abandonedTurns = new Map<string, string>();
   private refreshing: Promise<void> | null = null;
   private refreshQueued = false;
   private toastSeq = 0;
@@ -675,6 +678,34 @@ export class HeliconController {
     return this.loadThread(sessionId);
   }
 
+  /**
+   * Desiste do turno que o host nunca fecha: pede o cancelamento como melhor esforço e declara o
+   * turno encerrado localmente, para a conversa sair do modo fila. A fila atrás dele é preservada —
+   * se o host responder ao cancelamento, ela anda; se não, cada item continua removível.
+   */
+  async abandonStalledTurn(sessionId: string): Promise<void> {
+    const thread = this.state.threads[sessionId];
+    const turnId = thread?.fold.activeTurnId;
+    if (!thread || !turnId) {
+      return;
+    }
+    let cancelled = true;
+    try {
+      await this.client.cancelTurn(sessionId, turnId);
+    } catch {
+      /* host morto ou inalcançável: o abandono local ainda livra a conversa */
+      cancelled = false;
+    }
+    this.abandonedTurns.set(sessionId, turnId);
+    this.staleReloads.delete(sessionId);
+    this.setThread(sessionId, { ...thread, fold: abandonTurn(thread.fold, turnId), stalled: false });
+    if (cancelled) {
+      this.toast("success", "Turno abandonado", "O Muse foi avisado; a conversa está livre para a próxima mensagem.");
+    } else {
+      this.toast("info", "Turno abandonado localmente", "O Muse não respondeu; mensagens novas podem enfileirar até ele voltar.");
+    }
+  }
+
   async loadThread(sessionId: string): Promise<void> {
     // A second load while one is in flight would orphan the first load's buffer: every event that
     // streamed into it is dropped, and the thread never shows them (#32: a frozen view on a thread
@@ -700,7 +731,17 @@ export class HeliconController {
       const load = await this.client.loadTranscript(sessionId);
       const buffered = this.loading.get(sessionId) ?? [];
       this.loading.delete(sessionId);
-      const fold = applyEvents(foldFromLoad(load, existing?.fold ?? null), buffered);
+      let fold = applyEvents(foldFromLoad(load, existing?.fold ?? null), buffered);
+      // Um turno abandonado segue ativo no histórico quando o host nunca o fechou: sem a lembrança,
+      // cada recarregamento ressuscitaria o zumbi. Fim real ou outro turno ativo aposenta a lembrança.
+      const abandoned = this.abandonedTurns.get(sessionId);
+      if (abandoned) {
+        if (fold.turns[abandoned]?.terminal || fold.activeTurnId !== abandoned) {
+          this.abandonedTurns.delete(sessionId);
+        } else {
+          fold = abandonTurn(fold, abandoned);
+        }
+      }
       this.appliedAt.set(sessionId, this.platform.now());
       this.update((s) => ({
         ...s,

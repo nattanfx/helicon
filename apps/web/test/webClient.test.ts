@@ -162,6 +162,18 @@ describe("web client", () => {
     assert.deepEqual(JSON.parse(String(patch?.init?.body)), { disabled: true });
   });
 
+  it("cancels a stuck turn through the turns route", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+    const client = new WebHeliconClient();
+
+    await client.cancelTurn("s1", "live-1");
+    const posted = world.calls.at(-1);
+    assert.equal(posted?.url, "/api/turns/cancel");
+    assert.equal(posted?.init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(posted?.init?.body)), { sessionId: "s1", turnId: "live-1" });
+  });
+
   it("rebuilds a stream that has gone quiet", async () => {
     browser();
     const { WebHeliconClient } = await freshClient();

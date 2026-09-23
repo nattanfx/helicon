@@ -259,6 +259,10 @@ export class WebHeliconClient implements HeliconClient {
     await call("POST", "/api/turns/interrupt", { sessionId, turnId });
   }
 
+  async cancelTurn(sessionId: string, turnId: string): Promise<void> {
+    await call("POST", "/api/turns/cancel", { sessionId, turnId });
+  }
+
   async unqueueTurn(sessionId: string, turnId: string): Promise<void> {
     await call("POST", "/api/turns/unqueue", { sessionId, turnId });
   }

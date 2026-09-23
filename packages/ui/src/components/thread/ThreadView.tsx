@@ -284,6 +284,7 @@ function Dock(props: { session: SessionSummary; thread: ThreadState | null; runn
           <StalledNotice
             busy={thread.load === "loading"}
             onRetry={() => void controller.retryStalledThread(session.sessionId)}
+            onAbandon={() => void controller.abandonStalledTurn(session.sessionId)}
           />
         ) : null}
         {approvals.map((request, index) => (

@@ -773,6 +773,18 @@ export function removeEcho(fold: ThreadFold, localId: string): ThreadFold {
   return echoes.length === fold.echoes.length ? fold : { ...fold, echoes };
 }
 
+/**
+ * Declares over a turn the host will never close: the same local effect as its `turn/completed`,
+ * so the transcript stops waiting and prompts queued behind it keep their own turns. A late host
+ * ending still wins, because `turn/completed` overwrites the terminal.
+ */
+export function abandonTurn(fold: ThreadFold, turnId: string): ThreadFold {
+  if (fold.activeTurnId !== turnId || fold.turns[turnId]?.terminal) {
+    return fold;
+  }
+  return applyEvent(fold, { method: "turn/completed", params: { turnId, terminal: "cancelled" } });
+}
+
 /** Um turno ativo cujo trabalho visível terminou: algo do agente concluído, nada em andamento, `turn/completed` ainda por chegar. */
 export function isTurnFinalizing(fold: ThreadFold, turnId: string | null): boolean {
   if (!turnId || fold.activeTurnId !== turnId) {
