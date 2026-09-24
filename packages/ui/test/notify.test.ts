@@ -292,4 +292,125 @@ describe("notificações", () => {
     assert.equal(traces[0]?.sessionId, "s5");
     assert.equal(traces[19]?.sessionId, "s24");
   });
+
+  it("mostra o balão em primeiro plano só com a política do balão", async () => {
+    const { fake, shown } = notifier();
+    const quiet = new NotificationManager(fake, () => ({ enabled: true, focused: true }));
+    await quiet.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+    assert.deepEqual(shown, [], "foco cala sem a política");
+
+    const loud = new NotificationManager(fake, () => ({ enabled: true, focused: true, balloonForeground: true }));
+    await loud.announce({ kind: "finished", sessionId: "s2", thread: "notes-app", failed: false });
+    assert.equal(shown.length, 1);
+  });
+
+  it("toca o bipe em primeiro plano só com a política do som", async () => {
+    const { fake, shown } = notifier();
+    let beeps = 0;
+    const sound = () => {
+      beeps += 1;
+    };
+    const quiet = new NotificationManager(fake, () => ({ enabled: false, focused: true, sound: true }), undefined, sound);
+    await quiet.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+    assert.equal(beeps, 0, "foco cala sem a política");
+
+    const loud = new NotificationManager(
+      fake,
+      () => ({ enabled: false, focused: true, sound: true, soundForeground: true }),
+      undefined,
+      sound,
+    );
+    await loud.announce({ kind: "finished", sessionId: "s2", thread: "notes-app", failed: false });
+    assert.equal(beeps, 1);
+    assert.deepEqual(shown, [], "a política do som não acende o balão");
+  });
+
+  it("não cala um turno novo por outro ter terminado há pouco", async () => {
+    const { fake, shown } = notifier();
+    const time = clock();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false }), time.now);
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false, turnId: "t1" });
+    time.pass(5_000);
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false, turnId: "t2" });
+    assert.equal(shown.length, 2, "turnos distintos têm cada um seu aviso");
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false, turnId: "t2" });
+    assert.equal(shown.length, 2, "o mesmo turno repetido continua dito uma vez");
+  });
+
+  it("a prova ignora foco, interruptores e repetição, mas respeita a permissão", async () => {
+    const { fake, shown } = notifier();
+    let beeps = 0;
+    const manager = new NotificationManager(
+      fake,
+      () => ({ enabled: false, focused: true, sound: false }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.preview("both");
+    await manager.preview("both");
+
+    assert.equal(shown.length, 2);
+    assert.equal(beeps, 2);
+    assert.match(shown[0]?.title ?? "", /teste de aviso/);
+    const traces = manager.recent();
+    assert.equal(traces[0]?.sessionId, "teste");
+    assert.equal(traces[0]?.balloon, "mostrado (teste)");
+  });
+
+  it("a prova de som não consulta permissão nem mostra balão", async () => {
+    const asking = notifier("denied");
+    let consulted = 0;
+    const counting: Notifier = {
+      ...asking.fake,
+      permission: async () => {
+        consulted += 1;
+        return "denied";
+      },
+    };
+    let beeps = 0;
+    const manager = new NotificationManager(
+      counting,
+      () => ({ enabled: true, focused: true, sound: true }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.preview("sound");
+
+    assert.equal(beeps, 1);
+    assert.deepEqual(asking.shown, []);
+    assert.equal(consulted, 0, "som não depende de permissão");
+    assert.equal(asking.asked(), 0);
+    const traces = manager.recent();
+    assert.equal(traces[0]?.balloon, "não testado");
+    assert.equal(traces[0]?.permission, "não consultada");
+  });
+
+  it("a prova de balão sem permissão não mostra nada e anota", async () => {
+    const asking = notifier("denied");
+    let beeps = 0;
+    const manager = new NotificationManager(
+      asking.fake,
+      () => ({ enabled: false, focused: true, sound: false }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.preview("balloon");
+
+    assert.deepEqual(asking.shown, []);
+    assert.equal(beeps, 0);
+    const traces = manager.recent();
+    assert.equal(traces[0]?.balloon, "sem permissão");
+    assert.equal(traces[0]?.beep, "não testado");
+  });
 });

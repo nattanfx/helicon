@@ -148,4 +148,45 @@ describe("bipe de notificação", () => {
       true,
     );
   });
+
+  it("tenta retomar o contexto suspenso e anota na sonda", () => {
+    const ctx = new FakeAudioContext() as FakeAudioContext & { state: string; resumes: number; resume: () => void };
+    ctx.state = "suspended";
+    ctx.resumes = 0;
+    ctx.resume = () => {
+      ctx.resumes += 1;
+    };
+    let seen: string | null = null;
+
+    assert.equal(
+      playNotifySound(ctx, (info) => {
+        seen = info.state;
+      }),
+      true,
+    );
+    assert.equal(ctx.resumes, 1);
+    assert.equal(seen, "suspended (retomando)");
+  });
+
+  it("não retoma o contexto que já está correndo", () => {
+    const ctx = new FakeAudioContext() as FakeAudioContext & { state: string; resumes: number; resume: () => void };
+    ctx.state = "running";
+    ctx.resumes = 0;
+    ctx.resume = () => {
+      ctx.resumes += 1;
+    };
+
+    assert.equal(playNotifySound(ctx), true);
+    assert.equal(ctx.resumes, 0);
+  });
+
+  it("retomada que lança não quebra o bipe", () => {
+    const ctx = new FakeAudioContext() as FakeAudioContext & { state: string; resume: () => void };
+    ctx.state = "suspended";
+    ctx.resume = () => {
+      throw new Error("sem retomar");
+    };
+
+    assert.equal(playNotifySound(ctx), true);
+  });
 });

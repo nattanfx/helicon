@@ -1,6 +1,6 @@
 import { ArrowDownToLine, ArrowLeft, Minus, Plus, RefreshCw, RotateCw, ScrollText, SquareArrowOutUpRight } from "lucide-react";
 import { Switch } from "radix-ui";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
 import { CONTRIBUTOR_NOTICE, contributorChoiceLabel, modelDisplayName } from "../../model/format.js";
@@ -11,7 +11,7 @@ import {
   manualUpdateHint,
   shortBuild,
 } from "../../model/identity.js";
-import type { NotifyTrace } from "../../model/notify.js";
+import type { NotifyPermission, NotifyTrace } from "../../model/notify.js";
 import { CODE_THEMES, ZOOM_MAX, ZOOM_MIN, type CodeTheme, type GroupBy, type ThemePref } from "../../model/store.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
@@ -88,7 +88,8 @@ function formatNotifyTrace(trace: NotifyTrace): string {
     trace.permission === "não consultada" ? "permissão não consultada" : `permissão ${trace.permission} (${trace.permissionMs} ms)`;
   return (
     `${hora} ${TRACE_KIND_LABEL[trace.kind]} ${trace.sessionId}${turno} · ${trace.backend} · ` +
-    `balão ${trace.enabled ? "on" : "off"} · som ${trace.sound ? "on" : "off"} · foco ${trace.focused ? "sim" : "não"} · ` +
+    `balão ${trace.enabled ? "on" : "off"} (1º plano ${trace.balloonForeground ? "on" : "off"}) · ` +
+    `som ${trace.sound ? "on" : "off"} (1º plano ${trace.soundForeground ? "on" : "off"}) · foco ${trace.focused ? "sim" : "não"} · ` +
     `${permissao} · balão: ${trace.balloon} · bipe: ${trace.beep}`
   );
 }
@@ -148,6 +149,22 @@ export function SettingsPage() {
   const busy = updates?.status === "checking" || updates?.status === "downloading" || updates?.status === "installing";
   const traces = controller.notificationTrace();
   const userAgent = typeof navigator === "undefined" ? "desconhecido" : navigator.userAgent;
+  const [notifyPermission, setNotifyPermission] = useState<NotifyPermission | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void controller.notifyPermission().then((answer) => {
+      if (alive) {
+        setNotifyPermission(answer);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [controller, prefs.notifications]);
+  const authorizeNotify = async () => {
+    await controller.askToNotify();
+    setNotifyPermission(await controller.notifyPermission());
+  };
   const collapsed = useApp((s) => s.prefs.sidebarCollapsed);
   const drag = useOverlayDragProps();
 
@@ -362,13 +379,34 @@ export function SettingsPage() {
         <Section title="Notificações">
           <Row
             label="Me avisar quando uma conversa precisar de mim"
-            description="Uma notificação do sistema quando uma conversa pedir aprovação, fizer uma pergunta, terminar, falhar ou sua meta parar de andar. Só enquanto esta janela estiver em segundo plano."
+            description="Uma notificação do sistema quando uma conversa pedir aprovação, fizer uma pergunta, terminar, falhar ou sua meta parar de andar."
           >
             <Toggle
               checked={prefs.notifications}
               label="Notificações"
               // Ligar precisa pedir, e um navegador só concede permissão a partir de um clique de verdade.
               onChange={(on) => (on ? void controller.askToNotify() : controller.setPrefs({ notifications: false }))}
+            />
+          </Row>
+          {prefs.notifications && notifyPermission !== null && notifyPermission !== "granted" ? (
+            <Row
+              label="O sistema não autorizou os avisos"
+              description="O interruptor acima está ligado, mas nenhum balão pode aparecer sem a autorização."
+            >
+              <Button size="sm" variant="secondary" onClick={() => void authorizeNotify()}>
+                Pedir autorização
+              </Button>
+            </Row>
+          ) : null}
+          <Row
+            label="Mostrar também com o Helicon em primeiro plano"
+            description="Janela com foco não prova que você está olhando; quem se ausenta liga."
+          >
+            <Toggle
+              checked={prefs.notificationsForeground}
+              label="Balão em primeiro plano"
+              disabled={!prefs.notifications}
+              onChange={(on) => controller.setPrefs({ notificationsForeground: on })}
             />
           </Row>
           <Row
@@ -380,6 +418,33 @@ export function SettingsPage() {
               label="Som da notificação"
               onChange={(on) => controller.setPrefs({ notificationSound: on })}
             />
+          </Row>
+          <Row
+            label="Tocar também com o Helicon em primeiro plano"
+            description="Para o bipe vale o mesmo que vale para o balão acima."
+          >
+            <Toggle
+              checked={prefs.notificationSoundForeground}
+              label="Som em primeiro plano"
+              disabled={!prefs.notificationSound}
+              onChange={(on) => controller.setPrefs({ notificationSoundForeground: on })}
+            />
+          </Row>
+          <Row
+            label="Provar cada canal"
+            description="Toca o bipe e mostra um balão de prova na hora, mesmo com esta janela aberta. O balão de prova precisa da autorização do sistema."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => void controller.testNotify("sound")}>
+                Testar som
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => void controller.testNotify("balloon")}>
+                Testar balão
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => void controller.testNotify("both")}>
+                Testar ambos
+              </Button>
+            </div>
           </Row>
           <div className="border-t border-line px-4 py-3">
             <p className="text-sm text-fg">Diagnóstico temporário</p>

@@ -46,6 +46,8 @@ export interface BeepAudio {
   readonly destination: unknown;
   /** Estado do contexto (`running`, `suspended`...); ausente nas imitações de teste. */
   readonly state?: unknown;
+  /** Retoma um contexto suspenso; ausente nas imitações que não precisam dele. */
+  resume?: () => unknown;
   createOscillator(): BeepOscillator;
   createGain(): BeepGain;
   close(): unknown;
@@ -82,9 +84,18 @@ export function playNotifySound(context?: BeepAudio | null, probe?: (info: { sta
     if (!ctx) {
       return false;
     }
+    const suspended = ctx.state === "suspended";
+    if (suspended && typeof ctx.resume === "function") {
+      try {
+        void ctx.resume();
+      } catch {
+        /* retomar é melhor esforço; o bipe segue agendado de todo jeito */
+      }
+    }
     if (probe) {
       try {
-        probe({ state: typeof ctx.state === "string" ? ctx.state : "desconhecido" });
+        const state = typeof ctx.state === "string" ? ctx.state : "desconhecido";
+        probe({ state: suspended && typeof ctx.resume === "function" ? `${state} (retomando)` : state });
       } catch {
         /* sonda é diagnóstico; nunca vale um erro */
       }

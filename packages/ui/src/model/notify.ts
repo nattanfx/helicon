@@ -11,6 +11,11 @@ export type NotifyPermission = "granted" | "denied" | "default";
 export interface Notifier {
   /** Nome do transporte para o diagnóstico temporário ("desktop", "navegador"); ausente conta como desconhecido. */
   label?: string;
+  /**
+   * O shell pede a permissão uma vez na abertura quando o balão está ligado e ela ainda não foi
+   * concedida. Só o desktop marca: um navegador exige gesto do usuário para conceder.
+   */
+  startupRequest?: boolean;
   /** O que o usuário já decidiu, sem perguntar de novo. */
   permission(): Promise<NotifyPermission>;
   /** Pergunta uma vez. Navegadores só honram isso a partir de um gesto real do usuário, por isso não é automático. */
@@ -19,12 +24,16 @@ export interface Notifier {
 }
 
 export interface NotifySettings {
-  /** O interruptor do usuário. Desligado significa que nada é mostrado, aconteça o que acontecer. */
+  /** O interruptor do balão. Desligado significa que nada é mostrado, aconteça o que acontecer. */
   enabled: boolean;
-  /** Verdadeiro enquanto a janela tem a atenção dele: não há nada para contar a quem está olhando. */
+  /** Verdadeiro enquanto a janela tem a atenção dele; cada canal decide se isso o cala. */
   focused: boolean;
   /** O bipe, independente do balão: toca mesmo com o interruptor desligado ou a permissão negada. Ausente conta como desligado. */
   sound?: boolean;
+  /** Balão também com a janela em primeiro plano. Ausente conta como desligado. */
+  balloonForeground?: boolean;
+  /** Bipe também com a janela em primeiro plano. Ausente conta como desligado. */
+  soundForeground?: boolean;
 }
 
 /** Algo que aconteceu numa conversa e pode valer interromper alguém. */
@@ -56,6 +65,8 @@ export interface NotifyTrace {
   enabled: boolean;
   focused: boolean;
   sound: boolean;
+  balloonForeground: boolean;
+  soundForeground: boolean;
   backend: string;
   permission: NotifyPermission | "não consultada";
   permissionMs: number | null;
@@ -93,9 +104,9 @@ function copy(event: NotifyEvent): { title: string; body: string } {
 }
 
 /**
- * Decide o que realmente chega ao usuário. Tudo é descartado enquanto a janela está focada ou o
- * interruptor está desligado, nada é mostrado sem permissão já concedida, e a mesma conversa dizendo
- * a mesma coisa duas vezes seguidas é dita uma vez.
+ * Decide o que realmente chega ao usuário. Cada canal tem seu interruptor e sua política de foco,
+ * nada é mostrado sem permissão já concedida, e o mesmo evento repetido é dito uma vez — sem calar
+ * um turno novo que termine logo depois.
  */
 export class NotificationManager {
   private readonly shown = new Map<string, number>();
@@ -114,11 +125,11 @@ export class NotificationManager {
   }
 
   async announce(event: NotifyEvent): Promise<void> {
-    const { enabled, focused, sound } = this.settings();
-    // Balão e bipe são canais independentes: cada um tem seu interruptor, mas os dois respeitam
-    // a janela em foco e a janela de repetição. A permissão do sistema só trava o balão.
-    const show = enabled && !focused;
-    const beep = sound === true && !focused;
+    const { enabled, focused, sound, balloonForeground, soundForeground } = this.settings();
+    // Balão e bipe são canais independentes: cada um tem seu interruptor e sua política de foco.
+    // A permissão do sistema só trava o balão.
+    const show = enabled && (!focused || balloonForeground === true);
+    const beep = sound === true && (!focused || soundForeground === true);
     const trace: NotifyTrace = {
       at: this.now(),
       kind: event.kind,
@@ -127,6 +138,8 @@ export class NotificationManager {
       enabled,
       focused,
       sound: sound === true,
+      balloonForeground: balloonForeground === true,
+      soundForeground: soundForeground === true,
       backend: this.notifier.label ?? "desconhecido",
       permission: "não consultada",
       permissionMs: null,
@@ -137,18 +150,11 @@ export class NotificationManager {
       this.pushTrace(trace);
       return;
     }
-    let granted = false;
-    if (show) {
-      // Nunca pergunta aqui: um navegador só concede permissão a partir de um gesto do usuário, então a página de configurações pergunta.
-      const asked = this.now();
-      const answer = await this.notifier.permission();
-      trace.permission = answer;
-      trace.permissionMs = Math.max(0, this.now() - asked);
-      granted = answer === "granted";
-    }
+    // Reserva antes de qualquer espera: dois anúncios do mesmo evento não passam juntos.
+    // A etiqueta visível segue por conversa, mas a repetição de fim de turno é por turno.
     const tag = `${event.kind}:${event.sessionId}`;
-    const at = this.now();
-    if (at - (this.shown.get(tag) ?? Number.NEGATIVE_INFINITY) < REPEAT_MS) {
+    const key = event.kind === "finished" && event.turnId ? `${tag}:${event.turnId}` : tag;
+    if (trace.at - (this.shown.get(key) ?? Number.NEGATIVE_INFINITY) < REPEAT_MS) {
       if (show) {
         trace.balloon = "repetição 20s";
       }
@@ -158,7 +164,21 @@ export class NotificationManager {
       this.pushTrace(trace);
       return;
     }
-    this.shown.set(tag, at);
+    this.shown.set(key, trace.at);
+    // O bipe sai primeiro e nunca espera o balão: a consulta de permissão e o mostrador
+    // não atrasam nem calam o som.
+    if (beep) {
+      this.soundTrace(trace);
+    }
+    let granted = false;
+    if (show) {
+      // Nunca pergunta aqui: um navegador só concede permissão a partir de um gesto do usuário, então a página de configurações pergunta.
+      const asked = this.now();
+      const answer = await this.notifier.permission();
+      trace.permission = answer;
+      trace.permissionMs = Math.max(0, this.now() - asked);
+      granted = answer === "granted";
+    }
     if (granted) {
       const { title, body } = copy(event);
       try {
@@ -171,21 +191,72 @@ export class NotificationManager {
     } else if (show) {
       trace.balloon = "sem permissão";
     }
-    if (beep) {
-      try {
-        const outcome = this.playSound();
-        trace.beep =
-          outcome !== undefined && typeof outcome === "object"
-            ? outcome.scheduled
-              ? `agendado (${outcome.audioState})`
-              : `não agendado (${outcome.audioState})`
-            : "chamado";
-      } catch (error) {
-        // Som nunca quebra um aviso: quem passou nas travas já mereceu ser notado.
-        trace.beep = `falha: ${reason(error)}`;
+    this.pushTrace(trace);
+  }
+
+  /**
+   * Prova de cada canal a pedido do usuário, sem depender de foco, interruptores ou repetição:
+   * os botões de teste das Configurações passam por aqui. O balão de prova respeita a permissão
+   * do sistema; o bipe de prova toca sempre. Não marca a janela de repetição.
+   */
+  async preview(channel: "balloon" | "sound" | "both"): Promise<void> {
+    const { enabled, focused, sound, balloonForeground, soundForeground } = this.settings();
+    const trace: NotifyTrace = {
+      at: this.now(),
+      kind: "finished",
+      sessionId: "teste",
+      turnId: null,
+      enabled,
+      focused,
+      sound: sound === true,
+      balloonForeground: balloonForeground === true,
+      soundForeground: soundForeground === true,
+      backend: this.notifier.label ?? "desconhecido",
+      permission: "não consultada",
+      permissionMs: null,
+      balloon: channel === "sound" ? "não testado" : "",
+      beep: channel === "balloon" ? "não testado" : "",
+    };
+    if (channel !== "balloon") {
+      this.soundTrace(trace);
+    }
+    if (channel !== "sound") {
+      const asked = this.now();
+      const answer = await this.notifier.permission();
+      trace.permission = answer;
+      trace.permissionMs = Math.max(0, this.now() - asked);
+      if (answer !== "granted") {
+        trace.balloon = "sem permissão";
+      } else {
+        try {
+          await this.notifier.show({
+            title: "Helicon: teste de aviso",
+            body: "Se você está vendo isto, o balão funciona.",
+            tag: "helicon-teste",
+          });
+          trace.balloon = "mostrado (teste)";
+        } catch (error) {
+          trace.balloon = `falha: ${reason(error)}`;
+        }
       }
     }
     this.pushTrace(trace);
+  }
+
+  /** Toca o bipe e anota o resultado no rastro; nunca lança. */
+  private soundTrace(trace: NotifyTrace): void {
+    try {
+      const outcome = this.playSound();
+      trace.beep =
+        outcome !== undefined && typeof outcome === "object"
+          ? outcome.scheduled
+            ? `agendado (${outcome.audioState})`
+            : `não agendado (${outcome.audioState})`
+          : "chamado";
+    } catch (error) {
+      // Som nunca quebra um aviso: quem passou nas travas já mereceu ser notado.
+      trace.beep = `falha: ${reason(error)}`;
+    }
   }
 
   private pushTrace(trace: NotifyTrace): void {

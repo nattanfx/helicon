@@ -43,6 +43,7 @@ function browserNotifier(): Notifier | undefined {
 function desktopNotifier(): Notifier {
   return {
     label: "desktop",
+    startupRequest: true,
     async permission() {
       try {
         return (await isPermissionGranted()) ? "granted" : "default";

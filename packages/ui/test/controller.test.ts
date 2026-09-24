@@ -1205,6 +1205,143 @@ describe("HeliconController", () => {
     stop();
   });
 
+  it("records the finished turn id in the notification trace", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    controller.attachNotifier({
+      permission: async () => "granted",
+      request: async () => "granted",
+      show: async () => {},
+    });
+    controller.setPrefs({ notifications: true });
+    const live = (patch: Record<string, unknown>) => ({
+      activeTurnId: null,
+      turnStartedAt: null,
+      pendingApprovals: 0,
+      pendingInputs: 0,
+      lastTerminal: null,
+      lastError: null,
+      ...patch,
+    });
+    client.handler?.({ type: "session-status", sessionId: "s1", live: live({ activeTurnId: "t9" }) as never });
+    await settle();
+    client.handler?.({ type: "session-status", sessionId: "s1", live: live({ lastTerminal: "complete" }) as never });
+    await settle();
+
+    const traces = controller.notificationTrace();
+    assert.equal(traces.at(-1)?.kind, "finished");
+    assert.equal(traces.at(-1)?.turnId, "t9");
+    stop();
+  });
+
+  it("honors the foreground policies while the window is focused", async () => {
+    const client = new FakeClient();
+    const controller = new HeliconController(client, { ...platform("#/t/s1"), focused: () => true });
+    const stop = controller.start();
+    await settle();
+    await settle();
+    const shown: string[] = [];
+    controller.attachNotifier({
+      permission: async () => "granted",
+      request: async () => "granted",
+      show: async (note) => {
+        shown.push(note.tag);
+      },
+    });
+    controller.setPrefs({ notifications: true, notificationSound: true });
+    const live = (patch: Record<string, unknown>) => ({
+      activeTurnId: null,
+      turnStartedAt: null,
+      pendingApprovals: 0,
+      pendingInputs: 0,
+      lastTerminal: null,
+      lastError: null,
+      ...patch,
+    });
+    const finish = async (turn: string) => {
+      client.handler?.({ type: "session-status", sessionId: "s1", live: live({ activeTurnId: turn }) as never });
+      await settle();
+      client.handler?.({ type: "session-status", sessionId: "s1", live: live({ lastTerminal: "complete" }) as never });
+      await settle();
+    };
+
+    await finish("t1");
+    assert.deepEqual(shown, [], "foco cala sem as politicas");
+    let traces = controller.notificationTrace();
+    assert.equal(traces.at(-1)?.balloon, "foco");
+    assert.equal(traces.at(-1)?.beep, "foco");
+
+    controller.setPrefs({ notificationsForeground: true, notificationSoundForeground: true });
+    await finish("t2");
+    assert.deepEqual(shown, ["finished:s1"]);
+    traces = controller.notificationTrace();
+    assert.equal(traces.at(-1)?.balloon, "mostrado");
+    assert.match(traces.at(-1)?.beep ?? "", /agendado/, "o bipe tenta com a politica, tenha audio ou nao");
+    stop();
+  });
+
+  it("asks once for permission on a desktop cold open with the balloon on", async () => {
+    const client = new FakeClient();
+    const controller = new HeliconController(client, { ...platform(), loadPrefs: () => ({ notifications: true }) });
+    let asked = 0;
+    controller.attachNotifier({
+      startupRequest: true,
+      permission: async () => "default",
+      request: async () => {
+        asked += 1;
+        return "granted";
+      },
+      show: async () => {},
+    });
+    const stop = controller.start();
+    await settle();
+    await settle();
+
+    assert.equal(asked, 1);
+    stop();
+  });
+
+  it("never asks at startup without the desktop marker", async () => {
+    const client = new FakeClient();
+    const controller = new HeliconController(client, { ...platform(), loadPrefs: () => ({ notifications: true }) });
+    let asked = 0;
+    controller.attachNotifier({
+      permission: async () => "default",
+      request: async () => {
+        asked += 1;
+        return "granted";
+      },
+      show: async () => {},
+    });
+    const stop = controller.start();
+    await settle();
+    await settle();
+
+    assert.equal(asked, 0);
+    stop();
+  });
+
+  it("skips the startup ask when permission is already granted", async () => {
+    const client = new FakeClient();
+    const controller = new HeliconController(client, { ...platform(), loadPrefs: () => ({ notifications: true }) });
+    let asked = 0;
+    controller.attachNotifier({
+      startupRequest: true,
+      permission: async () => "granted",
+      request: async () => {
+        asked += 1;
+        return "granted";
+      },
+      show: async () => {},
+    });
+    const stop = controller.start();
+    await settle();
+    await settle();
+
+    assert.equal(asked, 0);
+    stop();
+  });
+
   it("marks a read-only thread and refuses to send into it", async () => {
     const client = new FakeClient();
     client.transcript = async () => load({ readOnly: true, readOnlyReason: "session is loaded by another host" });

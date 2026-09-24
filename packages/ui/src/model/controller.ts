@@ -84,7 +84,7 @@ import {
   serializeFileDrafts,
 } from "./fileDrafts.js";
 import type { AppIdentity } from "./identity.js";
-import { NotificationManager, type Notifier, type NotifyTrace } from "./notify.js";
+import { NotificationManager, type Notifier, type NotifyPermission, type NotifyTrace } from "./notify.js";
 import { playNotifySound } from "./notifySound.js";
 import { UpdateManager, type AppUpdater } from "./updates.js";
 
@@ -401,6 +401,7 @@ export class HeliconController {
       this.toast("info", "Edições de arquivo não gravadas", "Abra o arquivo no visualizador para continuar. Nada foi escrito no disco.");
     }
     this.scheduleStaleCheck();
+    void this.ensureNotifyPermission();
     void this.boot(false);
     return () => this.dispose();
   }
@@ -414,7 +415,13 @@ export class HeliconController {
     this.notifier = notifier;
     this.notifications = new NotificationManager(
       notifier,
-      () => ({ enabled: this.state.prefs.notifications, focused: this.platform.focused(), sound: this.state.prefs.notificationSound }),
+      () => ({
+        enabled: this.state.prefs.notifications,
+        focused: this.platform.focused(),
+        sound: this.state.prefs.notificationSound,
+        balloonForeground: this.state.prefs.notificationsForeground,
+        soundForeground: this.state.prefs.notificationSoundForeground,
+      }),
       () => this.platform.now(),
       () => {
         let audioState = "desconhecido";
@@ -439,6 +446,46 @@ export class HeliconController {
   /** Tentativas recentes de aviso, para o bloco de diagnóstico temporário das Configurações. */
   notificationTrace(): NotifyTrace[] {
     return this.notifications?.recent() ?? [];
+  }
+
+  /** O que o sistema diz sobre os avisos, sem perguntar: as Configurações mostram com honestidade. */
+  async notifyPermission(): Promise<NotifyPermission> {
+    try {
+      return (await this.notifier?.permission()) ?? "denied";
+    } catch {
+      return "denied";
+    }
+  }
+
+  /** Prova de cada canal a pedido: os botões de teste das Configurações passam por aqui. */
+  async testNotify(channel: "balloon" | "sound" | "both"): Promise<void> {
+    const manager = this.notifications;
+    if (!manager) {
+      this.toast("info", "Sem aviso", "Este shell não mostra notificações de sistema.");
+      return;
+    }
+    await manager.preview(channel);
+    if (channel !== "sound" && (await this.notifyPermission()) !== "granted") {
+      this.toast("info", "Balão sem permissão", "O sistema não autorizou os avisos; o teste ficou registrado no diagnóstico.");
+    }
+  }
+
+  /**
+   * Uma vez por abertura, no desktop com o balão ligado e ainda sem permissão: pede, para a
+   * abertura fria não calar todo balão. Nunca no navegador, que exige gesto para conceder.
+   */
+  private async ensureNotifyPermission(): Promise<void> {
+    try {
+      if (!this.state.prefs.notifications || this.notifier?.startupRequest !== true) {
+        return;
+      }
+      if ((await this.notifier.permission()) === "granted") {
+        return;
+      }
+      await this.notifier.request();
+    } catch {
+      /* permissão é melhor esforço na abertura; as Configurações mostram como pedir */
+    }
   }
 
   /** Versão e canal informados pelo shell, sem consultar um atualizador. */
