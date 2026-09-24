@@ -7,7 +7,12 @@ fn main() {
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new()
-                .commands(&["helicon_load_file_drafts", "helicon_save_file_drafts"]),
+                .commands(&[
+                    "helicon_load_file_drafts",
+                    "helicon_save_file_drafts",
+                    "helicon_notify_toast",
+                    "helicon_notify_sound",
+                ]),
         ),
     )
     .expect("falha ao rodar tauri-build");
