@@ -957,6 +957,62 @@ describe("HeliconServer", () => {
     assert.equal(log.recent[1].message, null);
   });
 
+  it("records a failed view/page snapshot once and its later correction", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1", activeTurnId: null } });
+    connection.replies.set("approval/listPending", { approvals: [], userInputs: [] });
+    let terminal = "failed";
+    connection.replies.set("view/page", () => ({
+      events: [
+        { method: "item/completed", params: { sessionId: "s1", item: { itemId: "i1", kind: "userMessage", text: "private prompt", status: "completed" } } },
+        { method: "turn/completed", params: { sessionId: "s1", turnId: "t1", terminal } },
+      ],
+      nextCursor: null,
+    }));
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+
+    await send(base, "/api/sessions/s1/resume", {});
+    await send(base, "/api/sessions/s1/resume", {});
+    let log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
+    assert.equal(log.count, 1);
+    assert.equal(log.recent[0].kind, "turn-view-failed");
+    assert.equal(log.recent[0].turnId, "t1");
+    assert.equal(log.recent[0].errorKind, null);
+    assert.equal(log.recent[0].usage, null);
+    assert.doesNotMatch(JSON.stringify(log), /private prompt/);
+
+    terminal = "completed";
+    await send(base, "/api/sessions/s1/resume", {});
+    await send(base, "/api/sessions/s1/resume", {});
+    log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
+    assert.equal(log.count, 2);
+    assert.deepEqual(log.recent.map((row) => row.kind), ["turn-view-failed", "turn-view-recovered"]);
+    assert.match(log.recent[1].message, /view\/page later reported completed/);
+  });
+
+  it("records a live completion after a failed view/page snapshot", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    connection.replies.set("approval/listPending", { approvals: [], userInputs: [] });
+    connection.replies.set("view/page", {
+      events: [{ method: "turn/completed", params: { sessionId: "s1", turnId: "t1", terminal: "failed" } }],
+      nextCursor: null,
+    });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    await send(base, "/api/sessions/s1/resume", {});
+
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t1", terminal: "completed" });
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t1", terminal: "completed" });
+    const log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
+    assert.deepEqual(log.recent.map((row) => row.kind), ["turn-view-failed", "turn-view-recovered"]);
+    assert.equal(log.count, 2);
+    assert.match(log.recent[1].message, /Live turn\/completed/);
+  });
+
   it("records host exits and manual restarts", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
@@ -1029,11 +1085,19 @@ describe("HeliconServer", () => {
       terminal: "failed",
       error: { kind: "k", message: "m" },
     });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    connection.replies.set("approval/listPending", { approvals: [], userInputs: [] });
+    connection.replies.set("view/page", {
+      events: [{ method: "turn/completed", params: { sessionId: "s1", turnId: "t10", terminal: "failed" } }],
+      nextCursor: null,
+    });
+    await send(base, "/api/sessions/s1/resume", {});
     await first.close();
 
     const lines = (await readFile(join(dir, "failure-log.jsonl"), "utf8")).trim().split("\n");
-    assert.equal(lines.length, 1);
+    assert.equal(lines.length, 2);
     assert.equal((JSON.parse(lines[0]!) as { turnId: string }).turnId, "t9");
+    assert.equal((JSON.parse(lines[1]!) as { kind: string }).kind, "turn-view-failed");
 
     const second = new HeliconServer({ ...options });
     servers.push(second);
@@ -1042,8 +1106,11 @@ describe("HeliconServer", () => {
       count: number;
       recent: any[];
     };
-    assert.equal(log.count, 1);
+    assert.equal(log.count, 2);
     assert.equal(log.recent[0].turnId, "t9");
+    assert.equal(log.recent[1].turnId, "t10");
+    await send(`http://127.0.0.1:${rebound.port}`, "/api/sessions/s1/resume", {});
+    assert.equal(((await get(`http://127.0.0.1:${rebound.port}`, "/api/failures")) as { count: number }).count, 2);
   });
 
 

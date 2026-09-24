@@ -1,7 +1,7 @@
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 
 /** Why a failure record exists. Turn rows come from the host; host rows come from the server. */
-export type FailureKind = "turn-failed" | "host-exited" | "host-start-failed" | "host-restarted";
+export type FailureKind = "turn-failed" | "turn-view-failed" | "turn-view-recovered" | "host-exited" | "host-start-failed" | "host-restarted";
 
 /**
  * One black-box row: enough to diagnose a failure after its conversation is archived or gone.
@@ -39,7 +39,7 @@ function asString(value: unknown): string | null {
 function parseRecord(line: string): FailureRecord {
   const raw = JSON.parse(line) as Record<string, unknown>;
   const kind = asString(raw["kind"]);
-  if (kind !== "turn-failed" && kind !== "host-exited" && kind !== "host-start-failed" && kind !== "host-restarted") {
+  if (kind !== "turn-failed" && kind !== "turn-view-failed" && kind !== "turn-view-recovered" && kind !== "host-exited" && kind !== "host-start-failed" && kind !== "host-restarted") {
     throw new Error("unknown failure kind");
   }
   return {
@@ -108,6 +108,18 @@ export class FailureLog {
         })
         .catch(() => undefined);
     }
+  }
+
+  /** A history page can be loaded many times; retain one observation per turn and kind. */
+  recordTurnOnce(input: FailureInput & { sessionId: string; turnId: string }): void {
+    if (!this.hasTurn(input.kind, input.sessionId, input.turnId)) {
+      this.record(input);
+    }
+  }
+
+  hasTurn(kind: FailureKind, sessionId: string, turnId: string): boolean {
+    const matches = (entry: FailureRecord) => entry.kind === kind && entry.sessionId === sessionId && entry.turnId === turnId;
+    return this.ring.some(matches) || this.pending.some(matches);
   }
 
   recent(limit = 20): FailureRecord[] {

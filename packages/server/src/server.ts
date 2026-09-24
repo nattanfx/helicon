@@ -2419,6 +2419,50 @@ export class HeliconServer {
     };
   }
 
+  /** Record what view/page currently says about each turn, without logging conversation items. */
+  private observeViewTerminals(
+    sessionId: string,
+    hostKey: string,
+    events: { method: string; params: Record<string, unknown> }[],
+  ): void {
+    const latest = new Map<string, Record<string, unknown>>();
+    for (const event of events) {
+      if (event.method !== "turn/completed") {
+        continue;
+      }
+      const turnId = str(event.params["turnId"]);
+      if (turnId) {
+        latest.set(turnId, event.params);
+      }
+    }
+    for (const [turnId, params] of latest) {
+      const terminal = str(params["terminal"]);
+      if (terminal === "failed") {
+        const error = asRecord(params["error"]);
+        this.failures.recordTurnOnce({
+          kind: "turn-view-failed",
+          sessionId,
+          turnId,
+          hostKey,
+          errorKind: error ? str(error["kind"]) : null,
+          message: error ? str(error["message"]) : null,
+          // Usage observed now cannot be attributed to a historical turn.
+          usage: null,
+        });
+      } else if (terminal === "completed" && this.failures.hasTurn("turn-view-failed", sessionId, turnId)) {
+        this.failures.recordTurnOnce({
+          kind: "turn-view-recovered",
+          sessionId,
+          turnId,
+          hostKey,
+          errorKind: null,
+          message: "view/page later reported completed after a failed snapshot.",
+          usage: null,
+        });
+      }
+    }
+  }
+
   private async loadTranscript(sessionId: string): Promise<Record<string, unknown>> {
     // A goal change can land while this load is in flight; history must not then write the older goal back.
     const goalSeqAtStart = this.liveFor(sessionId).goalSeq;
@@ -2447,6 +2491,7 @@ export class HeliconServer {
       const paged = await this.pageTranscript(manager, sessionId);
       events = paged.events;
       truncated = paged.truncated;
+      this.observeViewTerminals(sessionId, host.key, events);
     } catch (error) {
       const kind = errorInfo(error).kind;
       // view/page needs a loaded session; another host's lease leaves this host with nothing to page.
@@ -3039,6 +3084,16 @@ export class HeliconServer {
             errorKind: error ? str(error["kind"]) : null,
             message: error ? str(error["message"]) : null,
             usage: this.planUsage,
+          });
+        } else if (terminal === "completed" && turnId && this.failures.hasTurn("turn-view-failed", sessionId, turnId)) {
+          this.failures.recordTurnOnce({
+            kind: "turn-view-recovered",
+            sessionId,
+            turnId,
+            hostKey: this.sessionHosts.get(sessionId) ?? null,
+            errorKind: null,
+            message: "Live turn/completed reported completed after a failed view/page snapshot.",
+            usage: null,
           });
         }
         if (turnId) {
