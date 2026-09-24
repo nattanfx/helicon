@@ -189,6 +189,16 @@ describe("web client", () => {
     assert.deepEqual(JSON.parse(String(posted?.init?.body)), { sessionId: "s1", turnId: "live-1" });
   });
 
+  it("restarts the Muse hosts through the hosts route", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+
+    await new WebHeliconClient().restartHosts();
+    const posted = world.calls.at(-1);
+    assert.equal(posted?.url, "/api/hosts/restart");
+    assert.equal(posted?.init?.method, "POST");
+  });
+
   it("rebuilds a stream that has gone quiet", async () => {
     browser();
     const { WebHeliconClient } = await freshClient();

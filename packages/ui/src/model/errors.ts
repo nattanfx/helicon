@@ -80,6 +80,12 @@ export interface TurnErrorCopy {
   offerRetry: boolean;
 }
 
+/**
+ * Texto que o fork mostra quando o host não enviou detalhe da falha; também o sinal de "veio vazio",
+ * já que o host nunca manda esta frase em português.
+ */
+export const EMPTY_TURN_ERROR = "A mensagem falhou.";
+
 /** Kind estável que o Muse envia em `turn/completed` quando há limite de uso. */
 const QUOTA_KIND = "rateLimit";
 
@@ -227,8 +233,14 @@ export function sanitizeErrorDetail(message: string): string {
  * Limite temporário respeita `retryable` para a tentativa manual, sem reenvio automático.
  * Falhas de histórico (`stuckThread`) são tratadas à parte no cartão.
  */
-export function turnErrorCopy(kind: string | null | undefined, message: string, retryable: boolean): TurnErrorCopy {
-  const text = sanitizeErrorDetail(message.trim() || "A mensagem falhou.");
+export function turnErrorCopy(
+  kind: string | null | undefined,
+  message: string,
+  retryable: boolean,
+  options: { turnId?: string | null } = {},
+): TurnErrorCopy {
+  const raw = message.trim();
+  const text = sanitizeErrorDetail(raw || EMPTY_TURN_ERROR);
   if (isQuotaError(kind, message)) {
     return {
       title: "A cota do plano acabou",
@@ -247,10 +259,25 @@ export function turnErrorCopy(kind: string | null | undefined, message: string, 
       offerRetry: retryable,
     };
   }
+  // Falha sem detalhe do host: mostrar kind e turno em vez de nada, para a próxima
+  // ocorrência virar dado. Mensagem real segue sem linha técnica, como antes.
+  const empty = raw === "" || raw === EMPTY_TURN_ERROR;
   return {
     title: "Esta mensagem falhou",
     explanation: text,
-    technical: null,
+    technical: empty ? emptyTurnDiagnostic(kind, options.turnId) : null,
     offerRetry: retryable,
   };
+}
+
+/**
+ * Linha técnica de uma falha vazia: o kind (quando o host mandou um objeto de erro) e o turno
+ * identificam a ocorrência. Sem kind, "ausente" distingue "sem objeto de erro" de "objeto sem kind".
+ */
+function emptyTurnDiagnostic(kind: string | null | undefined, turnId?: string | null): string {
+  const parts = [`kind=${kind ?? "ausente"}`];
+  if (turnId) {
+    parts.push(`turno=${turnId}`);
+  }
+  return `O host não enviou detalhe · ${parts.join(" · ")}`;
 }

@@ -1484,6 +1484,15 @@ export class HeliconServer {
       this.json(res, 200, next);
       return true;
     }
+    if (method === "POST" && path === "/api/hosts/restart") {
+      // Reinício manual para recuperar de um host envenenado: mesma fila de fundo das viradas
+      // de configuração, para uma sessão criada no meio do reinício nunca cair num host aposentado.
+      // Turnos em voo falham com esta mensagem em vez de pendurar como em execução.
+      const run = this.restartChain.then(() => this.restartHosts("The Muse host restarted at the user's request."));
+      this.restartChain = run.catch(() => undefined);
+      this.json(res, 200, { ok: true });
+      return true;
+    }
     if (method === "GET" && path === "/api/usage") {
       const requested = Number.parseInt(url.searchParams.get("days") ?? "30", 10);
       const days = Number.isFinite(requested) ? Math.min(365, Math.max(1, requested)) : 30;
@@ -2863,9 +2872,10 @@ export class HeliconServer {
    * the same way. The respawn only fixes new sessions: Muse commits each session's
    * filesystem/network posture at creation (a `yolo` cause carries fs=unrestricted,
    * net=enabled), so only new threads pick a flipped posture up. The approval side of YOLO
-   * mode flips over MSP instead.
+   * mode flips over MSP instead. A manual restart reuses the same close-and-respawn
+   * without changing any posture.
    */
-  private async restartHosts(): Promise<void> {
+  private async restartHosts(message = "The Muse host restarted to apply a settings change."): Promise<void> {
     for (const pending of this.starting.values()) {
       await pending.catch(() => undefined);
     }
@@ -2875,7 +2885,6 @@ export class HeliconServer {
       } catch {
         /* best effort */
       }
-      const message = "The Muse host restarted to apply a settings change.";
       this.forgetHost(managed, message);
       this.emit("helicon", { type: "host", key: managed.key, state: "restarted", message });
     }

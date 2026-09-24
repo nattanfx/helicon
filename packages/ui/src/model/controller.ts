@@ -762,6 +762,19 @@ export class HeliconController {
     }
   }
 
+  /**
+   * Reinicia os servidores Muse a pedido, para recuperar de um host envenenado sem fechar o app:
+   * os hosts vivos fecham e a próxima mensagem os recria. Turnos em andamento são interrompidos.
+   * O evento de reinício anuncia o sucesso; aqui só a falha ao pedir avisa.
+   */
+  async restartMuseHosts(): Promise<void> {
+    try {
+      await this.client.restartHosts();
+    } catch (error) {
+      this.toast("error", "Não foi possível reiniciar o Muse", userFacingError(error));
+    }
+  }
+
   async loadThread(sessionId: string): Promise<void> {
     // A second load while one is in flight would orphan the first load's buffer: every event that
     // streamed into it is dropped, and the thread never shows them (#32: a frozen view on a thread

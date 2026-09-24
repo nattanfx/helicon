@@ -164,3 +164,34 @@ describe("falha de sessão", () => {
     assert.doesNotMatch(text, /Bearer /);
   });
 });
+
+describe("falha sem detalhe do host", () => {
+  it("mostra kind e turno na linha técnica quando a mensagem veio vazia", () => {
+    const copy = turnErrorCopy("error", "", true, { turnId: "t1" });
+    assert.equal(copy.title, "Esta mensagem falhou");
+    assert.equal(copy.explanation, "A mensagem falhou.");
+    assert.match(copy.technical ?? "", /kind=error/);
+    assert.match(copy.technical ?? "", /turno=t1/);
+    assert.equal(copy.offerRetry, true);
+  });
+
+  it("trata o fallback local como mensagem vazia do host", () => {
+    const copy = turnErrorCopy("modelError", "A mensagem falhou.", true, { turnId: "t2" });
+    assert.match(copy.technical ?? "", /kind=modelError/);
+    assert.match(copy.technical ?? "", /turno=t2/);
+  });
+
+  it("marca falha sem objeto de erro como kind ausente", () => {
+    const copy = turnErrorCopy(null, "A mensagem falhou.", true, { turnId: "t3" });
+    assert.match(copy.technical ?? "", /kind=ausente/);
+    assert.match(copy.technical ?? "", /turno=t3/);
+  });
+
+  it("omite o turno desconhecido e mantém falha com mensagem sem linha técnica", () => {
+    const bare = turnErrorCopy("error", "", false);
+    assert.match(bare.technical ?? "", /kind=error/);
+    assert.doesNotMatch(bare.technical ?? "", /turno=/);
+    assert.equal(bare.offerRetry, false);
+    assert.equal(turnErrorCopy("error", "Provider down", true, { turnId: "t1" }).technical, null);
+  });
+});

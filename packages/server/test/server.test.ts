@@ -887,6 +887,39 @@ describe("HeliconServer", () => {
     assert.equal(closes, 1, "an unchanged switch restarts nothing");
   });
 
+  it("restarts hosts on demand without changing any posture", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    let closes = 0;
+    const inner = fakeFactory(connection, probe);
+    const counting = (target: ServeTarget): HostHandle => {
+      const handle = inner(target);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        closes += 1;
+        return close();
+      };
+      return handle;
+    };
+    const { base } = await start(connection, { hostFactory: counting });
+
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve"]]);
+
+    const restarted = await send(base, "/api/hosts/restart", {});
+    assert.equal(restarted.status, 200);
+    await waitFor(() => closes === 1, "the live host closing");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(
+      probe.targets.map((t) => t.args),
+      [["serve"], ["serve"]],
+      "the respawned host keeps its posture",
+    );
+    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: false });
+    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: false });
+  });
+
   it("drops --disable-sandbox from respawned hosts when the switch flips back on", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });

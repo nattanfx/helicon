@@ -1,4 +1,4 @@
-import { ArrowDown, ChevronRight, CircleAlert, RotateCcw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
+import { ArrowDown, ChevronRight, CircleAlert, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useApp, useController, useNow } from "../../app/context.js";
@@ -18,14 +18,14 @@ import {
 } from "../../model/format.js";
 import { streamingSpeed, turnCosts, turnSpeeds, type TurnCost, type TurnSpeed } from "../../model/usage.js";
 import { formatCost } from "../../model/pricing.js";
-import { stuckThread, turnErrorCopy } from "../../model/errors.js";
+import { EMPTY_TURN_ERROR, stuckThread, turnErrorCopy } from "../../model/errors.js";
 import type { ThreadState } from "../../model/store.js";
 import type { AttachmentView, MspItem, OutgoingAttachment, ShellRun, UserInputAnswer } from "../../types.js";
 import { CodeBlock, FileLinksContext, type FileLinks } from "../ui/Markdown.js";
 import { fileTarget } from "../../model/files.js";
 import { SentAttachments, refetchAttachments, toOutgoing, toPreview } from "../composer/attachments.js";
 import { CopyButton } from "../ui/Markdown.js";
-import { Tip } from "../ui/overlays.js";
+import { Modal, Tip } from "../ui/overlays.js";
 import { Button, IconButton, Shimmer, Spinner, cn } from "../ui/primitives.js";
 import { Collapse, PixelLoader } from "../ui/sourced.js";
 import {
@@ -222,7 +222,9 @@ const TurnBlock = memo(
   }) {
     const { turn } = props;
     const info = turn.info;
-    const errorCopy = info?.error ? turnErrorCopy(info.error.kind, info.error.message, info.error.retryable) : null;
+    const errorCopy = info?.error
+      ? turnErrorCopy(info.error.kind, info.error.message, info.error.retryable, { turnId: turn.turnId })
+      : null;
     const closed = useApp((s) => (turn.turnId ? s.prefs.dismissedTurnErrors.includes(`${props.sessionId}:${turn.turnId}`) : false));
     const failed = info?.terminal === "failed" && !info.dismissed && !closed;
     const cancelled = info?.terminal === "cancelled";
@@ -264,13 +266,13 @@ const TurnBlock = memo(
             <span className="shrink-0">Falhou</span>
             <span aria-hidden="true">·</span>
             <span className="min-w-0 truncate" title={errorCopy?.technical ?? errorCopy?.explanation}>
-              {errorCopy?.title ?? "A mensagem falhou."}
+              {errorCopy?.title ?? EMPTY_TURN_ERROR}
             </span>
           </p>
         ) : failed ? (
           <TurnError
             kind={info?.error?.kind ?? null}
-            message={info?.error?.message ?? "A mensagem falhou."}
+            message={info?.error?.message ?? EMPTY_TURN_ERROR}
             retryable={info?.error?.retryable ?? true}
             prompt={props.isLast && !props.readOnly ? (turn.prompt?.displayText ?? turn.prompt?.text ?? null) : null}
             sessionId={props.sessionId}
@@ -676,7 +678,8 @@ function TurnError(props: {
   const hadImages = props.files.some((file) => file.kind === "image");
   // Algumas falhas são sobre a conversa, não a mensagem: tentar de novo envia o mesmo histórico e falha do mesmo jeito.
   const stuck = stuckThread(props.message, { ownImages: hadImages });
-  const copy = turnErrorCopy(props.kind, props.message, props.retryable);
+  const copy = turnErrorCopy(props.kind, props.message, props.retryable, { turnId: props.turnId });
+  const [confirmRestart, setConfirmRestart] = useState(false);
   /**
    * Envia o pedido de novo com os mesmos arquivos: seus bytes vivem no servidor, então são lidos de volta
    * em vez de omitidos, o que discretamente perguntaria outra coisa ao modelo. Nada vai se não puderem ser
@@ -771,11 +774,39 @@ function TurnError(props: {
           </Button>
         </Tip>
       ) : null}
+      {!props.readOnly ? (
+        <Tip label="Reinicia os servidores Muse; turnos em execução são interrompidos">
+          <Button size="sm" variant="ghost" onClick={() => setConfirmRestart(true)}>
+            <RotateCw size={13} /> Reiniciar o Muse
+          </Button>
+        </Tip>
+      ) : null}
       <Tip label="Dispensar">
         <IconButton size="sm" label="Dispensar este erro" className="-mt-0.5 -mr-1 shrink-0" onClick={() => controller.dismissTurnError(props.sessionId, props.turnId)}>
           <X size={13} />
         </IconButton>
       </Tip>
+      <Modal
+        open={confirmRestart}
+        onOpenChange={setConfirmRestart}
+        title="Reiniciar o Muse?"
+        description="Os servidores Muse em execução reiniciam agora e os turnos em andamento são interrompidos — a conversa segue normal depois, é só enviar a mensagem de novo. Use quando mensagens falham repetidamente sem explicação."
+      >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmRestart(false)}>
+            Voltar
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setConfirmRestart(false);
+              void controller.restartMuseHosts();
+            }}
+          >
+            Reiniciar o Muse
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

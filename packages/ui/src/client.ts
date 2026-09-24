@@ -115,6 +115,8 @@ export interface HeliconClient {
   setSandboxSettings(patch: { disabled?: boolean }): Promise<SandboxSettings>;
   getYoloSettings(): Promise<YoloSettings>;
   setYoloSettings(patch: { enabled?: boolean }): Promise<YoloSettings>;
+  /** Reinicia os servidores Muse em execução; turnos em andamento são interrompidos. */
+  restartHosts(): Promise<void>;
   setSessionModel(sessionId: string, modelId: string): Promise<void>;
   setApprovalMode(sessionId: string, mode: ApprovalMode): Promise<void>;
   /** `noop` quando o Muse não tinha nada para resumir; `reason` é sua explicação em snake_case. */

@@ -11,6 +11,7 @@ import type {
   UserInputRequest,
   ViewEvent,
 } from "../types.js";
+import { EMPTY_TURN_ERROR } from "./errors.js";
 
 /**
  * The per-thread fold of the MSP view stream. Pure and immutable: every apply returns a new
@@ -506,7 +507,7 @@ function applyOne(draft: Draft, event: ViewEvent): void {
         error: error
           ? {
               kind: str(error["kind"]) ?? "error",
-              message: str(error["message"]) ?? "A mensagem falhou.",
+              message: str(error["message"]) ?? EMPTY_TURN_ERROR,
               retryable: error["retryable"] === true,
             }
           : undefined,

@@ -115,6 +115,16 @@ class FakeClient implements HeliconClient {
       throw error;
     }
   }
+  restartCalls = 0;
+  restartError: Error | null = null;
+  async restartHosts() {
+    this.restartCalls += 1;
+    if (this.restartError) {
+      const error = this.restartError;
+      this.restartError = null;
+      throw error;
+    }
+  }
   decided: { approvalId: string; choiceId: string }[] = [];
   async decideApproval(input: { approvalId: string; choiceId: string }) {
     this.decided.push({ approvalId: input.approvalId, choiceId: input.choiceId });
@@ -422,6 +432,18 @@ describe("HeliconController", () => {
     client.handler?.({ type: "host", key: "k", state: "restarted", message: "The Muse host restarted." });
     assert.equal(controller.store.get().hostError, null);
     assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Servidores Muse reiniciados/);
+    stop();
+  });
+
+  it("restarts the Muse hosts on demand and reports a failed request", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    await controller.restartMuseHosts();
+    assert.equal(client.restartCalls, 1);
+    client.restartError = new Error("daemon away");
+    await controller.restartMuseHosts();
+    assert.equal(client.restartCalls, 2);
+    assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Não foi possível reiniciar o Muse/);
     stop();
   });
 

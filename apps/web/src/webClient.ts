@@ -314,6 +314,10 @@ export class WebHeliconClient implements HeliconClient {
     return parseYoloSettings(await call<unknown>("PATCH", "/api/yolo-settings", patch));
   }
 
+  async restartHosts(): Promise<void> {
+    await call("POST", "/api/hosts/restart", {});
+  }
+
   async setSessionModel(sessionId: string, modelId: string): Promise<void> {
     await call("POST", `/api/sessions/${enc(sessionId)}/model`, { model: { modelId } });
   }
