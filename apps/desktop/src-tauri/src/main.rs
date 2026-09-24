@@ -174,6 +174,32 @@ fn helicon_save_file_drafts(app: tauri::AppHandle, content: String) -> Result<()
     save_drafts_to(&dir, &content)
 }
 
+/// Toast nativo do Windows com o som do sistema: é esse som que se ouve no Grok.
+/// Backport seletivo só do caminho WinRT (sem clique, sem foco de conversa): fora do Windows
+/// devolve erro e a interface cai para o `sendNotification` do plugin. Devolve o caminho usado.
+#[tauri::command]
+fn helicon_notify_toast(app: tauri::AppHandle, title: String, body: Option<String>) -> Result<String, String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("título do aviso vazio".to_string());
+    }
+    let body = body.as_deref().map(str::trim).filter(|text| !text.is_empty()).unwrap_or("").to_string();
+    #[cfg(windows)]
+    {
+        use tauri_winrt_notification::Toast;
+        let mut toast = Toast::new(&app.config().identifier).title(&title);
+        if !body.is_empty() {
+            toast = toast.text1(&body);
+        }
+        return toast.show().map(|_| "winrt".to_string()).map_err(|error| error.to_string());
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, body);
+        Err("sem toast nativo nesta plataforma".to_string())
+    }
+}
+
 /// Uma porta que nada está usando agora, lembrada para a próxima abertura. Retorna 0, qualquer porta livre, só
 /// quando nenhuma pode ser encontrada.
 fn fresh_port(data_dir: Option<&Path>) -> u16 {
@@ -584,7 +610,7 @@ fn main() {
                 .build(),
         )
         .manage(ServerChild(Arc::new(Mutex::new(None))))
-        .invoke_handler(tauri::generate_handler![helicon_load_file_drafts, helicon_save_file_drafts])
+        .invoke_handler(tauri::generate_handler![helicon_load_file_drafts, helicon_save_file_drafts, helicon_notify_toast])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             install_zoom_menu(app)?;

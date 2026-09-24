@@ -16,6 +16,8 @@ export interface Notifier {
    * concedida. Só o desktop marca: um navegador exige gesto do usuário para conceder.
    */
   startupRequest?: boolean;
+  /** Caminho usado pelo último `show` ("nativo", "plugin"); para o diagnóstico temporário. */
+  readonly lastShowPath?: string;
   /** O que o usuário já decidiu, sem perguntar de novo. */
   permission(): Promise<NotifyPermission>;
   /** Pergunta uma vez. Navegadores só honram isso a partir de um gesto real do usuário, por isso não é automático. */
@@ -183,7 +185,7 @@ export class NotificationManager {
       const { title, body } = copy(event);
       try {
         await this.notifier.show({ title, body, tag });
-        trace.balloon = "mostrado";
+        trace.balloon = this.notifier.lastShowPath ? `mostrado (${this.notifier.lastShowPath})` : "mostrado";
       } catch (error) {
         // Não vale quebrar uma mensagem por causa de um notificador que recusa.
         trace.balloon = `falha: ${reason(error)}`;
@@ -234,7 +236,7 @@ export class NotificationManager {
             body: "Se você está vendo isto, o balão funciona.",
             tag: "helicon-teste",
           });
-          trace.balloon = "mostrado (teste)";
+          trace.balloon = this.notifier.lastShowPath ? `mostrado (teste, ${this.notifier.lastShowPath})` : "mostrado (teste)";
         } catch (error) {
           trace.balloon = `falha: ${reason(error)}`;
         }

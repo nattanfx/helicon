@@ -393,6 +393,27 @@ describe("notificações", () => {
     assert.equal(traces[0]?.permission, "não consultada");
   });
 
+  it("anota o caminho do balão no diagnóstico quando o mostrador informa", async () => {
+    const { fake, shown } = notifier();
+    let path: string | undefined;
+    const native: Notifier = {
+      ...fake,
+      get lastShowPath() {
+        return path;
+      },
+      show: async (note) => {
+        await fake.show(note);
+        path = "nativo";
+      },
+    };
+    const manager = new NotificationManager(native, () => ({ enabled: true, focused: false }));
+
+    await manager.announce({ kind: "approval", sessionId: "s1", thread: "notes-app" });
+
+    assert.equal(shown.length, 1);
+    assert.equal(manager.recent()[0]?.balloon, "mostrado (nativo)");
+  });
+
   it("a prova de balão sem permissão não mostra nada e anota", async () => {
     const asking = notifier("denied");
     let beeps = 0;

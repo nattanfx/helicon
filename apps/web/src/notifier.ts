@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import type { Notifier, NotifyPermission } from "@helicon/ui";
 
@@ -36,14 +37,25 @@ function browserNotifier(): Notifier | undefined {
   };
 }
 
+/** Toast nativo pelo shell: no Windows sai com o som do sistema, como no Grok. */
+async function nativeToast(title: string, body: string): Promise<unknown> {
+  return invoke("helicon_notify_toast", { title, body });
+}
+
 /**
- * A do shell do desktop, pelo plug-in de notificações do Tauri. Uma webview não carrega a
- * API do navegador de forma confiável, então no desktop é esta que de fato alcança o SO.
+ * A do shell do desktop: tenta o toast nativo com som e cai para o `sendNotification` do
+ * plug-in quando o nativo falha (outra plataforma, comando ausente). Uma webview não carrega a
+ * API do navegador de forma confiável, então no desktop é uma destas que de fato alcança o SO.
+ * O mostrador recebe uma imitação nos testes.
  */
-function desktopNotifier(): Notifier {
+export function desktopNotifier(notify: (title: string, body: string) => Promise<unknown> = nativeToast): Notifier {
+  let path = "plugin";
   return {
     label: "desktop",
     startupRequest: true,
+    get lastShowPath() {
+      return path;
+    },
     async permission() {
       try {
         return (await isPermissionGranted()) ? "granted" : "default";
@@ -61,7 +73,13 @@ function desktopNotifier(): Notifier {
     async show({ title, body }) {
       // O plug-in não tem noção de substituir um aviso anterior, então a janela de repetição do próprio gerenciador
       // é a única coisa impedindo uma conversa de empilhar.
-      sendNotification({ title, body });
+      try {
+        await notify(title, body);
+        path = "nativo";
+      } catch {
+        path = "plugin";
+        sendNotification({ title, body });
+      }
     },
   };
 }
