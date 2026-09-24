@@ -162,6 +162,21 @@ describe("web client", () => {
     assert.deepEqual(JSON.parse(String(patch?.init?.body)), { disabled: true });
   });
 
+  it("reads and writes the YOLO switch", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+    const client = new WebHeliconClient();
+
+    assert.deepEqual(await client.getYoloSettings(), { enabled: false });
+    assert.equal(world.calls.at(-1)?.url, "/api/yolo-settings");
+
+    await client.setYoloSettings({ enabled: true });
+    const patch = world.calls.at(-1);
+    assert.equal(patch?.url, "/api/yolo-settings");
+    assert.equal(patch?.init?.method, "PATCH");
+    assert.deepEqual(JSON.parse(String(patch?.init?.body)), { enabled: true });
+  });
+
   it("cancels a stuck turn through the turns route", async () => {
     const world = browser();
     const { WebHeliconClient } = await freshClient();

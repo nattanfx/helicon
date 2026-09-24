@@ -92,6 +92,17 @@ export interface SandboxSettings {
 
 export const DEFAULT_SANDBOX_SETTINGS: SandboxSettings = { disabled: false };
 
+/**
+ * Server-owned YOLO mode: the `muse --yolo` posture for every host it spawns
+ * (`--disable-sandbox --trust-workspace`) plus the wire-level approval bypass.
+ * Off by default.
+ */
+export interface YoloSettings {
+  enabled: boolean;
+}
+
+export const DEFAULT_YOLO_SETTINGS: YoloSettings = { enabled: false };
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -354,6 +365,33 @@ export class HeliconStore {
     };
     this.db
       .prepare(`INSERT INTO settings (key, value) VALUES ('sandbox', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .run(JSON.stringify(next));
+    return next;
+  }
+
+  /** Malformed rows fall back to YOLO-off rather than breaking host startup. */
+  getYoloSettings(): YoloSettings {
+    const row = this.db.prepare(`SELECT value FROM settings WHERE key = 'yolo'`).get() as Row | undefined;
+    if (!row) {
+      return { ...DEFAULT_YOLO_SETTINGS };
+    }
+    try {
+      const parsed = JSON.parse(String(row["value"])) as Partial<YoloSettings>;
+      return {
+        enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : DEFAULT_YOLO_SETTINGS.enabled,
+      };
+    } catch {
+      return { ...DEFAULT_YOLO_SETTINGS };
+    }
+  }
+
+  setYoloSettings(patch: Partial<YoloSettings>): YoloSettings {
+    const current = this.getYoloSettings();
+    const next: YoloSettings = {
+      enabled: patch.enabled ?? current.enabled,
+    };
+    this.db
+      .prepare(`INSERT INTO settings (key, value) VALUES ('yolo', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
       .run(JSON.stringify(next));
     return next;
   }

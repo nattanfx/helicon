@@ -176,6 +176,16 @@ describe("HeliconStore", () => {
     assert.deepEqual(store.setSandboxSettings({ disabled: false }), { disabled: false });
   });
 
+  it("keeps YOLO settings, defaulting to off", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    assert.deepEqual(store.getYoloSettings(), { enabled: false });
+    assert.deepEqual(store.setYoloSettings({ enabled: true }), { enabled: true });
+    assert.deepEqual(store.getYoloSettings(), { enabled: true });
+    assert.deepEqual(store.setYoloSettings({}), { enabled: true }, "an empty patch changes nothing");
+    assert.deepEqual(store.setYoloSettings({ enabled: false }), { enabled: false });
+  });
+
   it("records each session's sandbox posture at creation, never on touch", () => {
     const store = new HeliconStore();
     after(() => store.close());

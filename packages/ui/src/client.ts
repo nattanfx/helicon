@@ -22,6 +22,7 @@ import type {
   TranscriptLoad,
   UserInputAnswer,
   WorkflowAction,
+  YoloSettings,
 } from "./types.js";
 import { listedPrice } from "./model/pricing.js";
 
@@ -112,6 +113,8 @@ export interface HeliconClient {
   setTitleSettings(patch: { enabled?: boolean; modelId?: string | null }): Promise<TitleSettings>;
   getSandboxSettings(): Promise<SandboxSettings>;
   setSandboxSettings(patch: { disabled?: boolean }): Promise<SandboxSettings>;
+  getYoloSettings(): Promise<YoloSettings>;
+  setYoloSettings(patch: { enabled?: boolean }): Promise<YoloSettings>;
   setSessionModel(sessionId: string, modelId: string): Promise<void>;
   setApprovalMode(sessionId: string, mode: ApprovalMode): Promise<void>;
   /** `noop` quando o Muse não tinha nada para resumir; `reason` é sua explicação em snake_case. */
@@ -171,6 +174,14 @@ export function parseSandboxSettings(value: unknown): SandboxSettings {
   const r = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return {
     disabled: r["disabled"] === true,
+  };
+}
+
+/** Interpreta o endpoint de YOLO; respostas inválidas usam YOLO desligado. */
+export function parseYoloSettings(value: unknown): YoloSettings {
+  const r = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  return {
+    enabled: r["enabled"] === true,
   };
 }
 

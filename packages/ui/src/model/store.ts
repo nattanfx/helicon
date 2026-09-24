@@ -12,6 +12,7 @@ import type {
   ShellRun,
   SkillEntry,
   TitleSettings,
+  YoloSettings,
 } from "../types.js";
 import type { EchoAttachment, ThreadFold } from "./fold.js";
 import type { AppIdentity } from "./identity.js";
@@ -103,6 +104,11 @@ export interface Prefs {
   filesWidth: number;
   /** Pílulas de estatísticas da sessão acima do composer: turnos, velocidade e tokens da conversa aberta. */
   showTelemetry: boolean;
+  /**
+   * Modos de aprovação de antes de ligar o YOLO, que sobrevivem a um recarregar para desligar o YOLO
+   * ainda os restaurar em vez de cair para onRequest. Null quando o YOLO nunca foi ligado aqui.
+   */
+  preYolo: { defaultMode: ApprovalMode; threads: Record<string, ApprovalMode | null> } | null;
 }
 
 export const DEFAULT_FILES_WIDTH = 480;
@@ -153,6 +159,7 @@ export function defaultPrefs(now = new Date().toISOString()): Prefs {
     filesOpen: false,
     filesWidth: DEFAULT_FILES_WIDTH,
     showTelemetry: false,
+    preYolo: null,
   };
 }
 
@@ -202,6 +209,8 @@ export interface AppState {
   titleSettings: TitleSettings | null;
   /** Proteção da sandbox, mantida pelo servidor; null até a resposta do carregamento inicial. */
   sandboxSettings: SandboxSettings | null;
+  /** YOLO, mantido pelo servidor; null até a resposta do carregamento inicial. */
+  yoloSettings: YoloSettings | null;
   prefs: Prefs;
   toasts: Toast[];
   paletteOpen: boolean;
@@ -239,8 +248,8 @@ export interface AppState {
   fileTreeOpen: Record<string, string[]>;
 }
 
-/** `confirmFullAccess` é a confirmação de acesso total, pela qual `/permissions full` ainda precisa passar. */
-export type ComposerPicker = "model" | "effort" | "permissions" | "confirmFullAccess" | "confirmBypass";
+/** `confirmFullAccess` é a confirmação de acesso total, pela qual `/permissions full` ainda precisa passar. `confirmYolo` é a confirmação do modo YOLO. */
+export type ComposerPicker = "model" | "effort" | "permissions" | "confirmFullAccess" | "confirmYolo" | "confirmBypass";
 
 export interface SkillsState {
   status: "loading" | "ready" | "error";
@@ -265,6 +274,7 @@ export function initialState(prefs: Prefs): AppState {
     models: [],
     titleSettings: null,
     sandboxSettings: null,
+    yoloSettings: null,
     prefs,
     toasts: [],
     paletteOpen: false,
@@ -298,6 +308,24 @@ export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
   }
   const pick = <K extends keyof Prefs>(key: K, valid: (v: unknown) => boolean): Prefs[K] =>
     valid(r[key]) ? (r[key] as Prefs[K]) : fallback[key];
+  const isApprovalMode = (v: unknown): boolean =>
+    v === "onRequest" || v === "promptUnmatched" || v === "denyUnmatched" || v === "allowAll";
+  const isPreYolo = (v: unknown): boolean => {
+    if (v === null) {
+      return true;
+    }
+    if (typeof v !== "object") {
+      return false;
+    }
+    const snapshot = v as { defaultMode?: unknown; threads?: unknown };
+    return (
+      isApprovalMode(snapshot.defaultMode) &&
+      typeof snapshot.threads === "object" &&
+      snapshot.threads !== null &&
+      !Array.isArray(snapshot.threads) &&
+      Object.values(snapshot.threads).every((mode) => mode === null || isApprovalMode(mode))
+    );
+  };
   return {
     groupBy: pick("groupBy", (v) => v === "project" || v === "status"),
     theme: pick("theme", (v) => v === "system" || v === "light" || v === "dark"),
@@ -323,5 +351,6 @@ export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
     filesOpen: pick("filesOpen", (v) => typeof v === "boolean"),
     filesWidth: pick("filesWidth", (v) => typeof v === "number" && v >= FILES_WIDTH_MIN && v <= FILES_WIDTH_MAX),
     showTelemetry: pick("showTelemetry", (v) => typeof v === "boolean"),
+    preYolo: pick("preYolo", isPreYolo),
   };
 }

@@ -25,6 +25,7 @@ function Pick<T extends string | null>(props: {
   value: T;
   options: readonly { value: T; label: string; hint?: string }[];
   onChange: (value: T) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex max-w-full min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-sunken p-0.5 [scrollbar-width:thin]">
@@ -34,9 +35,10 @@ function Pick<T extends string | null>(props: {
           type="button"
           title={option.hint}
           aria-pressed={props.value === option.value}
+          disabled={props.disabled}
           onClick={() => props.onChange(option.value)}
           className={cn(
-            "h-7 shrink-0 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-100",
+            "h-7 shrink-0 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40",
             props.value === option.value ? "bg-raised text-fg shadow-btn" : "text-muted hover:text-fg",
           )}
         >
@@ -47,13 +49,14 @@ function Pick<T extends string | null>(props: {
   );
 }
 
-function Toggle(props: { checked: boolean; onChange: (on: boolean) => void; label: string }) {
+function Toggle(props: { checked: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <Switch.Root
       checked={props.checked}
       onCheckedChange={props.onChange}
+      disabled={props.disabled}
       aria-label={props.label}
-      className="relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full bg-line-strong outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent data-[state=checked]:bg-accent"
+      className="relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full bg-line-strong outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent"
     >
       <Switch.Thumb className="block size-3.5 translate-x-0.5 rounded-full bg-white shadow-[0_1px_2px_oklch(0_0_0/0.3)] transition-transform duration-150 ease-out data-[state=checked]:translate-x-4" />
     </Switch.Root>
@@ -110,6 +113,7 @@ export function SettingsPage() {
   const models = useApp((s) => s.models);
   const titleSettings = useApp((s) => s.titleSettings);
   const sandboxSettings = useApp((s) => s.sandboxSettings);
+  const yoloSettings = useApp((s) => s.yoloSettings);
   const env = useApp((s) => s.env);
   const identity = useApp((s) => s.identity);
   const updates = useApp((s) => s.updates);
@@ -117,6 +121,7 @@ export function SettingsPage() {
   const armedThreads = useApp((s) => s.bypassThreads.length);
   const [confirmBypass, setConfirmBypass] = useState(false);
   const [confirmSandbox, setConfirmSandbox] = useState(false);
+  const [confirmYolo, setConfirmYolo] = useState(false);
   const [notasOpen, setNotasOpen] = useState(false);
   const now = useNow(60_000);
   const busy = updates?.status === "checking" || updates?.status === "downloading" || updates?.status === "installing";
@@ -133,7 +138,7 @@ export function SettingsPage() {
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold text-fg">Configurações</h1>
-          <p className="text-xs text-muted">Guardado neste aparelho. A maioria não mexe nas conversas em execução; o interruptor da sandbox reinicia os servidores Muse na hora.</p>
+          <p className="text-xs text-muted">Guardado neste aparelho. A maioria não mexe nas conversas em execução; os interruptores da sandbox e do YOLO reiniciam os servidores Muse na hora.</p>
         </div>
       </header>
 
@@ -201,11 +206,17 @@ export function SettingsPage() {
             )}
           </Row>
           <Row label="Permissões" description="O que o Muse pode fazer antes de perguntar.">
-            <Pick
-              value={prefs.defaultMode}
-              options={MODES.map((mode) => ({ value: mode.value as ApprovalMode, label: mode.label, hint: mode.description }))}
-              onChange={(value) => void controller.setMode(value as ApprovalMode)}
-            />
+            <div className="flex min-w-0 w-full flex-col items-end gap-1 @min-[520px]:w-auto">
+              <Pick
+                value={prefs.defaultMode}
+                options={MODES.map((mode) => ({ value: mode.value as ApprovalMode, label: mode.label, hint: mode.description }))}
+                onChange={(value) => void controller.setMode(value as ApprovalMode)}
+                disabled={yoloSettings?.enabled === true}
+              />
+              {yoloSettings?.enabled ? (
+                <p className="text-xs text-subtle">O YOLO é dono do modo de cada conversa enquanto ligado. Desligue-o para escolher.</p>
+              ) : null}
+            </div>
           </Row>
           <Row label="Esforço de raciocínio" description="Quanto tempo o modelo pensa antes de responder. Automático deixa o Muse escolher por mensagem.">
             <Pick<ReasoningEffort | null>
@@ -262,15 +273,37 @@ export function SettingsPage() {
           ) : null}
         </Section>
 
+        <Section title="Modo YOLO">
+          <Row
+            label="Modo YOLO"
+            description="Como muse --yolo: nada pede aprovação em nenhuma conversa, novas conversas rodam sem confinamento da sandbox, e os workspaces são confiáveis. As conversas já abertas mantêm a proteção de sandbox com que começaram. Mudar isto reinicia os servidores Muse em execução, interrompendo seus turnos."
+          >
+            {yoloSettings ? (
+              <Toggle
+                checked={yoloSettings.enabled}
+                label="Modo YOLO"
+                onChange={(on) => (on ? setConfirmYolo(true) : void controller.setYoloEnabled(false))}
+              />
+            ) : (
+              <p className="text-xs text-subtle">Carregando…</p>
+            )}
+          </Row>
+        </Section>
+
         <Section title="Sandbox">
           <Row
             label="Desativar a sandbox"
-            description="Os shells do Muse rodam isolados: acesso a arquivos e rede é confinado. Desligar isto remove o confinamento das novas conversas; as abertas mantêm a proteção com que começaram. Mudar isto reinicia os servidores Muse em execução, interrompendo seus turnos."
+            description={
+              yoloSettings?.enabled
+                ? "Desligada porque o modo YOLO está ligado: o YOLO já roda novas conversas sem confinamento da sandbox. Desligue o YOLO para controlar isto separadamente."
+                : "Os shells do Muse rodam isolados: acesso a arquivos e rede é confinado. Desligar isto remove o confinamento das novas conversas; as abertas mantêm a proteção com que começaram. Mudar isto reinicia os servidores Muse em execução, interrompendo seus turnos."
+            }
           >
             {sandboxSettings ? (
               <Toggle
                 checked={sandboxSettings.disabled}
                 label="Desativar a sandbox"
+                disabled={yoloSettings?.enabled === true}
                 onChange={(on) => (on ? setConfirmSandbox(true) : void controller.setSandboxDisabled(false))}
               />
             ) : (
@@ -410,6 +443,28 @@ export function SettingsPage() {
             }}
           >
             Responda por mim
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={confirmYolo}
+        onOpenChange={setConfirmYolo}
+        title="Ligar o modo YOLO?"
+        description="Como muse --yolo: nada pede aprovação em nenhuma conversa, novas conversas rodam sem confinamento da sandbox, e os workspaces são confiáveis. Os servidores Muse em execução reiniciam, interrompendo seus turnos, e as conversas já abertas mantêm a proteção de sandbox com que começaram. Isto fica ligado até você desligar."
+      >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmYolo(false)}>
+            Continuar perguntando
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setConfirmYolo(false);
+              void controller.setYoloEnabled(true);
+            }}
+          >
+            Ligar o YOLO
           </Button>
         </div>
       </Modal>

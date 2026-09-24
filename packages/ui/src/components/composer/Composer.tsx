@@ -13,6 +13,7 @@ import {
   ShieldQuestion,
   Square,
   SquareTerminal,
+  Zap,
 } from "lucide-react";
 import {
   forwardRef,
@@ -784,6 +785,10 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
   const bypass = useApp((s) => s.bypassAll);
   const confirmingBypass = useApp((s) => s.picker === "confirmBypass");
   const bypassId = useId();
+  const yolo = useApp((s) => s.yoloSettings?.enabled === true);
+  const yoloLoaded = useApp((s) => s.yoloSettings !== null);
+  const confirmingYolo = useApp((s) => s.picker === "confirmYolo");
+  const yoloId = useId();
   const preferred = useApp((s) => s.prefs.defaultMode);
   const threadMode = useApp((s) => (props.sessionId ? (s.threads[props.sessionId]?.fold.meta.approvalMode ?? null) : null));
   const current = (props.sessionId ? threadMode : null) ?? preferred;
@@ -794,14 +799,33 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
       <Menu open={open} onOpenChange={(next) => (next ? controller.setPicker("permissions") : controller.closePicker("permissions"))}>
         <MenuTrigger asChild>
           <ToolbarTrigger
-            aria-label={`Permissões: ${mode?.label}`}
-            icon={mode?.icon}
-            label={mode?.label}
-            tone={current === "allowAll" || bypass ? "warn" : undefined}
+            aria-label={yolo ? "Permissões: modo YOLO" : `Permissões: ${mode?.label}`}
+            icon={yolo ? <Zap size={14} /> : mode?.icon}
+            label={yolo ? "YOLO" : mode?.label}
+            tone={yolo || current === "allowAll" || bypass ? "warn" : undefined}
           />
         </MenuTrigger>
         <MenuContent side={props.side} className="w-[300px]">
           <MenuLabel>Permissões</MenuLabel>
+          {/* A postura do `muse --yolo`: sem aprovações, sem sandbox, workspace confiável. Acima dos modos porque é dono deles enquanto ligado. */}
+          <div className="flex items-start gap-3 px-2 pt-1 pb-2.5">
+            <label htmlFor={yoloId} className="min-w-0 flex-1 cursor-default">
+              <span className="flex items-center gap-1.5 text-sm text-fg">
+                <Zap size={14} className="text-warn-text" aria-hidden="true" />
+                Modo YOLO
+              </span>
+              <span className="block text-xs text-muted">Nada pergunta, novas conversas rodam sem sandbox. Reinicia os servidores Muse.</span>
+            </label>
+            <Switch.Root
+              id={yoloId}
+              checked={yolo}
+              disabled={!yoloLoaded}
+              onCheckedChange={(on) => (on ? controller.setPicker("confirmYolo") : void controller.setYoloEnabled(false))}
+              className="relative mt-0.5 inline-flex h-[18px] w-8 shrink-0 items-center rounded-full bg-line-strong outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 data-[state=checked]:bg-accent"
+            >
+              <Switch.Thumb className="block size-3.5 translate-x-0.5 rounded-full bg-white shadow-[0_1px_2px_oklch(0_0_0/0.3)] transition-transform duration-150 ease-out data-[state=checked]:translate-x-4" />
+            </Switch.Root>
+          </div>
           <MenuRadioGroup
             value={current}
             onValueChange={(value) => {
@@ -813,9 +837,10 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
             }}
           >
             {MODES.map((m) => (
-              <MenuOption key={m.value} value={m.value} icon={m.icon} label={m.label} description={m.description} />
+              <MenuOption key={m.value} value={m.value} icon={m.icon} label={m.label} description={m.description} disabled={yolo} />
             ))}
           </MenuRadioGroup>
+          {yolo ? <p className="px-2 pt-1 text-xs text-subtle">O YOLO é dono do modo de cada conversa enquanto ligado. Desligue-o para escolher.</p> : null}
           {/* O Muse pergunta sempre que não consegue resolver os argumentos de um comando, seja qual for o modo. Isto responde essas. */}
           <div className="mt-1 flex items-start gap-3 border-t border-line px-2 pt-2.5 pb-1">
             <label htmlFor={bypassId} className="min-w-0 flex-1 cursor-default">
@@ -837,7 +862,7 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
         open={confirming}
         onOpenChange={setConfirming}
         title="Dar acesso total ao Muse?"
-        description="Toda chamada de ferramenta, incluindo comandos e escrita de arquivos, vai executar sem perguntar antes. A sandbox do sistema continua confinando os shells, a menos que esta conversa tenha começado com a sandbox desligada nas Configurações. Use isto só num ambiente descartável."
+        description="Toda chamada de ferramenta, incluindo comandos e escrita de arquivos, vai executar sem perguntar antes. A sandbox do sistema continua confinando os shells, a menos que esta conversa tenha começado com a sandbox desligada, ou com o modo YOLO ligado, nas Configurações. Use isto só num ambiente descartável."
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button
@@ -847,7 +872,7 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
               controller.navigate({ kind: "settings" });
             }}
           >
-            Configurações da sandbox
+            Configurações
           </Button>
           <Button variant="ghost" onClick={() => setConfirming(false)}>
             Continuar perguntando
@@ -881,6 +906,27 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
             }}
           >
             Responda por mim
+          </Button>
+        </div>
+      </Modal>
+      <Modal
+        open={confirmingYolo}
+        onOpenChange={(next) => (next ? controller.setPicker("confirmYolo") : controller.closePicker("confirmYolo"))}
+        title="Ligar o modo YOLO?"
+        description="Como muse --yolo: nada pede aprovação em nenhuma conversa, novas conversas rodam sem confinamento da sandbox, e os workspaces são confiáveis. Os servidores Muse em execução reiniciam, interrompendo seus turnos, e as conversas já abertas mantêm a proteção de sandbox com que começaram. Isto fica ligado até você desligar."
+      >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => controller.closePicker("confirmYolo")}>
+            Continuar perguntando
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              controller.closePicker("confirmYolo");
+              void controller.setYoloEnabled(true);
+            }}
+          >
+            Ligar o YOLO
           </Button>
         </div>
       </Modal>

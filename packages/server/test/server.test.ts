@@ -987,6 +987,101 @@ describe("HeliconServer", () => {
     assert.equal(created.json.session.sandboxDisabled, false, "the session lands on the new posture's host");
   });
 
+  it("keeps YOLO settings behind a boolean switch, defaulting to off", async () => {
+    const connection = new FakeConnection();
+    const { base } = await start(connection);
+    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: false });
+
+    const patched = await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    assert.equal(patched.status, 200);
+    assert.deepEqual(patched.json, { enabled: true });
+    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: true });
+
+    const bad = await send(base, "/api/yolo-settings", { enabled: "yes" }, "PATCH");
+    assert.equal(bad.status, 400);
+    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: true }, "a rejected patch changes nothing");
+  });
+
+  it("spawns hosts with the YOLO flags, restarting them when the switch flips", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    let closes = 0;
+    const inner = fakeFactory(connection, probe);
+    const counting = (target: ServeTarget): HostHandle => {
+      const handle = inner(target);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        closes += 1;
+        return close();
+      };
+      return handle;
+    };
+    const { base } = await start(connection, { hostFactory: counting });
+
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve"]]);
+
+    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await waitFor(() => closes === 1, "the live host closing");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(
+      probe.targets.map((t) => t.args),
+      [["serve"], ["serve", "--disable-sandbox", "--trust-workspace"]],
+      "the respawned host carries the new posture",
+    );
+
+    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(closes, 1, "an unchanged switch restarts nothing");
+  });
+
+  it("drops the YOLO flags from respawned hosts when the switch flips back off", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    let closes = 0;
+    const inner = fakeFactory(connection, probe);
+    const counting = (target: ServeTarget): HostHandle => {
+      const handle = inner(target);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        closes += 1;
+        return close();
+      };
+      return handle;
+    };
+    const { base } = await start(connection, { hostFactory: counting });
+
+    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox", "--trust-workspace"]]);
+
+    await send(base, "/api/yolo-settings", { enabled: false }, "PATCH");
+    await waitFor(() => closes === 1, "the live host closing");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(
+      probe.targets.map((t) => t.args),
+      [
+        ["serve", "--disable-sandbox", "--trust-workspace"],
+        ["serve"],
+      ],
+      "the respawned host drops the YOLO flags",
+    );
+  });
+
+  it("spawns hosts with --disable-sandbox once when both the sandbox switch and YOLO are on", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    const { base } = await start(connection, { hostFactory: fakeFactory(connection, probe) });
+
+    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox", "--trust-workspace"]]);
+  });
+
   it("upgrades an echo title with one muse exec call, and pushes the name back", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });

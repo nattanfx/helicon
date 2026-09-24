@@ -343,6 +343,12 @@ export class HeliconController {
   private sandboxSettingsRev = 0;
   /** PATCHs da sandbox andam em fila para que viradas opostas rápidas persistam em ordem. */
   private sandboxSettingsChain: Promise<void> = Promise.resolve();
+  /** Incrementada a cada pedido de YOLO, para aplicar apenas a resposta ou reversão mais recente. */
+  private yoloSettingsRev = 0;
+  /** PATCHs do YOLO andam em fila para que viradas opostas rápidas persistam em ordem. */
+  private yoloSettingsChain: Promise<void> = Promise.resolve();
+  /** Modos de aprovação de antes de ligar o YOLO, restaurados ao desligá-lo. Null quando nunca foi ligado aqui. */
+  private preYolo: { defaultMode: ApprovalMode; threads: Record<string, ApprovalMode | null> } | null = null;
   /** A rota principal para a qual o Voltar sai das páginas de configurações/uso; limpa ao voltar para uma rota principal. */
   private returnRoute: Route | null = null;
 
@@ -358,6 +364,8 @@ export class HeliconController {
     const fallback = defaultPrefs(new Date(platform.now()).toISOString());
     const state = initialState(revivePrefs(platform.loadPrefs(), fallback));
     this.store = new Store({ ...state, fileDrafts: parseFileDrafts(platform.loadFileDrafts?.() ?? null) });
+    // Leva a foto pré-YOLO por cima de um recarregar: o campo em si é por execução, mas as prefs não.
+    this.preYolo = this.state.prefs.preYolo;
   }
 
   private get state(): AppState {
@@ -503,6 +511,7 @@ export class HeliconController {
       void this.loadModels();
       void this.loadTitleSettings();
       void this.loadSandboxSettings();
+      void this.loadYoloSettings();
       void this.loadPlanUsage();
     } catch (error) {
       this.update((s) => ({ ...s, boot: "error", bootError: userFacingError(error) }));
@@ -608,6 +617,50 @@ export class HeliconController {
     }
   }
 
+  private async loadYoloSettings(): Promise<void> {
+    const rev = ++this.yoloSettingsRev;
+    // Guardado antes da atualização sobrescrevê-lo: outro app pode desligar o YOLO sem este nunca
+    // chamar `setYoloEnabled`, e essa virada só aparece comparando o que este carregamento substitui.
+    const wasEnabled = this.state.yoloSettings?.enabled === true;
+    try {
+      const yoloSettings = await this.client.getYoloSettings();
+      if (rev === this.yoloSettingsRev) {
+        this.update((s) => ({ ...s, yoloSettings }));
+        if (yoloSettings.enabled) {
+          // A inicialização traz conversas e configurações em qualquer ordem; uma conversa que carregou antes entra no YOLO mesmo assim.
+          for (const sessionId of Object.keys(this.state.threads)) {
+            this.convergeThread(sessionId);
+          }
+        } else if (wasEnabled) {
+          // Outro app desligou o YOLO. Este app também precisa parar de aprovar sozinho, tenha ou
+          // não uma foto local: o mesmo caminho de restauração que o `setYoloEnabled` usa numa virada
+          // de verdade. O `applyYoloApprovals(false)` já consome `this.preYolo` quando há um, e cai
+          // para perguntar-antes quando não há, então chamar aqui é seguro de todo jeito.
+          this.applyYoloApprovals(false);
+        }
+      }
+    } catch {
+      /* abrir Configurações tenta carregar novamente */
+    }
+  }
+
+  /**
+   * Traz uma conversa aberta para o acesso total do YOLO, quando o YOLO está ligado e a conversa ainda
+   * não está lá. O modo da própria conversa continuaria perguntando, respondido uma aprovação por vez
+   * pelo bypass implícito em vez de nunca perguntar.
+   */
+  private convergeThread(sessionId: string): void {
+    if (this.state.yoloSettings?.enabled !== true) {
+      return;
+    }
+    const thread = this.state.threads[sessionId];
+    const mode = thread?.fold.meta.approvalMode ?? null;
+    if (thread && !thread.readOnly && mode !== "allowAll") {
+      this.patchMeta(sessionId, { approvalMode: "allowAll" });
+      void this.pushThreadModes({ [sessionId]: "allowAll" }, { [sessionId]: mode }, "perguntando antes");
+    }
+  }
+
   // ---------------------------------------------------------------- routing
 
   navigate(route: Route): void {
@@ -668,6 +721,9 @@ export class HeliconController {
       }
       if (this.state.sandboxSettings === null) {
         void this.loadSandboxSettings();
+      }
+      if (this.state.yoloSettings === null) {
+        void this.loadYoloSettings();
       }
     }
   }
@@ -765,6 +821,7 @@ export class HeliconController {
       }));
       // O que já estava esperando quando a conversa abriu conta também, não só o que chega depois.
       this.autoAllow([sessionId]);
+      this.convergeThread(sessionId);
     } catch (error) {
       this.loading.delete(sessionId);
       this.setThread(sessionId, {
@@ -822,7 +879,7 @@ export class HeliconController {
         });
         this.announce(event.sessionId, displayTitle(known), before, event.live);
         // A única notícia que temos sobre uma conversa que este app nunca abriu: ela está esperando alguém.
-        if (this.state.bypassAll && (event.live?.pendingApprovals ?? 0) > 0) {
+        if (this.bypassArmed(event.sessionId) && (event.live?.pendingApprovals ?? 0) > 0) {
           this.loadForBypass(event.sessionId);
         }
         break;
@@ -840,6 +897,10 @@ export class HeliconController {
         } else if (event.state === "restarted") {
           this.update((s) => ({ ...s, hostError: null }));
           this.toast("info", "Servidores Muse reiniciados", event.message);
+          // Um reinício segue qualquer PATCH de configuração, inclusive de outro app. Recarrega os dois
+          // para a postura deste app (e de qualquer conversa dele) acompanhar o que valeu de fato.
+          void this.loadYoloSettings();
+          void this.loadSandboxSettings();
         }
         break;
     }
@@ -1088,14 +1149,17 @@ export class HeliconController {
     this.setBusy("start", true);
     try {
       const { defaultMode, defaultModelId } = this.state.prefs;
+      // O YOLO é dono da postura de cada conversa enquanto ligado, nova ou velha: um padrão velho de antes
+      // dele ligar nunca pode semear uma conversa que pergunta quando o resto do app não pergunta.
+      const approvalMode: ApprovalMode = this.state.yoloSettings?.enabled === true ? "allowAll" : defaultMode;
       const session = await this.client.startSession(cwd, {
-        approvalMode: defaultMode,
+        approvalMode,
         modelId: defaultModelId ?? undefined,
       });
       const base = emptyFold();
       const fold: ThreadFold = {
         ...base,
-        meta: { ...base.meta, modelId: session.modelId ?? defaultModelId, approvalMode: defaultMode },
+        meta: { ...base.meta, modelId: session.modelId ?? defaultModelId, approvalMode },
       };
       this.update((s) => ({
         ...s,
@@ -1302,9 +1366,9 @@ export class HeliconController {
 
   // ---------------------------------------------------------------- approvals and questions
 
-  /** Verdadeiro quando esta conversa responde às próprias aprovações, pelo próprio armamento ou pelo interruptor geral da sessão. */
+  /** Verdadeiro quando esta conversa responde às próprias aprovações: pelo próprio armamento, pelo interruptor geral ou pelo YOLO. */
   bypassArmed(sessionId: string): boolean {
-    return this.state.bypassAll || this.state.bypassThreads.includes(sessionId);
+    return this.state.bypassAll || this.state.yoloSettings?.enabled === true || this.state.bypassThreads.includes(sessionId);
   }
 
   setBypassAll(on: boolean): void {
@@ -1336,7 +1400,14 @@ export class HeliconController {
     if (!manager || !after) {
       return;
     }
-    if ((after.pendingApprovals ?? 0) > 0 && (before?.pendingApprovals ?? 0) === 0) {
+    // Uma conversa armada responde às próprias aprovações, então "precisa de você" seria mentira contada um
+    // segundo antes do bypass chegar. Mas um pedido só-de-regra não oferece nada para o bypass clicar, então
+    // fica para o usuário exatamente como o `autoAllow` o deixa: esse ainda precisa do anúncio.
+    if (
+      (after.pendingApprovals ?? 0) > 0 &&
+      (before?.pendingApprovals ?? 0) === 0 &&
+      (!this.bypassArmed(sessionId) || this.hasUnanswerableApproval(sessionId))
+    ) {
       void manager.announce({ kind: "approval", sessionId, thread });
     }
     if ((after.pendingInputs ?? 0) > 0 && (before?.pendingInputs ?? 0) === 0) {
@@ -1388,6 +1459,19 @@ export class HeliconController {
     // Só uma escolha que não deixa nada para trás. Onde o único jeito de permitir é lembrar uma regra, o
     // pedido fica para o usuário: uma regra na config do próprio Muse sobreviveria ao bypass que a escreveu.
     return choices.find((choice) => choice.decision === "approved" && !choice.rulePreview)?.choiceId ?? null;
+  }
+
+  /**
+   * Verdadeiro quando uma aprovação pendente conhecida nesta conversa não tem oferta simples de permitir para o
+   * `autoAllow` aceitar, só prévia de regra ou nada. O `announce` usa isto para avisar mesmo assim de um pedido
+   * que um bypass armado vai deixar parado, usando o mesmo predicado que o `autoAllow` responde.
+   */
+  private hasUnanswerableApproval(sessionId: string): boolean {
+    const thread = this.state.threads[sessionId];
+    if (!thread) {
+      return false;
+    }
+    return Object.values(thread.fold.approvals).some((request) => this.allowOnce(request) === null);
   }
 
   /** Responde o que está pendente em cada conversa armada; um pedido sem oferta de aprovação fica para o usuário. */
@@ -1533,6 +1617,12 @@ export class HeliconController {
   }
 
   async setMode(mode: ApprovalMode): Promise<void> {
+    // O menu desativa seus modos sob o YOLO, mas o `/permissions` ainda chega aqui. Recusar é melhor
+    // que largar o YOLO em silêncio: um comando de conversa não pode virar uma postura geral por trás de um reinício.
+    if (this.state.yoloSettings?.enabled === true) {
+      this.toast("info", "O YOLO está ligado", "Desligue o YOLO para mudar as permissões.");
+      return;
+    }
     this.setPrefs({ defaultMode: mode });
     const route = this.state.route;
     if (route.kind !== "thread") {
@@ -1583,6 +1673,13 @@ export class HeliconController {
   }
 
   async setSandboxDisabled(disabled: boolean): Promise<void> {
+    // A linha da sandbox desativa seu interruptor sob o YOLO, mas nada mais passa por aqui hoje.
+    // Recusar mesmo assim: o YOLO já força a sandbox desligada, e virar este interruptor por trás dele
+    // enfileiraria um reinício inútil e dessincronizaria o botão da configuração que ele não controla mais.
+    if (this.state.yoloSettings?.enabled === true) {
+      this.toast("info", "O modo YOLO está ligado", "A sandbox já está desligada. Desligue o YOLO para controlá-la separadamente.");
+      return;
+    }
     const previous = this.state.sandboxSettings;
     const rev = ++this.sandboxSettingsRev;
     this.update((s) => ({ ...s, sandboxSettings: { disabled } }));
@@ -1603,6 +1700,144 @@ export class HeliconController {
         this.update((s) => ({ ...s, sandboxSettings: previous }));
         this.toast("error", "Não foi possível alterar a configuração da sandbox", userFacingError(error));
       }
+    }
+  }
+
+  /**
+   * Liga ou desliga o YOLO: o servidor recria seus hosts com `--disable-sandbox --trust-workspace`,
+   * e cada conversa aberta vai para acesso total com o bypass implícito, como `muse --yolo`.
+   * Desligar restaura os modos de antes de ligar, ou perguntar-antes quando são desconhecidos.
+   */
+  async setYoloEnabled(enabled: boolean): Promise<void> {
+    // Virar para o valor que já está na tela é clique duplo, não intenção: responder a isso
+    // fotografaria os modos do YOLO como os pré-YOLO (ou restauraria por cima deles) e faria PATCH à toa.
+    if (this.state.yoloSettings?.enabled === enabled) {
+      return;
+    }
+    const previous = this.state.yoloSettings;
+    const rev = ++this.yoloSettingsRev;
+    let capturedPreYolo = false;
+    if (enabled && this.preYolo === null) {
+      this.capturePreYolo();
+      capturedPreYolo = true;
+    }
+    this.update((s) => ({ ...s, yoloSettings: { enabled } }));
+    // O PATCH enfileira um reinício de hosts no servidor, e os hosts só são adquiridos depois da fila, então um
+    // modo de aprovação empurrado antes do PATCH valer seria aplicado antes do reinício, não depois
+    // dele: o host voltaria e veria na hora uma sessão com a postura errada. Esperar o PATCH
+    // resolver antes de tocar no modo de aprovação de qualquer conversa.
+    const run = this.yoloSettingsChain.then(() => this.client.setYoloSettings({ enabled }));
+    this.yoloSettingsChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    try {
+      const yoloSettings = await run;
+      if (rev === this.yoloSettingsRev) {
+        this.update((s) => ({ ...s, yoloSettings }));
+        this.applyYoloApprovals(enabled);
+      }
+    } catch (error) {
+      if (rev === this.yoloSettingsRev) {
+        // A virada nunca chegou ao servidor, então nenhum modo foi empurrado: só a bandeira
+        // otimista volta, nada para desfazer do lado das aprovações.
+        this.update((s) => ({ ...s, yoloSettings: previous }));
+        this.toast("error", "Não foi possível mudar o modo YOLO", userFacingError(error));
+        if (capturedPreYolo) {
+          // A foto desta chamada nunca ligou nada: descartá-la para o próximo ligar fotografar
+          // uma nova em vez de restaurar modos de uma sessão YOLO que nunca aconteceu.
+          this.preYolo = null;
+          this.setPrefs({ preYolo: null });
+        }
+      }
+    }
+  }
+
+  /**
+   * Os modos de aprovação como estão agora, para desligar o YOLO os restaurar. Guardados nas prefs
+   * também, para um recarregar com o YOLO ligado não os perder: o campo em memória recomeça a cada
+   * execução, mas a foto que ele teria tirado agora é exatamente o que a inicialização já persistiu.
+   */
+  private capturePreYolo(): void {
+    this.preYolo = {
+      defaultMode: this.state.prefs.defaultMode,
+      threads: Object.fromEntries(
+        Object.entries(this.state.threads).map(([id, thread]) => [id, thread.fold.meta.approvalMode ?? null]),
+      ),
+    };
+    this.setPrefs({ preYolo: this.preYolo });
+  }
+
+  /** Conversas que o YOLO pode virar: abertas daqui, nunca a conversa só-leitura de outra sessão. */
+  private yoloThreadIds(): string[] {
+    return Object.entries(this.state.threads)
+      .filter(([, thread]) => !thread.readOnly)
+      .map(([id]) => id);
+  }
+
+  private applyYoloApprovals(enabled: boolean): void {
+    if (enabled) {
+      this.setPrefs({ defaultMode: "allowAll" });
+      const modes: Record<string, ApprovalMode> = {};
+      for (const sessionId of this.yoloThreadIds()) {
+        this.patchMeta(sessionId, { approvalMode: "allowAll" });
+        modes[sessionId] = "allowAll";
+      }
+      void this.pushThreadModes(modes, this.preYolo?.threads ?? {}, "perguntando antes");
+      this.autoAllow(Object.keys(this.state.threads));
+      return;
+    }
+    const prev = this.preYolo;
+    this.preYolo = null;
+    this.setPrefs({ preYolo: null });
+    if (prev) {
+      this.setPrefs({ defaultMode: prev.defaultMode });
+    } else if (this.state.prefs.defaultMode === "allowAll") {
+      // Sem foto para restaurar. Só limpar um padrão que este mesmo app forçou para acesso total;
+      // um padrão que o usuário definiu de outro jeito, antes de ligarem o YOLO lá fora, não é nosso para mexer.
+      this.setPrefs({ defaultMode: "onRequest" });
+    }
+    const modes: Record<string, ApprovalMode> = {};
+    const fallback: Record<string, ApprovalMode | null> = {};
+    for (const sessionId of this.yoloThreadIds()) {
+      // Uma conversa que a foto nunca viu (abriu depois de ligar) cai no padrão da foto;
+      // sem foto alguma, cada conversa vai para perguntar-antes em vez de adivinhar pelo padrão atual.
+      const mode = prev ? (prev.threads[sessionId] ?? prev.defaultMode) : "onRequest";
+      this.patchMeta(sessionId, { approvalMode: mode });
+      modes[sessionId] = mode;
+      fallback[sessionId] = "allowAll";
+    }
+    void this.pushThreadModes(modes, fallback, "com acesso total");
+  }
+
+  /**
+   * Empurra modos de aprovação conversa por conversa; uma conversa que o servidor recusar mantém seu modo
+   * `fallback` localmente em vez de fingir que a virada valeu. Um toast para qualquer quantidade de falhas.
+   */
+  private async pushThreadModes(
+    modes: Record<string, ApprovalMode>,
+    fallback: Record<string, ApprovalMode | null>,
+    kept: string,
+  ): Promise<void> {
+    const ids = Object.keys(modes);
+    if (ids.length === 0) {
+      return;
+    }
+    const results = await Promise.allSettled(ids.map((sessionId) => this.client.setApprovalMode(sessionId, modes[sessionId] as ApprovalMode)));
+    let failed = 0;
+    results.forEach((result, i) => {
+      if (result.status === "rejected") {
+        failed += 1;
+        const sessionId = ids[i] as string;
+        this.patchMeta(sessionId, { approvalMode: fallback[sessionId] ?? null });
+      }
+    });
+    if (failed > 0) {
+      this.toast(
+        "error",
+        "Não foi possível alterar as permissões de todas as conversas",
+        `${failed} conversa${failed === 1 ? " continua" : "s continuam"} ${kept}.`,
+      );
     }
   }
 
@@ -2114,6 +2349,12 @@ export class HeliconController {
           return false;
         }
         if (mode === "allowAll") {
+          // O YOLO já é dono do acesso total geral; abrir o diálogo de confirmação aqui prometeria uma
+          // mudança de conversa que o próprio setMode recusa quando o diálogo diz sim.
+          if (this.state.yoloSettings?.enabled === true) {
+            this.toast("info", "O YOLO está ligado", "Desligue o YOLO para mudar as permissões.");
+            return true;
+          }
           // Acesso total sempre passa pela sua confirmação.
           this.setPicker("confirmFullAccess");
           return true;

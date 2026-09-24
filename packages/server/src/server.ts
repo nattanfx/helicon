@@ -631,7 +631,7 @@ export class HeliconServer {
   private readonly store: HeliconStore;
   private readonly hosts = new Map<string, ManagedHost>();
   private readonly starting = new Map<string, Promise<ManagedHost>>();
-  /** Restarts queued by sandbox flips, oldest first. Hosts are only acquired past the tail. */
+  /** Restarts queued by a settings flip, oldest first. Hosts are only acquired past the tail. */
   private restartChain: Promise<void> = Promise.resolve();
   private readonly fingerprints = new Map<string, unknown>();
   private readonly sinks = new Set<SseSink>();
@@ -1452,6 +1452,30 @@ export class HeliconServer {
       const wasDisabled = this.store.getSandboxSettings().disabled;
       const next = this.store.setSandboxSettings(patch);
       if (wasDisabled !== next.disabled) {
+        // Posture is fixed at spawn, so live hosts restart; closing can outlast this request.
+        // Restarts queue behind each other so a session created mid-flip never lands on a retired host.
+        const run = this.restartChain.then(() => this.restartHosts());
+        this.restartChain = run.catch(() => undefined);
+      }
+      this.json(res, 200, next);
+      return true;
+    }
+    if (method === "GET" && path === "/api/yolo-settings") {
+      this.json(res, 200, this.store.getYoloSettings());
+      return true;
+    }
+    if (method === "PATCH" && path === "/api/yolo-settings") {
+      const body = await this.readBody(req);
+      const patch: { enabled?: boolean } = {};
+      if ("enabled" in body) {
+        if (typeof body["enabled"] !== "boolean") {
+          throw new HttpError(400, "enabled must be a boolean.");
+        }
+        patch.enabled = body["enabled"];
+      }
+      const wasEnabled = this.store.getYoloSettings().enabled;
+      const next = this.store.setYoloSettings(patch);
+      if (wasEnabled !== next.enabled) {
         // Posture is fixed at spawn, so live hosts restart; closing can outlast this request.
         // Restarts queue behind each other so a session created mid-flip never lands on a retired host.
         const run = this.restartChain.then(() => this.restartHosts());
@@ -2834,11 +2858,12 @@ export class HeliconServer {
   }
 
   /**
-   * Closes every live host so the next use respawns it with the current sandbox posture. Never
-   * throws: closing is best effort, and a host that refuses to die is dropped the same way.
-   * The respawn only fixes new sessions. Per a Muse SDK limitation, Muse commits
-   * the posture into each session's profile at creation. Only a CLI yolo-open ever
-   * re-resolves it, and that only escalates. Nothing over MSP de-escalates to sandboxed.
+   * Closes every live host so the next use respawns it with the current sandbox and YOLO
+   * posture. Never throws: closing is best effort, and a host that refuses to die is dropped
+   * the same way. The respawn only fixes new sessions: Muse commits each session's
+   * filesystem/network posture at creation (a `yolo` cause carries fs=unrestricted,
+   * net=enabled), so only new threads pick a flipped posture up. The approval side of YOLO
+   * mode flips over MSP instead.
    */
   private async restartHosts(): Promise<void> {
     for (const pending of this.starting.values()) {
@@ -2850,16 +2875,21 @@ export class HeliconServer {
       } catch {
         /* best effort */
       }
-      const message = "The Muse host restarted to apply the new sandbox setting.";
+      const message = "The Muse host restarted to apply a settings change.";
       this.forgetHost(managed, message);
       this.emit("helicon", { type: "host", key: managed.key, state: "restarted", message });
     }
   }
 
   private async serveTargetFor(cwd: string): Promise<ServeTarget> {
-    // Sandbox posture is fixed at spawn: every host carries the setting as it stands now.
+    // Sandbox posture is fixed at spawn: every host carries the settings as they stand now.
     const sandboxDisabled = this.store.getSandboxSettings().disabled;
-    const serveArgs = sandboxDisabled ? ["serve", "--disable-sandbox"] : ["serve"];
+    const yoloEnabled = this.store.getYoloSettings().enabled;
+    const serveArgs = [
+      "serve",
+      ...(sandboxDisabled || yoloEnabled ? ["--disable-sandbox"] : []),
+      ...(yoloEnabled ? ["--trust-workspace"] : []),
+    ];
     if (this.options.platform !== "win32") {
       return { command: this.options.musePath ?? "muse", args: serveArgs, cwd: cwd || process.cwd() };
     }
@@ -2887,6 +2917,7 @@ export class HeliconServer {
       musePath,
       cwd: this.spawnCwdFor(cwd),
       sandboxDisabled,
+      yoloEnabled,
     });
     return { command: plan.command, args: plan.args, cwd: plan.cwd };
   }
