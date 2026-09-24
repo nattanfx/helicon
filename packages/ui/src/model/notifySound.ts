@@ -8,8 +8,8 @@
 const BEEP_FREQ_HZ = 880;
 /** Duração do bipe em segundos. */
 const BEEP_DURATION_S = 0.12;
-/** Pico do volume: baixo de propósito para não assustar. */
-const BEEP_GAIN = 0.07;
+/** Pico do volume: audível sem assustar (0,07 era baixo demais no Teste). */
+const BEEP_GAIN = 0.25;
 /** Subida do volume em segundos: evita o estalo de começar no pico. */
 const BEEP_ATTACK_S = 0.012;
 /** Folga após o fim do bipe antes de parar o oscilador, em segundos. */

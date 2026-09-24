@@ -76,7 +76,7 @@ describe("bipe de notificação", () => {
     const gain = ctx.gains[0] as FakeGain;
     assert.equal(osc.type, "sine");
     assert.equal(osc.frequency.value, 880);
-    assert.deepEqual(gain.gain.calls, ["set:0.0001@10", "ramp:0.07@10.012", "ramp:0.0001@10.12"]);
+    assert.deepEqual(gain.gain.calls, ["set:0.0001@10", "ramp:0.25@10.012", "ramp:0.0001@10.12"]);
     assert.deepEqual(osc.connectedTo, [gain]);
     assert.deepEqual(gain.connectedTo, [ctx.destination]);
     assert.deepEqual(osc.started, [10]);
