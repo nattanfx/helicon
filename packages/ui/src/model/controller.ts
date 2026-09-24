@@ -423,7 +423,16 @@ export class HeliconController {
         soundForeground: this.state.prefs.notificationSoundForeground,
       }),
       () => this.platform.now(),
-      () => {
+      async () => {
+        // No desktop o som é o do sistema; o bipe sintetizado só aparece onde não há som nativo.
+        if (notifier.systemSound) {
+          try {
+            await notifier.systemSound();
+            return { scheduled: true, audioState: "sistema" };
+          } catch {
+            /* cai para o bipe */
+          }
+        }
         let audioState = "desconhecido";
         const scheduled = playNotifySound(undefined, (info) => {
           audioState = info.state;

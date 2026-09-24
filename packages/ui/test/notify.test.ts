@@ -434,4 +434,163 @@ describe("notificações", () => {
     assert.equal(traces[0]?.balloon, "sem permissão");
     assert.equal(traces[0]?.beep, "não testado");
   });
+
+  it("balão com som sai sonando e dispensa o som separado", async () => {
+    const { fake, shown } = notifier();
+    const silences: (boolean | undefined)[] = [];
+    let path: string | undefined;
+    let beeps = 0;
+    const native: Notifier = {
+      ...fake,
+      get lastShowPath() {
+        return path;
+      },
+      show: async (note) => {
+        await fake.show(note);
+        silences.push(note.silent);
+        path = "nativo";
+      },
+    };
+    const manager = new NotificationManager(
+      native,
+      () => ({ enabled: true, focused: false, sound: true }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+
+    assert.equal(shown.length, 1);
+    assert.deepEqual(silences, [false]);
+    assert.equal(beeps, 0, "o próprio balão já sonou");
+    const traces = manager.recent();
+    assert.equal(traces[0]?.balloon, "mostrado (nativo)");
+    assert.equal(traces[0]?.beep, "no balão (nativo)");
+  });
+
+  it("balão sem som sai mudo", async () => {
+    const { fake, shown } = notifier();
+    const silences: (boolean | undefined)[] = [];
+    let beeps = 0;
+    const native: Notifier = {
+      ...fake,
+      show: async (note) => {
+        await fake.show(note);
+        silences.push(note.silent);
+      },
+    };
+    const manager = new NotificationManager(
+      native,
+      () => ({ enabled: true, focused: false, sound: false }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+
+    assert.equal(shown.length, 1);
+    assert.deepEqual(silences, [true]);
+    assert.equal(beeps, 0);
+  });
+
+  it("som sem balão toca separado", async () => {
+    const { fake, shown } = notifier();
+    const manager = new NotificationManager(
+      fake,
+      () => ({ enabled: false, focused: false, sound: true }),
+      undefined,
+      async () => ({ scheduled: true, audioState: "sistema" }),
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+
+    assert.deepEqual(shown, []);
+    assert.equal(manager.recent()[0]?.beep, "agendado (sistema)");
+  });
+
+  it("queda para o plug-in toca o som separado", async () => {
+    const { fake, shown } = notifier();
+    let beeps = 0;
+    const plugin: Notifier = {
+      ...fake,
+      lastShowPath: "plugin",
+      show: async (note) => {
+        await fake.show(note);
+      },
+    };
+    const manager = new NotificationManager(
+      plugin,
+      () => ({ enabled: true, focused: false, sound: true }),
+      undefined,
+      async () => {
+        beeps += 1;
+        return { scheduled: true, audioState: "sistema" };
+      },
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+
+    assert.equal(shown.length, 1);
+    assert.equal(beeps, 1, "o plug-in é mudo, então o som sai separado");
+    const traces = manager.recent();
+    assert.equal(traces[0]?.balloon, "mostrado (plugin)");
+    assert.equal(traces[0]?.beep, "agendado (sistema)");
+  });
+
+  it("a prova dos dois sai no balão sonando sem som separado", async () => {
+    const { fake, shown } = notifier();
+    const silences: (boolean | undefined)[] = [];
+    let path: string | undefined;
+    let beeps = 0;
+    const native: Notifier = {
+      ...fake,
+      get lastShowPath() {
+        return path;
+      },
+      show: async (note) => {
+        await fake.show(note);
+        silences.push(note.silent);
+        path = "nativo";
+      },
+    };
+    const manager = new NotificationManager(
+      native,
+      () => ({ enabled: false, focused: true, sound: false }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.preview("both");
+
+    assert.equal(shown.length, 1);
+    assert.deepEqual(silences, [false]);
+    assert.equal(beeps, 0);
+    const traces = manager.recent();
+    assert.equal(traces[0]?.balloon, "mostrado (teste, nativo)");
+    assert.equal(traces[0]?.beep, "no balão (nativo)");
+  });
+
+  it("a prova do balão sai muda", async () => {
+    const { fake, shown } = notifier();
+    const silences: (boolean | undefined)[] = [];
+    const native: Notifier = {
+      ...fake,
+      show: async (note) => {
+        await fake.show(note);
+        silences.push(note.silent);
+      },
+    };
+    const manager = new NotificationManager(native, () => ({ enabled: false, focused: true, sound: false }));
+
+    await manager.preview("balloon");
+
+    assert.equal(shown.length, 1);
+    assert.deepEqual(silences, [true]);
+  });
 });

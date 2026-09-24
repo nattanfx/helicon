@@ -30,31 +30,42 @@ function browserNotifier(): Notifier | undefined {
         return "denied";
       }
     },
-    async show({ title, body, tag }) {
+    async show({ title, body, tag, silent }) {
       // A `tag` substitui um aviso anterior sobre a mesma conversa em vez de empilhar mais um.
-      new Notification(title, { body, tag });
+      new Notification(title, { body, tag, silent });
     },
   };
 }
 
 /** Toast nativo pelo shell: no Windows sai com o som do sistema, como no Grok. */
-async function nativeToast(title: string, body: string): Promise<unknown> {
-  return invoke("helicon_notify_toast", { title, body });
+async function nativeToast(title: string, body: string, silent: boolean): Promise<unknown> {
+  return invoke("helicon_notify_toast", { title, body, silent });
+}
+
+/** Som do sistema sem balão, pelo shell. */
+async function nativeSound(): Promise<unknown> {
+  return invoke("helicon_notify_sound");
 }
 
 /**
  * A do shell do desktop: tenta o toast nativo com som e cai para o `sendNotification` do
  * plug-in quando o nativo falha (outra plataforma, comando ausente). Uma webview não carrega a
  * API do navegador de forma confiável, então no desktop é uma destas que de fato alcança o SO.
- * O mostrador recebe uma imitação nos testes.
+ * O mostrador e o som recebem imitações nos testes.
  */
-export function desktopNotifier(notify: (title: string, body: string) => Promise<unknown> = nativeToast): Notifier {
+export function desktopNotifier(
+  notify: (title: string, body: string, silent: boolean) => Promise<unknown> = nativeToast,
+  system: () => Promise<unknown> = nativeSound,
+): Notifier {
   let path = "plugin";
   return {
     label: "desktop",
     startupRequest: true,
     get lastShowPath() {
       return path;
+    },
+    systemSound: async () => {
+      await system();
     },
     async permission() {
       try {
@@ -70,11 +81,11 @@ export function desktopNotifier(notify: (title: string, body: string) => Promise
         return "denied";
       }
     },
-    async show({ title, body }) {
+    async show({ title, body, silent }) {
       // O plug-in não tem noção de substituir um aviso anterior, então a janela de repetição do próprio gerenciador
       // é a única coisa impedindo uma conversa de empilhar.
       try {
-        await notify(title, body);
+        await notify(title, body, silent === true);
         path = "nativo";
       } catch {
         path = "plugin";

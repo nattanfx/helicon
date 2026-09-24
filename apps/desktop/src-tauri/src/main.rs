@@ -178,7 +178,7 @@ fn helicon_save_file_drafts(app: tauri::AppHandle, content: String) -> Result<()
 /// Backport seletivo só do caminho WinRT (sem clique, sem foco de conversa): fora do Windows
 /// devolve erro e a interface cai para o `sendNotification` do plugin. Devolve o caminho usado.
 #[tauri::command]
-fn helicon_notify_toast(app: tauri::AppHandle, title: String, body: Option<String>) -> Result<String, String> {
+fn helicon_notify_toast(app: tauri::AppHandle, title: String, body: Option<String>, silent: bool) -> Result<String, String> {
     let title = title.trim().to_string();
     if title.is_empty() {
         return Err("título do aviso vazio".to_string());
@@ -191,12 +191,34 @@ fn helicon_notify_toast(app: tauri::AppHandle, title: String, body: Option<Strin
         if !body.is_empty() {
             toast = toast.text1(&body);
         }
+        if silent {
+            toast = toast.sound(None);
+        }
         return toast.show().map(|_| "winrt".to_string()).map_err(|error| error.to_string());
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, body);
+        let _ = (app, body, silent);
         Err("sem toast nativo nesta plataforma".to_string())
+    }
+}
+
+/// Toca o som de notificação do sistema sem mostrar balão: o alias respeita o som que o
+/// usuário escolheu no Painel de Som, o mesmo que os toasts tocam. Fora do Windows devolve
+/// erro e a interface cai para o bipe sintetizado.
+#[tauri::command]
+fn helicon_notify_sound() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows::core::w;
+        use windows::Win32::Foundation::HMODULE;
+        use windows::Win32::Media::Audio::{PlaySoundW, SND_ALIAS, SND_ASYNC};
+        let idle: HMODULE = unsafe { std::mem::zeroed() };
+        unsafe { PlaySoundW(w!("SystemNotification"), idle, SND_ALIAS | SND_ASYNC).ok().map_err(|error| error.to_string()) }
+    }
+    #[cfg(not(windows))]
+    {
+        Err("sem som nativo nesta plataforma".to_string())
     }
 }
 
@@ -610,7 +632,7 @@ fn main() {
                 .build(),
         )
         .manage(ServerChild(Arc::new(Mutex::new(None))))
-        .invoke_handler(tauri::generate_handler![helicon_load_file_drafts, helicon_save_file_drafts, helicon_notify_toast])
+        .invoke_handler(tauri::generate_handler![helicon_load_file_drafts, helicon_save_file_drafts, helicon_notify_toast, helicon_notify_sound])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             install_zoom_menu(app)?;

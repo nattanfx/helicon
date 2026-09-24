@@ -17,6 +17,7 @@
     "core:window:allow-destroy",
     "core:app:default",
     "allow-helicon-load-file-drafts",
+    "allow-helicon-notify-sound",
     "allow-helicon-notify-toast",
     "allow-helicon-save-file-drafts",
     "core:resources:allow-close",

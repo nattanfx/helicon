@@ -18,11 +18,13 @@ export interface Notifier {
   startupRequest?: boolean;
   /** Caminho usado pelo último `show` ("nativo", "plugin"); para o diagnóstico temporário. */
   readonly lastShowPath?: string;
+  /** Som do sistema sem balão; ausente fora do desktop, onde cai para o bipe sintetizado. */
+  systemSound?: () => Promise<unknown>;
   /** O que o usuário já decidiu, sem perguntar de novo. */
   permission(): Promise<NotifyPermission>;
   /** Pergunta uma vez. Navegadores só honram isso a partir de um gesto real do usuário, por isso não é automático. */
   request(): Promise<NotifyPermission>;
-  show(note: { title: string; body: string; tag: string }): Promise<void>;
+  show(note: { title: string; body: string; tag: string; silent?: boolean }): Promise<void>;
 }
 
 export interface NotifySettings {
@@ -118,7 +120,7 @@ export class NotificationManager {
     private readonly notifier: Notifier,
     private readonly settings: () => NotifySettings,
     private readonly now: () => number = () => Date.now(),
-    private readonly playSound: () => SoundOutcome | void = () => {},
+    private readonly playSound: () => SoundOutcome | void | Promise<SoundOutcome | void> = () => {},
   ) {}
 
   /** Tentativas recentes, da mais antiga à mais nova, para o diagnóstico temporário. */
@@ -167,11 +169,9 @@ export class NotificationManager {
       return;
     }
     this.shown.set(key, trace.at);
-    // O bipe sai primeiro e nunca espera o balão: a consulta de permissão e o mostrador
-    // não atrasam nem calam o som.
-    if (beep) {
-      this.soundTrace(trace);
-    }
+    // O som do balão segue o canal do som: balão com som ligado sai sonando, com som
+    // desligado sai mudo. Quando o próprio balão já sonou, dispensa o som separado.
+    let sounded = false;
     let granted = false;
     if (show) {
       // Nunca pergunta aqui: um navegador só concede permissão a partir de um gesto do usuário, então a página de configurações pergunta.
@@ -184,8 +184,10 @@ export class NotificationManager {
     if (granted) {
       const { title, body } = copy(event);
       try {
-        await this.notifier.show({ title, body, tag });
-        trace.balloon = this.notifier.lastShowPath ? `mostrado (${this.notifier.lastShowPath})` : "mostrado";
+        await this.notifier.show({ title, body, tag, silent: !beep });
+        const path = this.notifier.lastShowPath;
+        trace.balloon = path ? `mostrado (${path})` : "mostrado";
+        sounded = beep && path === "nativo";
       } catch (error) {
         // Não vale quebrar uma mensagem por causa de um notificador que recusa.
         trace.balloon = `falha: ${reason(error)}`;
@@ -193,13 +195,20 @@ export class NotificationManager {
     } else if (show) {
       trace.balloon = "sem permissão";
     }
+    if (beep) {
+      if (sounded) {
+        trace.beep = "no balão (nativo)";
+      } else {
+        await this.soundTrace(trace);
+      }
+    }
     this.pushTrace(trace);
   }
 
   /**
    * Prova de cada canal a pedido do usuário, sem depender de foco, interruptores ou repetição:
-   * os botões de teste das Configurações passam por aqui. O balão de prova respeita a permissão
-   * do sistema; o bipe de prova toca sempre. Não marca a janela de repetição.
+   * os botões de teste das Configurações passam por aqui. A prova do balão sai muda e a do som
+   * toca sozinha; a prova dos dois sai no balão sonando. Não marca a janela de repetição.
    */
   async preview(channel: "balloon" | "sound" | "both"): Promise<void> {
     const { enabled, focused, sound, balloonForeground, soundForeground } = this.settings();
@@ -219,9 +228,7 @@ export class NotificationManager {
       balloon: channel === "sound" ? "não testado" : "",
       beep: channel === "balloon" ? "não testado" : "",
     };
-    if (channel !== "balloon") {
-      this.soundTrace(trace);
-    }
+    let sounded = false;
     if (channel !== "sound") {
       const asked = this.now();
       const answer = await this.notifier.permission();
@@ -235,20 +242,30 @@ export class NotificationManager {
             title: "Helicon: teste de aviso",
             body: "Se você está vendo isto, o balão funciona.",
             tag: "helicon-teste",
+            silent: channel === "balloon",
           });
-          trace.balloon = this.notifier.lastShowPath ? `mostrado (teste, ${this.notifier.lastShowPath})` : "mostrado (teste)";
+          const path = this.notifier.lastShowPath;
+          trace.balloon = path ? `mostrado (teste, ${path})` : "mostrado (teste)";
+          sounded = channel === "both" && path === "nativo";
         } catch (error) {
           trace.balloon = `falha: ${reason(error)}`;
         }
       }
     }
+    if (channel !== "balloon") {
+      if (sounded) {
+        trace.beep = "no balão (nativo)";
+      } else {
+        await this.soundTrace(trace);
+      }
+    }
     this.pushTrace(trace);
   }
 
-  /** Toca o bipe e anota o resultado no rastro; nunca lança. */
-  private soundTrace(trace: NotifyTrace): void {
+  /** Toca o som e anota o resultado no rastro; nunca lança. */
+  private async soundTrace(trace: NotifyTrace): Promise<void> {
     try {
-      const outcome = this.playSound();
+      const outcome = await this.playSound();
       trace.beep =
         outcome !== undefined && typeof outcome === "object"
           ? outcome.scheduled

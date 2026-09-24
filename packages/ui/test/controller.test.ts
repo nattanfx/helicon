@@ -1342,6 +1342,71 @@ describe("HeliconController", () => {
     stop();
   });
 
+  it("prefers the system sound over the synthesized beep", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    let played = 0;
+    controller.attachNotifier({
+      permission: async () => "granted",
+      request: async () => "granted",
+      show: async () => {},
+      systemSound: async () => {
+        played += 1;
+      },
+    });
+    controller.setPrefs({ notifications: false, notificationSound: true });
+    client.handler?.({
+      type: "session-status",
+      sessionId: "s1",
+      live: {
+        activeTurnId: null,
+        turnStartedAt: null,
+        pendingApprovals: 1,
+        pendingInputs: 0,
+        lastTerminal: null,
+        lastError: null,
+      } as never,
+    });
+    await settle();
+
+    assert.equal(played, 1);
+    assert.equal(controller.notificationTrace().at(-1)?.beep, "agendado (sistema)");
+    stop();
+  });
+
+  it("falls back to the synthesized beep when the system sound fails", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    let attempts = 0;
+    controller.attachNotifier({
+      permission: async () => "granted",
+      request: async () => "granted",
+      show: async () => {},
+      systemSound: async () => {
+        attempts += 1;
+        throw new Error("sem som");
+      },
+    });
+    controller.setPrefs({ notifications: false, notificationSound: true });
+    client.handler?.({
+      type: "session-status",
+      sessionId: "s1",
+      live: {
+        activeTurnId: null,
+        turnStartedAt: null,
+        pendingApprovals: 1,
+        pendingInputs: 0,
+        lastTerminal: null,
+        lastError: null,
+      } as never,
+    });
+    await settle();
+
+    assert.equal(attempts, 1);
+    assert.match(controller.notificationTrace().at(-1)?.beep ?? "", /agendado/);
+    stop();
+  });
+
   it("marks a read-only thread and refuses to send into it", async () => {
     const client = new FakeClient();
     client.transcript = async () => load({ readOnly: true, readOnlyReason: "session is loaded by another host" });

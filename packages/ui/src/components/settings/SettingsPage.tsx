@@ -411,7 +411,7 @@ export function SettingsPage() {
           </Row>
           <Row
             label="Tocar som junto com o aviso"
-            description="Um bipe suave a cada aviso, com ou sem o balão acima."
+            description="O som do sistema a cada aviso — junto com o balão, ou sozinho quando o balão está desligado."
           >
             <Toggle
               checked={prefs.notificationSound}
@@ -432,7 +432,7 @@ export function SettingsPage() {
           </Row>
           <Row
             label="Provar cada canal"
-            description="Toca o bipe e mostra um balão de prova na hora, mesmo com esta janela aberta. O balão de prova precisa da autorização do sistema."
+            description="Toca o som e mostra um balão de prova na hora, mesmo com esta janela aberta. O balão de prova precisa da autorização do sistema."
           >
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="secondary" onClick={() => void controller.testNotify("sound")}>
