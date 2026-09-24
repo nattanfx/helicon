@@ -204,4 +204,92 @@ describe("notificações", () => {
     assert.equal(shown.length, 0);
     assert.equal(beeps, 1, "permissão negada cala o balão, não o bipe");
   });
+
+  it("diagnóstico temporário: registra tentativas suprimidas pelo foco", async () => {
+    const { fake } = notifier();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: true, sound: true }));
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false, turnId: "t1" });
+
+    const traces = manager.recent();
+    assert.equal(traces.length, 1);
+    assert.equal(traces[0]?.kind, "finished");
+    assert.equal(traces[0]?.turnId, "t1");
+    assert.equal(traces[0]?.focused, true);
+    assert.equal(traces[0]?.balloon, "foco");
+    assert.equal(traces[0]?.beep, "foco");
+    assert.equal(traces[0]?.permission, "não consultada");
+  });
+
+  it("diagnóstico temporário: registra balão mostrado, transporte e resultado do bipe", async () => {
+    const { fake, shown } = notifier();
+    fake.label = "desktop";
+    const manager = new NotificationManager(
+      fake,
+      () => ({ enabled: true, focused: false, sound: true }),
+      undefined,
+      () => ({ scheduled: true, audioState: "running" }),
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false, turnId: "t7" });
+
+    assert.equal(shown.length, 1);
+    const traces = manager.recent();
+    assert.equal(traces[0]?.backend, "desktop");
+    assert.equal(traces[0]?.permission, "granted");
+    assert.equal(typeof traces[0]?.permissionMs, "number");
+    assert.equal(traces[0]?.balloon, "mostrado");
+    assert.equal(traces[0]?.beep, "agendado (running)");
+    assert.equal(traces[0]?.turnId, "t7");
+  });
+
+  it("diagnóstico temporário: registra repetição, falta de permissão e bipe quebrado", async () => {
+    const { fake, shown } = notifier("denied");
+    const time = clock();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false, sound: true }), time.now, () => {
+      throw new Error("sem áudio");
+    });
+
+    await manager.announce({ kind: "approval", sessionId: "s1", thread: "notes-app" });
+    await manager.announce({ kind: "approval", sessionId: "s1", thread: "notes-app" });
+
+    assert.deepEqual(shown, []);
+    const traces = manager.recent();
+    assert.equal(traces.length, 2);
+    assert.equal(traces[0]?.balloon, "sem permissão");
+    assert.equal(traces[0]?.beep, "falha: sem áudio");
+    assert.equal(traces[1]?.balloon, "repetição 20s");
+    assert.equal(traces[1]?.beep, "repetição 20s");
+  });
+
+  it("diagnóstico temporário: registra mostrador quebrado e bipe sem retorno", async () => {
+    const { fake } = notifier();
+    const broken: Notifier = {
+      ...fake,
+      show: async () => {
+        throw new Error("recusado");
+      },
+    };
+    const manager = new NotificationManager(broken, () => ({ enabled: true, focused: false, sound: true }), undefined, () => {});
+
+    await manager.announce({ kind: "question", sessionId: "s1", thread: "notes-app" });
+
+    const traces = manager.recent();
+    assert.equal(traces[0]?.balloon, "falha: recusado");
+    assert.equal(traces[0]?.beep, "chamado");
+  });
+
+  it("diagnóstico temporário: guarda só as últimas 20 tentativas", async () => {
+    const { fake } = notifier();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false }));
+
+    for (let i = 0; i < 25; i += 1) {
+      await manager.announce({ kind: "approval", sessionId: `s${i}`, thread: "notes-app" });
+    }
+
+    const traces = manager.recent();
+    assert.equal(traces.length, 20);
+    assert.equal(traces[0]?.sessionId, "s5");
+    assert.equal(traces[19]?.sessionId, "s24");
+  });
 });

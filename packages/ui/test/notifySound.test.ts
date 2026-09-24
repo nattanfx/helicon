@@ -110,4 +110,42 @@ describe("bipe de notificação", () => {
     };
     assert.equal(playNotifySound(ctx2), true);
   });
+
+  it("informa o estado do contexto à sonda de diagnóstico", () => {
+    const ctx = new FakeAudioContext() as FakeAudioContext & { state: string };
+    ctx.state = "suspended";
+    let seen: string | null = null;
+
+    assert.equal(
+      playNotifySound(ctx, (info) => {
+        seen = info.state;
+      }),
+      true,
+    );
+    assert.equal(seen, "suspended");
+  });
+
+  it("sonda recebe desconhecido quando o contexto não informa estado", () => {
+    const ctx = new FakeAudioContext();
+    let seen: string | null = null;
+
+    assert.equal(
+      playNotifySound(ctx, (info) => {
+        seen = info.state;
+      }),
+      true,
+    );
+    assert.equal(seen, "desconhecido");
+  });
+
+  it("sonda que lança não quebra o bipe", () => {
+    const ctx = new FakeAudioContext();
+
+    assert.equal(
+      playNotifySound(ctx, () => {
+        throw new Error("sonda quebrada");
+      }),
+      true,
+    );
+  });
 });

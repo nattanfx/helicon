@@ -11,6 +11,7 @@ import {
   manualUpdateHint,
   shortBuild,
 } from "../../model/identity.js";
+import type { NotifyTrace } from "../../model/notify.js";
 import { CODE_THEMES, ZOOM_MAX, ZOOM_MIN, type CodeTheme, type GroupBy, type ThemePref } from "../../model/store.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
@@ -72,6 +73,26 @@ function Section(props: { title: string; children: ReactNode }) {
   );
 }
 
+const TRACE_KIND_LABEL: Record<NotifyTrace["kind"], string> = {
+  approval: "aprovação",
+  question: "pergunta",
+  finished: "fim de turno",
+  goal: "meta",
+};
+
+/** Uma tentativa de aviso em texto legível, para o diagnóstico temporário das notificações. */
+function formatNotifyTrace(trace: NotifyTrace): string {
+  const hora = new Date(trace.at).toLocaleTimeString("pt-BR", { hour12: false });
+  const turno = trace.turnId ? ` ${trace.turnId}` : "";
+  const permissao =
+    trace.permission === "não consultada" ? "permissão não consultada" : `permissão ${trace.permission} (${trace.permissionMs} ms)`;
+  return (
+    `${hora} ${TRACE_KIND_LABEL[trace.kind]} ${trace.sessionId}${turno} · ${trace.backend} · ` +
+    `balão ${trace.enabled ? "on" : "off"} · som ${trace.sound ? "on" : "off"} · foco ${trace.focused ? "sim" : "não"} · ` +
+    `${permissao} · balão: ${trace.balloon} · bipe: ${trace.beep}`
+  );
+}
+
 function Row(props: { label: string; description?: string; children?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-t border-line px-4 py-3 first:border-t-0">
@@ -125,6 +146,8 @@ export function SettingsPage() {
   const [notasOpen, setNotasOpen] = useState(false);
   const now = useNow(60_000);
   const busy = updates?.status === "checking" || updates?.status === "downloading" || updates?.status === "installing";
+  const traces = controller.notificationTrace();
+  const userAgent = typeof navigator === "undefined" ? "desconhecido" : navigator.userAgent;
   const collapsed = useApp((s) => s.prefs.sidebarCollapsed);
   const drag = useOverlayDragProps();
 
@@ -358,6 +381,25 @@ export function SettingsPage() {
               onChange={(on) => controller.setPrefs({ notificationSound: on })}
             />
           </Row>
+          <div className="border-t border-line px-4 py-3">
+            <p className="text-sm text-fg">Diagnóstico temporário</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Últimas tentativas de aviso nesta sessão, para investigar a falha após abrir o app. Temporário:
+              será removido. Abra esta tela logo após reproduzir a falha.
+            </p>
+            <p className="mt-1 font-mono text-2xs break-all text-muted">Agente: {userAgent}</p>
+            {traces.length === 0 ? (
+              <p className="mt-1 text-xs text-muted">Nenhuma tentativa desde que o app abriu.</p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {[...traces].reverse().map((trace, index) => (
+                  <li key={`${trace.at}-${index}`} className="font-mono text-2xs break-all text-fg">
+                    {formatNotifyTrace(trace)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Section>
 
         <Section title="Versão">

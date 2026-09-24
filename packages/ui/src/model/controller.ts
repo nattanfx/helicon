@@ -84,7 +84,7 @@ import {
   serializeFileDrafts,
 } from "./fileDrafts.js";
 import type { AppIdentity } from "./identity.js";
-import { NotificationManager, type Notifier } from "./notify.js";
+import { NotificationManager, type Notifier, type NotifyTrace } from "./notify.js";
 import { playNotifySound } from "./notifySound.js";
 import { UpdateManager, type AppUpdater } from "./updates.js";
 
@@ -417,7 +417,11 @@ export class HeliconController {
       () => ({ enabled: this.state.prefs.notifications, focused: this.platform.focused(), sound: this.state.prefs.notificationSound }),
       () => this.platform.now(),
       () => {
-        playNotifySound();
+        let audioState = "desconhecido";
+        const scheduled = playNotifySound(undefined, (info) => {
+          audioState = info.state;
+        });
+        return { scheduled, audioState };
       },
     );
   }
@@ -430,6 +434,11 @@ export class HeliconController {
       return;
     }
     this.setPrefs({ notifications: true });
+  }
+
+  /** Tentativas recentes de aviso, para o bloco de diagnóstico temporário das Configurações. */
+  notificationTrace(): NotifyTrace[] {
+    return this.notifications?.recent() ?? [];
   }
 
   /** Versão e canal informados pelo shell, sem consultar um atualizador. */
@@ -1437,7 +1446,7 @@ export class HeliconController {
     }
     if (after.activeTurnId === null && before?.activeTurnId != null && after.lastTerminal) {
       const failed = Boolean(after.lastError) || after.lastTerminal === "failed";
-      void manager.announce({ kind: "finished", sessionId, thread, failed });
+      void manager.announce({ kind: "finished", sessionId, thread, failed, turnId: before?.activeTurnId ?? null });
     }
     const status = after.goal?.status ?? null;
     if (status && status !== "active" && status !== (before?.goal?.status ?? null)) {

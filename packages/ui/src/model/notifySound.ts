@@ -44,6 +44,8 @@ export interface BeepGain {
 export interface BeepAudio {
   readonly currentTime: number;
   readonly destination: unknown;
+  /** Estado do contexto (`running`, `suspended`...); ausente nas imitações de teste. */
+  readonly state?: unknown;
   createOscillator(): BeepOscillator;
   createGain(): BeepGain;
   close(): unknown;
@@ -72,12 +74,20 @@ function defaultAudio(): BeepAudio | null {
 /**
  * Toca o bipe da notificação. Sem argumento usa o AudioContext do ambiente; testes passam uma
  * imitação (ou null para simular ausência de áudio). Devolve true quando o bipe foi agendado.
+ * A sonda opcional recebe o estado do contexto usado, para o diagnóstico temporário; nunca quebra o bipe.
  */
-export function playNotifySound(context?: BeepAudio | null): boolean {
+export function playNotifySound(context?: BeepAudio | null, probe?: (info: { state: string }) => void): boolean {
   try {
     const ctx = context === undefined ? defaultAudio() : context;
     if (!ctx) {
       return false;
+    }
+    if (probe) {
+      try {
+        probe({ state: typeof ctx.state === "string" ? ctx.state : "desconhecido" });
+      } catch {
+        /* sonda é diagnóstico; nunca vale um erro */
+      }
     }
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();

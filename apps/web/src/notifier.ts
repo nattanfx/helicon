@@ -16,6 +16,7 @@ function browserNotifier(): Notifier | undefined {
   }
   const read = (): NotifyPermission => asPermission(Notification.permission);
   return {
+    label: "navegador",
     permission: async () => read(),
     async request() {
       // Todo navegador recusa uma segunda pergunta, e a resposta já é conhecida nessa altura mesmo.
@@ -41,6 +42,7 @@ function browserNotifier(): Notifier | undefined {
  */
 function desktopNotifier(): Notifier {
   return {
+    label: "desktop",
     async permission() {
       try {
         return (await isPermissionGranted()) ? "granted" : "default";
