@@ -709,6 +709,7 @@ export function applyEvent(fold: ThreadFold, event: ViewEvent): ThreadFold {
 /** Build a fold from a resume response; the server's pending set is authoritative. */
 export function foldFromLoad(load: TranscriptLoad, previous?: ThreadFold | null): ThreadFold {
   let fold = applyEvents(emptyFold(), load.events);
+  const reportedActive = load.msp ? load.msp.activeTurnId : fold.activeTurnId;
   const approvals: Record<string, ApprovalRequest> = {};
   for (const approval of load.pending.approvals) {
     approvals[approval.approvalId] = approval;
@@ -721,7 +722,9 @@ export function foldFromLoad(load: TranscriptLoad, previous?: ThreadFold | null)
     ...fold,
     approvals,
     userInputs,
-    activeTurnId: load.msp ? load.msp.activeTurnId : fold.activeTurnId,
+    // Resume status is fetched before transcript pages: an ending in those pages may be
+    // newer than the status. A terminal turn cannot be active, even in a mixed snapshot.
+    activeTurnId: reportedActive && !fold.turns[reportedActive]?.terminal ? reportedActive : null,
     // A reload must not resurrect prompts the history already settled: echoes whose turn finished or whose
     // prompt is already in the transcript would otherwise sit stuck for the rest of the thread.
     echoes: (previous?.echoes ?? []).filter((echo) => !echoSettledInLoad(fold, echo)),

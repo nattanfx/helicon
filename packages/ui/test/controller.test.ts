@@ -2264,7 +2264,7 @@ describe("stale thread watchdog", () => {
     stop();
   });
 
-  it("forgets an abandoned turn once history carries a real ending", async () => {
+  it("preserves the real ending of an abandoned turn from history", async () => {
     const client = new FakeClient();
     client.transcript = async () => runningLoad();
     const { controller, stop } = await exhaustRecovery(client);
@@ -2282,6 +2282,153 @@ describe("stale thread watchdog", () => {
     assert.equal(controller.store.get().threads["s1"]?.stalled, false);
     stop();
   });
+
+  it("preserves events received while cancellation is pending", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    let release!: () => void;
+    client.cancelTurn = () => new Promise<void>((resolve) => { release = resolve; });
+    const abandoning = controller.abandonStalledTurn("s1");
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/completed", params: { turnId: "live-1", terminal: "completed" }, at: 2 });
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { turnId: "live-2" }, at: 3 });
+    controller.flush();
+    release();
+    await abandoning;
+    const fold = controller.store.get().threads["s1"]!.fold;
+    stop();
+    assert.equal(fold.activeTurnId, "live-2", "the queue's next turn must survive the cancel response");
+    assert.equal(fold.turns["live-1"]?.terminal, "completed", "the host's actual ending must survive");
+  });
+
+  it("releases locally before a slow cancel response and protects an in-flight reload", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    let finishLoad!: (value: TranscriptLoad) => void;
+    client.transcript = () => new Promise((resolve) => { finishLoad = resolve; });
+    const loading = controller.loadThread("s1");
+    let release!: () => void;
+    client.cancelTurn = () => new Promise<void>((resolve) => { release = resolve; });
+    const abandoning = controller.abandonStalledTurn("s1");
+    const immediately = controller.store.get().threads["s1"]!.fold.activeTurnId;
+    finishLoad(runningLoad());
+    await loading;
+    const reloaded = controller.store.get().threads["s1"]!.fold.activeTurnId;
+    release();
+    await abandoning;
+    stop();
+    assert.equal(immediately, null);
+    assert.equal(reloaded, null);
+  });
+
+  for (const intermediate of ["other-turn", "truncated", "real-ending"] as const) {
+    it(`keeps abandonment across ${intermediate} and a stale snapshot`, async () => {
+      const client = new FakeClient();
+      client.transcript = async () => runningLoad();
+      const { controller, stop } = await exhaustRecovery(client);
+      await controller.abandonStalledTurn("s1");
+      client.transcript = async () => load({
+        msp: { ...runningLoad().msp!, activeTurnId: intermediate === "other-turn" ? "live-2" : null },
+        truncated: intermediate === "truncated",
+        events: intermediate === "real-ending"
+          ? [{ method: "turn/completed", params: { turnId: "live-1", terminal: "completed" }, at: 2 }]
+          : intermediate === "other-turn"
+            ? [{ method: "turn/started", params: { turnId: "live-2" }, at: 2 }]
+            : [],
+      });
+      await controller.loadThread("s1");
+      const nextActive = controller.store.get().threads["s1"]!.fold.activeTurnId;
+      client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { turnId: "live-1" }, at: 3 });
+      controller.flush();
+      const afterReplay = controller.store.get().threads["s1"]!.fold.activeTurnId;
+      client.transcript = async () => runningLoad();
+      await controller.loadThread("s1");
+      const afterReload = controller.store.get().threads["s1"]!.fold.activeTurnId;
+      stop();
+      assert.equal(nextActive, intermediate === "other-turn" ? "live-2" : null);
+      assert.equal(afterReplay, nextActive, "a replay must not replace legitimate work");
+      assert.equal(afterReload, null, "a stale snapshot must not resurrect the abandoned ID");
+    });
+  }
+
+  it("remembers multiple abandoned turns without blocking a new live turn", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    await controller.abandonStalledTurn("s1");
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { turnId: "live-2" }, at: 2 });
+    controller.flush();
+    await controller.abandonStalledTurn("s1");
+    await controller.loadThread("s1");
+    const reloaded = controller.store.get().threads["s1"]!.fold.activeTurnId;
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { turnId: "live-2" }, at: 3 });
+    controller.flush();
+    const replayed = controller.store.get().threads["s1"]!.fold.activeTurnId;
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { turnId: "live-3" }, at: 4 });
+    controller.flush();
+    const next = controller.store.get().threads["s1"]!.fold.activeTurnId;
+    stop();
+    assert.equal(reloaded, null);
+    assert.equal(replayed, null);
+    assert.equal(next, "live-3");
+  });
+
+  it("does not reactivate the same ID when a resume snapshot predates its ending", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    await controller.abandonStalledTurn("s1");
+    client.transcript = async () => ({
+      ...runningLoad(),
+      events: [...runningLoad().events, { method: "turn/completed", params: { turnId: "live-1", terminal: "completed" }, at: 2 }],
+    });
+    await controller.loadThread("s1");
+    const fold = controller.store.get().threads["s1"]!.fold;
+    stop();
+    assert.equal(fold.turns["live-1"]?.terminal, "completed");
+    assert.equal(fold.activeTurnId, null);
+  });
+
+  it("keeps a buffered real ending and queued successor across an abandoned reload", async () => {
+    const client = new FakeClient();
+    client.transcript = async () => runningLoad();
+    const { controller, stop } = await exhaustRecovery(client);
+    await controller.abandonStalledTurn("s1");
+    let finish!: (value: TranscriptLoad) => void;
+    client.transcript = () => new Promise((resolve) => { finish = resolve; });
+    const loading = controller.loadThread("s1");
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/completed", params: { turnId: "live-1", terminal: "failed", error: { kind: "test", message: "late error", retryable: true } }, at: 2 });
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { turnId: "live-2" }, at: 3 });
+    finish(runningLoad());
+    await loading;
+    const fold = controller.store.get().threads["s1"]!.fold;
+    stop();
+    assert.equal(fold.activeTurnId, "live-2");
+    assert.equal(fold.turns["live-1"]?.terminal, "failed");
+    assert.equal(fold.turns["live-1"]?.error?.message, "late error");
+  });
+
+  for (const disposition of ["started", "queued"]) {
+    it(`preserves a user's ${disposition} message while cancel fails late`, async () => {
+      const client = new FakeClient();
+      client.transcript = async () => runningLoad();
+      const { controller, stop } = await exhaustRecovery(client);
+      let fail!: (reason: Error) => void;
+      client.cancelTurn = () => new Promise<void>((_resolve, reject) => { fail = reject; });
+      const abandoning = controller.abandonStalledTurn("s1");
+      client.sendResult = async () => ({ turnId: "user-new", disposition });
+      const sent = await controller.send("new legitimate message");
+      fail(new Error("cancel unavailable"));
+      await abandoning;
+      const fold = controller.store.get().threads["s1"]!.fold;
+      stop();
+      assert.equal(sent, true);
+      assert.equal(fold.activeTurnId, disposition === "started" ? "user-new" : null);
+      assert.equal(fold.echoes.find((echo) => echo.turnId === "user-new")?.disposition, disposition);
+      assert.equal(controller.store.get().toasts.at(-1)?.title, "Turno abandonado localmente");
+    });
+  }
 
   it("abandoning without an active turn calls nothing", async () => {
     const client = new FakeClient();

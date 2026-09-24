@@ -369,6 +369,25 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(fold.meta.approvalMode, "onRequest", "events win over the resume snapshot");
   });
 
+  it("does not let resume status reactivate a turn already terminal in history", () => {
+    for (const terminal of ["completed", "failed", "cancelled"]) {
+      const fold = foldFromLoad({
+        session: null,
+        msp: { status: "running", activeTurnId: "ended", modelId: null, approvalMode: null, workspaceRoot: null, turnCount: 1 },
+        events: [
+          { method: "turn/started", params: { turnId: "ended" }, at: 1 },
+          { method: "turn/completed", params: { turnId: "ended", terminal }, at: 2 },
+        ],
+        truncated: false,
+        pending: { approvals: [], userInputs: [] },
+        readOnly: false,
+        readOnlyReason: null,
+      });
+      assert.equal(fold.activeTurnId, null);
+      assert.equal(fold.turns["ended"]?.terminal, terminal);
+    }
+  });
+
   it("returns the same fold for an empty batch", () => {
     const fold = emptyFold();
     assert.equal(applyEvents(fold, []), fold);
