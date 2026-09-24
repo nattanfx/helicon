@@ -350,12 +350,11 @@ export function SettingsPage() {
           </Row>
           <Row
             label="Tocar som junto com o aviso"
-            description="Um bipe suave quando a notificação aparece. Só toca com o aviso acima ligado."
+            description="Um bipe suave a cada aviso, com ou sem o balão acima."
           >
             <Toggle
               checked={prefs.notificationSound}
               label="Som da notificação"
-              disabled={!prefs.notifications}
               onChange={(on) => controller.setPrefs({ notificationSound: on })}
             />
           </Row>

@@ -21,7 +21,7 @@ export interface NotifySettings {
   enabled: boolean;
   /** Verdadeiro enquanto a janela tem a atenção dele: não há nada para contar a quem está olhando. */
   focused: boolean;
-  /** O bipe junto com o balão. Ausente conta como desligado. */
+  /** O bipe, independente do balão: toca mesmo com o interruptor desligado ou a permissão negada. Ausente conta como desligado. */
   sound?: boolean;
 }
 
@@ -73,12 +73,17 @@ export class NotificationManager {
 
   async announce(event: NotifyEvent): Promise<void> {
     const { enabled, focused, sound } = this.settings();
-    if (!enabled || focused) {
+    // Balão e bipe são canais independentes: cada um tem seu interruptor, mas os dois respeitam
+    // a janela em foco e a janela de repetição. A permissão do sistema só trava o balão.
+    const show = enabled && !focused;
+    const beep = sound === true && !focused;
+    if (!show && !beep) {
       return;
     }
-    // Nunca pergunta aqui: um navegador só concede permissão a partir de um gesto do usuário, então a página de configurações pergunta.
-    if ((await this.notifier.permission()) !== "granted") {
-      return;
+    let granted = false;
+    if (show) {
+      // Nunca pergunta aqui: um navegador só concede permissão a partir de um gesto do usuário, então a página de configurações pergunta.
+      granted = (await this.notifier.permission()) === "granted";
     }
     const tag = `${event.kind}:${event.sessionId}`;
     const at = this.now();
@@ -86,13 +91,15 @@ export class NotificationManager {
       return;
     }
     this.shown.set(tag, at);
-    const { title, body } = copy(event);
-    try {
-      await this.notifier.show({ title, body, tag });
-    } catch {
-      // Não vale quebrar uma mensagem por causa de um notificador que recusa.
+    if (granted) {
+      const { title, body } = copy(event);
+      try {
+        await this.notifier.show({ title, body, tag });
+      } catch {
+        // Não vale quebrar uma mensagem por causa de um notificador que recusa.
+      }
     }
-    if (sound) {
+    if (beep) {
       try {
         this.playSound();
       } catch {

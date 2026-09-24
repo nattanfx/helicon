@@ -168,4 +168,40 @@ describe("notificações", () => {
 
     assert.equal(shown.length, 1);
   });
+
+  it("toca o bipe mesmo com o balão desligado", async () => {
+    const { fake, shown } = notifier();
+    let beeps = 0;
+    const manager = new NotificationManager(
+      fake,
+      () => ({ enabled: false, focused: false, sound: true }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+
+    assert.equal(shown.length, 0, "balão desligado não mostra nada");
+    assert.equal(beeps, 1, "mas o bipe tem vida própria");
+  });
+
+  it("toca o bipe mesmo quando o sistema nega o balão", async () => {
+    const { fake, shown } = notifier("denied");
+    let beeps = 0;
+    const manager = new NotificationManager(
+      fake,
+      () => ({ enabled: true, focused: false, sound: true }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+
+    assert.equal(shown.length, 0);
+    assert.equal(beeps, 1, "permissão negada cala o balão, não o bipe");
+  });
 });
