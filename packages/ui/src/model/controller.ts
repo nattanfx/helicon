@@ -85,6 +85,7 @@ import {
 } from "./fileDrafts.js";
 import type { AppIdentity } from "./identity.js";
 import { NotificationManager, type Notifier } from "./notify.js";
+import { playNotifySound } from "./notifySound.js";
 import { UpdateManager, type AppUpdater } from "./updates.js";
 
 /** O ambiente em que o controller roda; injetável para a lógica continuar testável sem DOM. */
@@ -411,8 +412,11 @@ export class HeliconController {
     this.notifier = notifier;
     this.notifications = new NotificationManager(
       notifier,
-      () => ({ enabled: this.state.prefs.notifications, focused: this.platform.focused() }),
+      () => ({ enabled: this.state.prefs.notifications, focused: this.platform.focused(), sound: this.state.prefs.notificationSound }),
       () => this.platform.now(),
+      () => {
+        playNotifySound();
+      },
     );
   }
 

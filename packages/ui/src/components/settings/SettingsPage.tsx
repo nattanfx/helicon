@@ -348,6 +348,17 @@ export function SettingsPage() {
               onChange={(on) => (on ? void controller.askToNotify() : controller.setPrefs({ notifications: false }))}
             />
           </Row>
+          <Row
+            label="Tocar som junto com o aviso"
+            description="Um bipe suave quando a notificação aparece. Só toca com o aviso acima ligado."
+          >
+            <Toggle
+              checked={prefs.notificationSound}
+              label="Som da notificação"
+              disabled={!prefs.notifications}
+              onChange={(on) => controller.setPrefs({ notificationSound: on })}
+            />
+          </Row>
         </Section>
 
         <Section title="Versão">

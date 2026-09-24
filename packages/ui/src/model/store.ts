@@ -82,6 +82,8 @@ export interface Prefs {
   dismissedTurnErrors: string[];
   /** Levantar uma notificação de sistema quando uma conversa precisa de atenção e a janela não a tem. */
   notifications: boolean;
+  /** Bipe suave junto com cada aviso do sistema. Desligado por padrão; só toca quando o aviso aparece. */
+  notificationSound: boolean;
   /** Quando o usuário viu cada conversa pela última vez (ISO). */
   lastSeen: Record<string, string>;
   /** Atividade antes do primeiro lançamento é tratada como já vista. */
@@ -146,6 +148,7 @@ export function defaultPrefs(now = new Date().toISOString()): Prefs {
     dismissedTurnErrors: [],
     // Desligado até pedirem: ninguém deve ser interrompido por algo que nunca ligou.
     notifications: false,
+    notificationSound: false,
     lastSeen: {},
     baseline: now,
     defaultMode: "onRequest",
@@ -337,6 +340,7 @@ export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
     hiddenCards: pick("hiddenCards", (v) => Array.isArray(v) && v.every((x) => typeof x === "string")),
     dismissedTurnErrors: pick("dismissedTurnErrors", (v) => Array.isArray(v) && v.every((x) => typeof x === "string")),
     notifications: pick("notifications", (v) => typeof v === "boolean"),
+    notificationSound: pick("notificationSound", (v) => typeof v === "boolean"),
     lastSeen: pick("lastSeen", (v) => typeof v === "object" && v !== null && !Array.isArray(v)),
     baseline: pick("baseline", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v))),
     codeTheme: pick("codeTheme", (v) => CODE_THEMES.includes(v as CodeTheme)),

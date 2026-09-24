@@ -122,4 +122,50 @@ describe("notificações", () => {
 
     assert.equal(shown.length, 2);
   });
+
+  it("toca o bipe junto com cada aviso mostrado", async () => {
+    const { fake, shown } = notifier();
+    let beeps = 0;
+    const manager = new NotificationManager(
+      fake,
+      () => ({ enabled: true, focused: false, sound: true }),
+      undefined,
+      () => {
+        beeps += 1;
+      },
+    );
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+    await manager.announce({ kind: "approval", sessionId: "s2", thread: "winmux" });
+
+    assert.equal(shown.length, 2);
+    assert.equal(beeps, 2);
+  });
+
+  it("não toca o bipe com o som desligado nem quando nada é mostrado", async () => {
+    const { fake, shown } = notifier();
+    let beeps = 0;
+    const sound = () => {
+      beeps += 1;
+    };
+    const off = new NotificationManager(fake, () => ({ enabled: true, focused: false, sound: false }), undefined, sound);
+    await off.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+    assert.equal(shown.length, 1);
+    assert.equal(beeps, 0, "aviso sem som não apita");
+
+    const watching = new NotificationManager(fake, () => ({ enabled: true, focused: true, sound: true }), undefined, sound);
+    await watching.announce({ kind: "finished", sessionId: "s2", thread: "winmux", failed: false });
+    assert.equal(beeps, 0, "nada mostrado, nada apitado");
+  });
+
+  it("um bipe quebrado nunca quebra o aviso", async () => {
+    const { fake, shown } = notifier();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false, sound: true }), undefined, () => {
+      throw new Error("sem áudio");
+    });
+
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false });
+
+    assert.equal(shown.length, 1);
+  });
 });

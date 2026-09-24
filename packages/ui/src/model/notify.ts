@@ -21,6 +21,8 @@ export interface NotifySettings {
   enabled: boolean;
   /** Verdadeiro enquanto a janela tem a atenção dele: não há nada para contar a quem está olhando. */
   focused: boolean;
+  /** O bipe junto com o balão. Ausente conta como desligado. */
+  sound?: boolean;
 }
 
 /** Algo que aconteceu numa conversa e pode valer interromper alguém. */
@@ -66,10 +68,11 @@ export class NotificationManager {
     private readonly notifier: Notifier,
     private readonly settings: () => NotifySettings,
     private readonly now: () => number = () => Date.now(),
+    private readonly playSound: () => void = () => {},
   ) {}
 
   async announce(event: NotifyEvent): Promise<void> {
-    const { enabled, focused } = this.settings();
+    const { enabled, focused, sound } = this.settings();
     if (!enabled || focused) {
       return;
     }
@@ -88,6 +91,13 @@ export class NotificationManager {
       await this.notifier.show({ title, body, tag });
     } catch {
       // Não vale quebrar uma mensagem por causa de um notificador que recusa.
+    }
+    if (sound) {
+      try {
+        this.playSound();
+      } catch {
+        // Som nunca quebra um aviso: quem passou nas travas já mereceu ser notado.
+      }
     }
   }
 
