@@ -1,5 +1,8 @@
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   HeliconServer,
   deriveTitle,
@@ -919,6 +922,130 @@ describe("HeliconServer", () => {
     assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: false });
     assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: false });
   });
+  it("records failed turns with the usage seen at the time", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("usage/changed", {
+      tier: "high",
+      observedAtMs: 2000,
+      window: { usedPercent: 40, resetsAtMs: 3000, windowDurationMins: 300 },
+      weekly: { usedPercent: 10, resetsAtMs: 9000 },
+    });
+    connection.notify("turn/completed", {
+      sessionId: "s1",
+      turnId: "t1",
+      terminal: "failed",
+      error: { kind: "modelError", message: "Provider timed out", retryable: true },
+    });
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t2", terminal: "failed" });
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t3", terminal: "completed" });
+
+    const log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
+    assert.equal(log.count, 2);
+    assert.equal(log.recent.length, 2);
+    assert.equal(log.recent[0].kind, "turn-failed");
+    assert.equal(log.recent[0].sessionId, "s1");
+    assert.equal(log.recent[0].turnId, "t1");
+    assert.ok(log.recent[0].hostKey);
+    assert.equal(log.recent[0].errorKind, "modelError");
+    assert.equal(log.recent[0].message, "Provider timed out");
+    assert.equal(log.recent[0].usage.window.usedPercent, 40);
+    assert.equal(log.recent[1].turnId, "t2");
+    assert.equal(log.recent[1].errorKind, null);
+    assert.equal(log.recent[1].message, null);
+  });
+
+  it("records host exits and manual restarts", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    const { base } = await start(connection, { hostFactory: fakeFactory(connection, probe) });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.equal(probe.exits.length, 1);
+    probe.exits[0]!({ code: 1, signal: null });
+
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const restarted = await send(base, "/api/hosts/restart", {});
+    assert.equal(restarted.status, 200);
+    await waitFor(
+      async () => ((await get(base, "/api/failures")) as { count: number }).count === 2,
+      "exit and restart records",
+    );
+
+    const log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
+    assert.equal(log.recent[0].kind, "host-exited");
+    assert.match(log.recent[0].message, /exited \(1\)/);
+    assert.equal(log.recent[1].kind, "host-restarted");
+    assert.match(log.recent[1].message, /at the user's request/);
+  });
+
+  it("keeps only the newest failure records", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    for (let i = 0; i < 210; i += 1) {
+      connection.notify("turn/completed", { sessionId: "s1", turnId: `t${i}`, terminal: "failed" });
+    }
+    const log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
+    assert.equal(log.count, 200);
+    assert.equal(log.recent.length, 20);
+    assert.equal(log.recent[0].turnId, "t190");
+    assert.equal(log.recent[19].turnId, "t209");
+    const capped = (await get(base, "/api/failures?limit=5")) as { recent: any[] };
+    assert.equal(capped.recent.length, 5);
+    assert.equal(capped.recent[0].turnId, "t205");
+  });
+
+  it("persists the failure log next to the database", async (t) => {
+    const dir = await mkdtemp(join(tmpdir(), "helicon-failures-"));
+    const servers: HeliconServer[] = [];
+    t.after(async () => {
+      for (const closing of servers) {
+        await closing.close().catch(() => undefined);
+      }
+      await rm(dir, { recursive: true, force: true });
+    });
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const options = {
+      port: 0,
+      dataDir: dir,
+      platform: "linux",
+      musePath: "muse",
+      hostFactory: fakeFactory(connection),
+      exec: async () => ({ stdout: "", exitCode: 127 }),
+    };
+    const first = new HeliconServer({ ...options });
+    servers.push(first);
+    const bound = await first.listen();
+    const base = `http://127.0.0.1:${bound.port}`;
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("turn/completed", {
+      sessionId: "s1",
+      turnId: "t9",
+      terminal: "failed",
+      error: { kind: "k", message: "m" },
+    });
+    await first.close();
+
+    const lines = (await readFile(join(dir, "failure-log.jsonl"), "utf8")).trim().split("\n");
+    assert.equal(lines.length, 1);
+    assert.equal((JSON.parse(lines[0]!) as { turnId: string }).turnId, "t9");
+
+    const second = new HeliconServer({ ...options });
+    servers.push(second);
+    const rebound = await second.listen();
+    const log = (await get(`http://127.0.0.1:${rebound.port}`, "/api/failures")) as {
+      count: number;
+      recent: any[];
+    };
+    assert.equal(log.count, 1);
+    assert.equal(log.recent[0].turnId, "t9");
+  });
+
 
   it("drops --disable-sandbox from respawned hosts when the switch flips back on", async () => {
     const connection = new FakeConnection();

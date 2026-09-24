@@ -40,6 +40,7 @@ import {
   type SubscriptionUsage,
   type TurnImage,
 } from "@helicon/daemon";
+import { FailureLog } from "./failureLog.js";
 import { FileError, listFolder, readProjectFile, resolveInRoot, searchProjectFiles, serveProjectFile, writeProjectFile } from "./files.js";
 import { PathError, createDirectory, listDirectory, resolveUserPath, type PathContext } from "./paths.js";
 import { buildThreadTitlePrompt, deriveTitle, parseExecTitle, sanitizeThreadTitle } from "./threadTitles.js";
@@ -650,6 +651,8 @@ export class HeliconServer {
   private readonly skillCache = new Map<string, SkillListing>();
   /** The newest subscription window any host reported; `usage/changed` carries no session, so it lives here. */
   private planUsage: SubscriptionUsage | null = null;
+  /** Append-only failure log; memory-only when the server runs without a data dir. */
+  private readonly failures: FailureLog;
   /** The reasoning effort each session is known to be running at, so a turn only re-sets it when it changes. */
   private readonly effortApplied = new Map<string, ReasoningEffort>();
   private lastHostError: string | null = null;
@@ -716,12 +719,16 @@ export class HeliconServer {
     this.store = new HeliconStore(
       this.options.dataDir === ":memory:" ? ":memory:" : join(this.options.dataDir, "helicon.db"),
     );
+    this.failures = new FailureLog(
+      this.options.dataDir === ":memory:" ? null : join(this.options.dataDir, "failure-log.jsonl"),
+    );
     this.server = createServer((req, res) => {
       void this.route(req, res).catch((error) => this.fail(res, 500, String(error)));
     });
   }
 
   async listen(): Promise<{ port: number; host: string }> {
+    await this.failures.ready();
     await new Promise<void>((resolve) => this.server.listen(this.options.port, this.options.host, resolve));
     const address = this.server.address();
     const port = typeof address === "object" && address ? address.port : this.options.port;
@@ -732,6 +739,9 @@ export class HeliconServer {
   }
 
   async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
     this.closed = true;
     if (this.changeTimer) {
       clearTimeout(this.changeTimer);
@@ -761,6 +771,7 @@ export class HeliconServer {
       this.server.close((error) => (error ? reject(error) : resolve())),
     );
     await this.titleWorker?.catch(() => undefined);
+    await this.failures.close();
     this.store.close();
   }
 
@@ -1050,6 +1061,11 @@ export class HeliconServer {
           ),
         },
       });
+      return true;
+    }
+    if (method === "GET" && path === "/api/failures") {
+      const limit = Number(url.searchParams.get("limit"));
+      this.json(res, 200, { count: this.failures.count, recent: this.failures.recent(limit) });
       return true;
     }
     if (method === "GET" && path === "/api/env") {
@@ -2800,6 +2816,7 @@ export class HeliconServer {
     } catch (error) {
       this.lastHostError = error instanceof Error ? error.message : String(error);
       this.emit("helicon", { type: "host", key, state: "failed", message: this.lastHostError });
+      this.failures.record({ kind: "host-start-failed", sessionId: null, turnId: null, hostKey: key, errorKind: null, message: this.lastHostError });
       throw new HttpError(502, `Could not start Muse: ${this.lastHostError}`);
     }
     this.lastHostError = null;
@@ -2839,6 +2856,7 @@ export class HeliconServer {
     this.lastHostError = message;
     this.emit("helicon", { type: "host", key: managed.key, state: "exited", message });
     this.forgetHost(managed, message);
+    this.failures.record({ kind: "host-exited", sessionId: null, turnId: null, hostKey: managed.key, errorKind: null, message });
   }
 
   /**
@@ -2887,6 +2905,7 @@ export class HeliconServer {
       }
       this.forgetHost(managed, message);
       this.emit("helicon", { type: "host", key: managed.key, state: "restarted", message });
+      this.failures.record({ kind: "host-restarted", sessionId: null, turnId: null, hostKey: managed.key, errorKind: null, message });
     }
   }
 
@@ -3010,6 +3029,18 @@ export class HeliconServer {
         const terminal = str(params["terminal"]) ?? "completed";
         live.lastTerminal = terminal;
         live.lastError = terminal === "failed" ? (str(asRecord(params["error"])?.["message"]) ?? "The turn failed.") : null;
+        if (terminal === "failed") {
+          const error = asRecord(params["error"]);
+          this.failures.record({
+            kind: "turn-failed",
+            sessionId,
+            turnId,
+            hostKey: this.sessionHosts.get(sessionId) ?? null,
+            errorKind: error ? str(error["kind"]) : null,
+            message: error ? str(error["message"]) : null,
+            usage: this.planUsage,
+          });
+        }
         if (turnId) {
           try {
             this.store.recordTurn(turnId, sessionId);
