@@ -68,6 +68,8 @@ export class FailureLog {
   private chain: Promise<void> = Promise.resolve();
   private loadDone: Promise<void> = Promise.resolve();
   private fileLines = 0;
+  /** Incrementada a cada limpeza, para um carregamento ou reescrita agendados antes dela não ressuscitarem linhas. */
+  private generation = 0;
 
   constructor(file: string | null) {
     this.file = file;
@@ -96,13 +98,14 @@ export class FailureLog {
       // Startup window: the load merges these after the file tail, keeping time order.
       this.pending.push(entry);
     }
+    const generation = this.generation;
     if (this.file) {
       const file = this.file;
       this.chain = this.chain
         .then(() => appendFile(file, `${JSON.stringify(entry)}\n`, "utf8"))
         .then(() => {
           this.fileLines += 1;
-          if (this.fileLines > FILE_REWRITE_LINES) {
+          if (this.fileLines > FILE_REWRITE_LINES && generation === this.generation) {
             return this.rewrite();
           }
         })
@@ -136,6 +139,28 @@ export class FailureLog {
     await this.loadDone.catch(() => undefined);
   }
 
+  /**
+   * Esvazia o anel e o arquivo. O anel zera na hora (como `record` grava na hora) e o
+   * truncamento entra na cadeia de escrita, então um registro anterior some dos dois lugares
+   * e um posterior fica nos dois. Reescritas e carregamentos anteriores à limpeza são ignorados.
+   */
+  async clear(): Promise<void> {
+    this.generation += 1;
+    this.ring.length = 0;
+    this.pending.length = 0;
+    if (!this.file) {
+      return;
+    }
+    const file = this.file;
+    this.chain = this.chain
+      .then(() => writeFile(file, "", "utf8"))
+      .then(() => {
+        this.fileLines = 0;
+      })
+      .catch(() => undefined);
+    await this.chain.catch(() => undefined);
+  }
+
   async close(): Promise<void> {
     await this.chain.catch(() => undefined);
   }
@@ -148,12 +173,16 @@ export class FailureLog {
   }
 
   private async load(): Promise<void> {
+    const generation = this.generation;
     try {
       const text = await readFile(this.file as string, "utf8");
       const lines = text.split("\n").filter((line) => line.trim().length > 0);
       this.fileLines = lines.length;
       for (const line of lines.slice(-RING_LIMIT)) {
         try {
+          if (generation !== this.generation) {
+            break;
+          }
           this.push(parseRecord(line));
         } catch {
           /* a corrupt row never blocks the rest */

@@ -4,13 +4,9 @@ import {
   BellRing,
   Info,
   Keyboard,
-  List,
   MessageSquarePlus,
   Palette,
   Shield,
-  Tags,
-  UserCheck,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useApp, useController } from "../../app/context.js";
@@ -19,12 +15,8 @@ import { cn } from "../ui/primitives.js";
 
 const ICONS: Readonly<Record<string, LucideIcon>> = {
   MessageSquarePlus,
-  List,
   Archive,
-  Tags,
-  Zap,
   Shield,
-  UserCheck,
   Palette,
   BellRing,
   Keyboard,

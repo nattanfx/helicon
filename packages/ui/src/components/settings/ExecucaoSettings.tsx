@@ -2,7 +2,21 @@ import { useState } from "react";
 import { useApp, useController } from "../../app/context.js";
 import { Button } from "../ui/primitives.js";
 import { Modal } from "../ui/overlays.js";
-import { Card, Row, Toggle } from "./rows.js";
+import { Card, Row, Subhead, Toggle } from "./rows.js";
+
+/** Modo YOLO, sandbox e aprovações respondidas por você, numa página só. */
+export function Seguranca() {
+  return (
+    <>
+      <Subhead>Modo YOLO</Subhead>
+      <ModoYolo />
+      <Subhead>Sandbox</Subhead>
+      <Sandbox />
+      <Subhead>Aprovações</Subhead>
+      <Aprovacoes />
+    </>
+  );
+}
 
 /** Como muse --yolo: nada pede aprovação, sem confinamento nas novas conversas. Reinicia os servidores Muse na hora. */
 export function ModoYolo() {

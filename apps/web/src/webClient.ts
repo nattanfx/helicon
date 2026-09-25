@@ -392,6 +392,10 @@ export class WebHeliconClient implements HeliconClient {
     return (await call<{ usage: PlanUsage | null }>("GET", "/api/plan-usage")).usage;
   }
 
+  async clearFailures(): Promise<{ count: number; recent: FailureEntry[] }> {
+    return parseFailures(await call<unknown>("DELETE", "/api/failures"));
+  }
+
   async listFailures(limit: number): Promise<{ count: number; recent: FailureEntry[] }> {
     return parseFailures(await call<unknown>("GET", `/api/failures?limit=${Math.floor(limit)}`));
   }

@@ -29,14 +29,16 @@ describe("settings sections", () => {
     assert.deepEqual([...grouped].sort(), Object.keys(SETTINGS_GROUPS).sort());
   });
 
-  it("opens on Novas conversas and resolves titles", () => {
-    assert.equal(defaultSettingsSection().id, "novas-conversas");
+  it("opens on Conversas and resolves titles", () => {
+    assert.equal(defaultSettingsSection().id, "conversas");
     assert.equal(settingsSectionTitle("sobre"), "Sobre");
     assert.throws(() => settingsSectionTitle("versao"), /Unknown settings section/);
   });
 
   it("guards section ids", () => {
     assert.equal(isSettingsSectionId("atalhos"), true);
+    assert.equal(isSettingsSectionId("seguranca"), true);
+    assert.equal(isSettingsSectionId("modo-yolo"), false);
     assert.equal(isSettingsSectionId("ambiente"), false);
     assert.equal(isSettingsSectionId(""), false);
   });

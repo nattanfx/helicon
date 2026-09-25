@@ -2206,6 +2206,11 @@ export class HeliconController {
     return { deleted, failed };
   }
 
+  /** Apaga o histórico da caixa-preta do servidor; a tela confirma antes e recarrega depois. */
+  clearFailures(): Promise<{ count: number; recent: FailureEntry[] }> {
+    return this.client.clearFailures();
+  }
+
   /** Linhas recentes da caixa-preta do servidor, para o diagnóstico do Sobre. Sem estado: a tela carrega ao abrir. */
   listFailures(limit = 50): Promise<{ count: number; recent: FailureEntry[] }> {
     return this.client.listFailures(limit);

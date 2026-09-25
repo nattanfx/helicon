@@ -6,28 +6,20 @@ import { TopBar } from "../chrome.js";
 import { Button } from "../ui/primitives.js";
 import { Aparencia, Atalhos, Notificacoes } from "./AplicativoSettings.js";
 import { ArchivedChats } from "./ArchivedChats.js";
-import { ListaDeConversas, NovasConversas, TitulosDasConversas } from "./ConversasSettings.js";
-import { Aprovacoes, ModoYolo, Sandbox } from "./ExecucaoSettings.js";
+import { Conversas } from "./ConversasSettings.js";
+import { Seguranca } from "./ExecucaoSettings.js";
 import { Sobre } from "./SobreSettings.js";
 
 function SectionBody(props: { id: SettingsSectionId }) {
   switch (props.id) {
     case "aparencia":
       return <Aparencia />;
-    case "novas-conversas":
-      return <NovasConversas />;
-    case "lista-de-conversas":
-      return <ListaDeConversas />;
+    case "conversas":
+      return <Conversas />;
     case "chats-arquivados":
       return <ArchivedChats />;
-    case "titulos-das-conversas":
-      return <TitulosDasConversas />;
-    case "modo-yolo":
-      return <ModoYolo />;
-    case "sandbox":
-      return <Sandbox />;
-    case "aprovacoes":
-      return <Aprovacoes />;
+    case "seguranca":
+      return <Seguranca />;
     case "notificacoes":
       return <Notificacoes />;
     case "atalhos":

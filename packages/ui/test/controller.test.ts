@@ -287,6 +287,11 @@ class FakeClient implements HeliconClient {
     return this.plan;
   }
   failures: { count: number; recent: import("../src/types.js").FailureEntry[] } = { count: 0, recent: [] };
+  async clearFailures() {
+    this.failures = { count: 0, recent: [] };
+    return this.failures;
+  }
+
   async listFailures() {
     return this.failures;
   }
@@ -2256,7 +2261,7 @@ describe("settings section", () => {
     controller.openSettingsSection("sobre");
     assert.equal(controller.store.get().settingsSection, "sobre");
     controller.openSettingsSection("versao");
-    assert.equal(controller.store.get().settingsSection, "novas-conversas");
+    assert.equal(controller.store.get().settingsSection, "conversas");
     stop();
   });
 
@@ -2288,6 +2293,8 @@ describe("settings section", () => {
     };
     const { controller, stop } = await started(client, "");
     assert.deepEqual(await controller.listFailures(50), client.failures);
+    assert.deepEqual(await controller.clearFailures(), { count: 0, recent: [] });
+    assert.deepEqual(await controller.listFailures(50), { count: 0, recent: [] });
     stop();
   });
 });

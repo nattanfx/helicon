@@ -151,6 +151,8 @@ export interface HeliconClient {
   planUsage(): Promise<PlanUsage | null>;
   /** Linhas recentes da caixa-preta do servidor, para o diagnóstico; `recent` vem da mais antiga para a mais nova. */
   listFailures(limit: number): Promise<{ count: number; recent: FailureEntry[] }>;
+  /** Apaga o histórico da caixa-preta; devolve a lista vazia resultante. */
+  clearFailures(): Promise<{ count: number; recent: FailureEntry[] }>;
   /** Uma pasta de um projeto, pastas primeiro. `path` é relativo ao projeto; "" é sua raiz. */
   listFiles(cwd: string, path: string): Promise<FileListing>;
   /** Um arquivo de projeto: texto embutido, mídia descrita. `path` também pode ser absoluto dentro do projeto. */

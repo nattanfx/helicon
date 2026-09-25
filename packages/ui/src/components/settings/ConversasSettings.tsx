@@ -3,12 +3,26 @@ import { CONTRIBUTOR_NOTICE, contributorChoiceLabel, modelDisplayName } from "..
 import { type GroupBy } from "../../model/store.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
-import { Card, Pick, Row, Toggle } from "./rows.js";
+import { Card, Pick, Row, Subhead, Toggle } from "./rows.js";
 
 const GROUPS: readonly { value: GroupBy; label: string }[] = [
   { value: "project", label: "Projeto" },
   { value: "status", label: "Status" },
 ];
+
+/** Novas conversas, lista e títulos numa página só. */
+export function Conversas() {
+  return (
+    <>
+      <Subhead>Novas conversas</Subhead>
+      <NovasConversas />
+      <Subhead>Lista de conversas</Subhead>
+      <ListaDeConversas />
+      <Subhead>Títulos das conversas</Subhead>
+      <TitulosDasConversas />
+    </>
+  );
+}
 
 /** Com o que uma nova conversa começa. Mudar aqui não afeta conversas em andamento. */
 export function NovasConversas() {

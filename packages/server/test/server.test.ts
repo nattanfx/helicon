@@ -986,6 +986,26 @@ describe("HeliconServer", () => {
     assert.equal(log.recent[1].message, null);
   });
 
+  it("clears the failure log and keeps recording afterwards", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t1", terminal: "failed" });
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t2", terminal: "failed" });
+    assert.equal(((await get(base, "/api/failures")) as { count: number }).count, 2);
+
+    const cleared = await send(base, "/api/failures", undefined, "DELETE");
+    assert.equal(cleared.status, 200);
+    assert.deepEqual(cleared.json, { count: 0, recent: [] });
+    assert.equal(((await get(base, "/api/failures")) as { count: number }).count, 0);
+
+    connection.notify("turn/completed", { sessionId: "s1", turnId: "t3", terminal: "failed" });
+    const log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
+    assert.equal(log.count, 1);
+    assert.equal(log.recent[0].turnId, "t3");
+  });
+
   it("records a failed view/page snapshot once and its later correction", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });

@@ -1068,6 +1068,11 @@ export class HeliconServer {
       this.json(res, 200, { count: this.failures.count, recent: this.failures.recent(limit) });
       return true;
     }
+    if (method === "DELETE" && path === "/api/failures") {
+      await this.failures.clear();
+      this.json(res, 200, { count: this.failures.count, recent: this.failures.recent(200) });
+      return true;
+    }
     if (method === "GET" && path === "/api/env") {
       this.json(res, 200, await this.environment(url.searchParams.get("refresh") === "1"));
       return true;

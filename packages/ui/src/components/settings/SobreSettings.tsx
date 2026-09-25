@@ -1,4 +1,4 @@
-import { ArrowDownToLine, RefreshCw, RotateCw, ScrollText, SquareArrowOutUpRight } from "lucide-react";
+import { ArrowDownToLine, RefreshCw, RotateCw, ScrollText, SquareArrowOutUpRight, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { formatFailureEntry } from "../../model/failures.js";
@@ -14,6 +14,7 @@ import type { FailureEntry } from "../../types.js";
 import { updateSummary } from "../sidebar/Sidebar.js";
 import { NotasDaEdicao } from "../app/NotasDaEdicao.js";
 import { Button, cn } from "../ui/primitives.js";
+import { Modal } from "../ui/overlays.js";
 import { Card, Fact, Row, Subhead, Toggle } from "./rows.js";
 
 const TRACE_KIND_LABEL: Record<NotifyTrace["kind"], string> = {
@@ -150,6 +151,8 @@ function Diagnostico() {
   const userAgent = typeof navigator === "undefined" ? "desconhecido" : navigator.userAgent;
   const [failures, setFailures] = useState<FailuresView>({ status: "loading" });
   const [reload, setReload] = useState(0);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
   useEffect(() => {
     let alive = true;
     setFailures({ status: "loading" });
@@ -169,6 +172,27 @@ function Diagnostico() {
       alive = false;
     };
   }, [controller, reload]);
+  const clearDisabled = failures.status === "loading" || clearing || (failures.status === "ready" && failures.count === 0);
+  const clear = () => {
+    if (clearing) {
+      return;
+    }
+    setClearing(true);
+    controller
+      .clearFailures()
+      .then((answer) => {
+        setFailures({ status: "ready", count: answer.count, recent: answer.recent });
+        setConfirmClear(false);
+        controller.toast("info", "Histórico de falhas apagado");
+      })
+      .catch((error: unknown) => {
+        setConfirmClear(false);
+        controller.toast("error", "Não foi possível apagar as falhas", error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        setClearing(false);
+      });
+  };
   return (
     <>
       <Subhead>Diagnóstico</Subhead>
@@ -177,9 +201,14 @@ function Diagnostico() {
           label="Falhas do servidor"
           description="A caixa-preta do servidor: turnos que falharam e reinícios, com ids e detalhe técnico. Nunca traz texto das conversas."
         >
-          <Button size="sm" variant="secondary" disabled={failures.status === "loading"} onClick={() => setReload((n) => n + 1)}>
-            <RefreshCw size={13} className={cn(failures.status === "loading" && "animate-spin")} /> Recarregar
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" disabled={failures.status === "loading" || clearing} onClick={() => setReload((n) => n + 1)}>
+              <RefreshCw size={13} className={cn(failures.status === "loading" && "animate-spin")} /> Recarregar
+            </Button>
+            <Button size="sm" variant="secondary" disabled={clearDisabled} onClick={() => setConfirmClear(true)}>
+              <Trash2 size={13} /> Limpar
+            </Button>
+          </div>
         </Row>
         <div className="border-t border-line px-4 py-3">
           {failures.status === "loading" ? (
@@ -223,6 +252,29 @@ function Diagnostico() {
           )}
         </div>
       </Card>
+      <Modal
+        open={confirmClear}
+        onOpenChange={(open) => {
+          if (!open && !clearing) {
+            setConfirmClear(false);
+          }
+        }}
+        title="Apagar o histórico de falhas?"
+        description={
+          failures.status === "ready" && failures.count > 0
+            ? `${failures.count === 1 ? "A falha guardada some" : `As ${failures.count} falhas guardadas somem`} da caixa-preta e do arquivo, para sempre. Falhas novas continuam sendo registradas.`
+            : "O histórico da caixa-preta é apagado, para sempre. Falhas novas continuam sendo registradas."
+        }
+      >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" disabled={clearing} onClick={() => setConfirmClear(false)}>
+            Cancelar
+          </Button>
+          <Button variant="danger" disabled={clearing} onClick={clear}>
+            Apagar tudo
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }

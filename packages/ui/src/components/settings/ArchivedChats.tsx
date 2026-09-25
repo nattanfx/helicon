@@ -1,10 +1,10 @@
-import { Check, ChevronDown, Folder, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Ellipsis, Folder, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
-import { filterArchived, groupArchivedByProject, olderThan } from "../../model/archived.js";
+import { filterArchived, groupArchivedByProject, olderThan, type ArchivedGroup } from "../../model/archived.js";
 import { displayTitle, formatClock, shortenPath } from "../../model/format.js";
 import type { SessionSummary } from "../../types.js";
-import { Menu, MenuContent, MenuOption, MenuRadioGroup, MenuTrigger, Modal, Tip } from "../ui/overlays.js";
+import { Menu, MenuContent, MenuItem, MenuOption, MenuRadioGroup, MenuTrigger, Modal, Tip } from "../ui/overlays.js";
 import { Button, IconButton, Spinner, cn } from "../ui/primitives.js";
 import { Card, Row, Subhead } from "./rows.js";
 
@@ -180,6 +180,8 @@ export function ArchivedChats() {
   const [confirming, setConfirming] = useState<SessionSummary | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmingMany, setConfirmingMany] = useState(false);
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  const [confirmingGroup, setConfirmingGroup] = useState<ArchivedGroup | null>(null);
 
   const filtered = useMemo(() => filterArchived(archived, query, project), [archived, query, project]);
   const groups = useMemo(() => groupArchivedByProject(projects, filtered), [projects, filtered]);
@@ -188,6 +190,7 @@ export function ArchivedChats() {
   const toggle = (sessionId: string) =>
     setSelectedIds((ids) => (ids.includes(sessionId) ? ids.filter((id) => id !== sessionId) : [...ids, sessionId]));
   const bulkBusy = Boolean(busyMap["restore-many"]) || Boolean(busyMap["delete-many"]);
+  const filteredOut = filtered.length !== archived.length;
 
   return (
     <>
@@ -222,6 +225,9 @@ export function ArchivedChats() {
                 />
               </div>
               <ProjectFilter project={project} onChange={setProject} />
+              <Button size="sm" variant="secondary" disabled={filtered.length === 0 || bulkBusy} onClick={() => setConfirmingAll(true)}>
+                <Trash2 size={13} /> Excluir tudo
+              </Button>
               <p className="w-full text-xs text-muted sm:w-auto sm:flex-1 sm:text-right">
                 {countLabel(filtered.length, "conversa", "conversas")}
               </p>
@@ -258,6 +264,18 @@ export function ArchivedChats() {
                       {group.name}
                     </p>
                     <p className="shrink-0 text-xs text-muted">{countLabel(group.sessions.length, "conversa", "conversas")}</p>
+                    <Menu>
+                      <MenuTrigger asChild>
+                        <IconButton label={`Opções de ${group.name}`}>
+                          <Ellipsis size={14} />
+                        </IconButton>
+                      </MenuTrigger>
+                      <MenuContent align="end">
+                        <MenuItem icon={<Trash2 size={14} />} onSelect={() => setConfirmingGroup(group)}>
+                          Excluir tudo no projeto
+                        </MenuItem>
+                      </MenuContent>
+                    </Menu>
                   </div>
                   {group.sessions.map((session) => (
                     <ArchivedRow
@@ -326,6 +344,64 @@ export function ArchivedChats() {
             }}
           >
             Excluir
+          </Button>
+        </div>
+      </Modal>
+      <Modal
+        open={confirmingAll}
+        onOpenChange={setConfirmingAll}
+        title={filtered.length === 1 ? "Excluir 1 conversa?" : `Excluir ${filtered.length} conversas?`}
+        description={
+          filteredOut
+            ? `As ${filtered.length} conversas listadas com o filtro atual saem do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
+            : "Todas as arquivadas saem do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas."
+        }
+      >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmingAll(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            disabled={bulkBusy}
+            onClick={() => {
+              setConfirmingAll(false);
+              void controller.deleteArchivedMany(filtered.map((s) => s.sessionId));
+            }}
+          >
+            Excluir tudo
+          </Button>
+        </div>
+      </Modal>
+      <Modal
+        open={confirmingGroup !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmingGroup(null);
+          }
+        }}
+        title={confirmingGroup ? `Excluir tudo em ${confirmingGroup.name}?` : ""}
+        description={
+          confirmingGroup
+            ? `${countLabel(confirmingGroup.sessions.length, "A conversa deste projeto sai", "As conversas deste projeto saem")} do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
+            : ""
+        }
+      >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmingGroup(null)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            disabled={bulkBusy}
+            onClick={() => {
+              if (confirmingGroup) {
+                void controller.deleteArchivedMany(confirmingGroup.sessions.map((s) => s.sessionId));
+              }
+              setConfirmingGroup(null);
+            }}
+          >
+            Excluir tudo
           </Button>
         </div>
       </Modal>
