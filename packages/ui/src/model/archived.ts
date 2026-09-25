@@ -46,3 +46,14 @@ export function filterArchived(sessions: SessionSummary[], query: string, cwd: s
     (session) => (cwd === null || session.cwd === cwd) && (q === "" || session.title.toLowerCase().includes(q)),
   );
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Conversas com atividade anterior a `days` dias atrás; datas inválidas ficam de fora, nunca arquivam sem querer. */
+export function olderThan(sessions: SessionSummary[], days: number, nowMs: number): SessionSummary[] {
+  const cutoff = nowMs - Math.max(0, days) * DAY_MS;
+  return sessions.filter((session) => {
+    const at = Date.parse(session.activityAt);
+    return Number.isFinite(at) && at < cutoff;
+  });
+}

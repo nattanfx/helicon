@@ -1,6 +1,7 @@
 import type {
   ApprovalMode,
   EnvironmentStatus,
+  FailureEntry,
   FileContent,
   FileEntry,
   FileListing,
@@ -148,6 +149,8 @@ export interface HeliconClient {
   readOutput(sessionId: string, itemId: string, outputRef: string, offset?: number): Promise<OutputRange>;
   /** A janela de assinatura que o Muse viu por último; null até um host ver uma. */
   planUsage(): Promise<PlanUsage | null>;
+  /** Linhas recentes da caixa-preta do servidor, para o diagnóstico; `recent` vem da mais antiga para a mais nova. */
+  listFailures(limit: number): Promise<{ count: number; recent: FailureEntry[] }>;
   /** Uma pasta de um projeto, pastas primeiro. `path` é relativo ao projeto; "" é sua raiz. */
   listFiles(cwd: string, path: string): Promise<FileListing>;
   /** Um arquivo de projeto: texto embutido, mídia descrita. `path` também pode ser absoluto dentro do projeto. */

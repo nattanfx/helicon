@@ -1,5 +1,6 @@
 import {
   HeliconError,
+  parseFailures,
   parseModelList,
   parseSandboxSettings,
   parseTitleSettings,
@@ -10,6 +11,7 @@ import {
   type DirectoryListing,
   type EnvironmentStatus,
   type EventHandler,
+  type FailureEntry,
   type FileContent,
   type FileEntry,
   type FileListing,
@@ -388,6 +390,10 @@ export class WebHeliconClient implements HeliconClient {
 
   async planUsage(): Promise<PlanUsage | null> {
     return (await call<{ usage: PlanUsage | null }>("GET", "/api/plan-usage")).usage;
+  }
+
+  async listFailures(limit: number): Promise<{ count: number; recent: FailureEntry[] }> {
+    return parseFailures(await call<unknown>("GET", `/api/failures?limit=${Math.floor(limit)}`));
   }
 
   listFiles(cwd: string, path: string): Promise<FileListing> {

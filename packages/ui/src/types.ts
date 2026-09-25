@@ -416,6 +416,19 @@ export interface PlanUsage {
   weekly: PlanWindow;
 }
 
+/** Uma linha da caixa-preta do servidor (GET /api/failures): ids e detalhe técnico, nunca texto da conversa. */
+export type FailureKind = "turn-failed" | "turn-view-failed" | "turn-view-recovered" | "host-exited" | "host-start-failed" | "host-restarted";
+
+export interface FailureEntry {
+  at: string;
+  kind: FailureKind;
+  sessionId: string | null;
+  turnId: string | null;
+  hostKey: string | null;
+  errorKind: string | null;
+  message: string | null;
+}
+
 /** What the file viewer does with a file: text and markdown come inline, media is loaded from its own URL. */
 export type FileKind = "text" | "markdown" | "image" | "video" | "audio" | "pdf" | "binary";
 

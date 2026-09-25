@@ -1,9 +1,12 @@
 import { errorKind, errorMessage, type HeliconClient } from "../client.js";
 import { userFacingError } from "./errors.js";
+import { olderThan } from "./archived.js";
+import { defaultSettingsSection, isSettingsSectionId } from "./settingsSections.js";
 import type {
   ApprovalMode,
   ApprovalRequest,
   AttachmentView,
+  FailureEntry,
   GoalAction,
   HeliconEvent,
   OutgoingAttachment,
@@ -788,6 +791,7 @@ export class HeliconController {
     } else if (route.kind === "new" && route.cwd) {
       this.setPrefs({ lastProject: route.cwd });
     } else if (route.kind === "settings") {
+      this.update((s) => (s.settingsSection === null ? s : { ...s, settingsSection: null }));
       void this.loadArchived();
       if (this.state.titleSettings === null) {
         void this.loadTitleSettings();
@@ -2090,6 +2094,121 @@ export class HeliconController {
     } finally {
       this.setBusy(`delete:${sessionId}`, false);
     }
+  }
+
+  /** Troca a página das Configurações; id desconhecido cai na primeira seção. */
+  openSettingsSection(id: string): void {
+    const next = isSettingsSectionId(id) ? id : defaultSettingsSection().id;
+    this.update((s) => (s.settingsSection === next ? s : { ...s, settingsSection: next }));
+  }
+
+  /**
+   * Arquiva de uma vez as conversas ativas sem atividade há `days` dias ou mais.
+   * Uma chamada por conversa, como arquivar uma a uma; um único aviso no fim.
+   */
+  async archiveOlderThan(days: number): Promise<{ archived: number; failed: number }> {
+    if (this.state.busy["archive-older"]) {
+      return { archived: 0, failed: 0 };
+    }
+    const candidates = olderThan(Object.values(this.state.sessions), days, this.platform.now());
+    if (candidates.length === 0) {
+      return { archived: 0, failed: 0 };
+    }
+    this.setBusy("archive-older", true);
+    const ids = new Set(candidates.map((s) => s.sessionId));
+    this.update((s) => {
+      const sessions = { ...s.sessions };
+      for (const id of ids) {
+        delete sessions[id];
+      }
+      return { ...s, sessions };
+    });
+    const route = this.state.route;
+    if (route.kind === "thread" && ids.has(route.sessionId)) {
+      const current = candidates.find((s) => s.sessionId === route.sessionId);
+      this.navigate({ kind: "new", cwd: current?.cwd ?? null });
+    }
+    let failed = 0;
+    for (const session of candidates) {
+      try {
+        await this.client.updateSession(session.sessionId, { archived: true });
+      } catch {
+        failed += 1;
+        this.upsertSession(session);
+      }
+    }
+    this.setBusy("archive-older", false);
+    const archived = candidates.length - failed;
+    if (failed === 0) {
+      this.toast("info", archived === 1 ? "1 conversa arquivada" : `${archived} conversas arquivadas`);
+    } else if (archived === 0) {
+      this.toast("error", "Não foi possível arquivar as conversas");
+    } else {
+      this.toast("error", `${archived} arquivadas, ${failed} falharam`);
+    }
+    return { archived, failed };
+  }
+
+  /** Restaura uma seleção de arquivadas com um único aviso no fim. */
+  async restoreArchivedMany(sessionIds: readonly string[]): Promise<{ restored: number; failed: number }> {
+    const targets = this.state.archived.filter((s) => sessionIds.includes(s.sessionId));
+    if (targets.length === 0 || this.state.busy["restore-many"]) {
+      return { restored: 0, failed: 0 };
+    }
+    this.setBusy("restore-many", true);
+    let failed = 0;
+    for (const current of targets) {
+      try {
+        const saved = await this.client.updateSession(current.sessionId, { archived: false });
+        this.upsertSession(saved ?? { ...current, archived: false });
+        this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== current.sessionId) }));
+      } catch {
+        failed += 1;
+      }
+    }
+    this.setBusy("restore-many", false);
+    const restored = targets.length - failed;
+    if (failed === 0) {
+      this.toast("info", restored === 1 ? "1 conversa restaurada" : `${restored} conversas restauradas`);
+    } else if (restored === 0) {
+      this.toast("error", "Não foi possível restaurar as conversas");
+    } else {
+      this.toast("error", `${restored} restauradas, ${failed} falharam`);
+    }
+    return { restored, failed };
+  }
+
+  /** Exclui uma seleção de arquivadas com um único aviso no fim. A confirmação é da tela. */
+  async deleteArchivedMany(sessionIds: readonly string[]): Promise<{ deleted: number; failed: number }> {
+    const targets = this.state.archived.filter((s) => sessionIds.includes(s.sessionId));
+    if (targets.length === 0 || this.state.busy["delete-many"]) {
+      return { deleted: 0, failed: 0 };
+    }
+    this.setBusy("delete-many", true);
+    let failed = 0;
+    for (const current of targets) {
+      try {
+        await this.client.deleteSession(current.sessionId);
+        this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== current.sessionId) }));
+      } catch {
+        failed += 1;
+      }
+    }
+    this.setBusy("delete-many", false);
+    const deleted = targets.length - failed;
+    if (failed === 0) {
+      this.toast("info", deleted === 1 ? "1 conversa excluída" : `${deleted} conversas excluídas`);
+    } else if (deleted === 0) {
+      this.toast("error", "Não foi possível excluir as conversas");
+    } else {
+      this.toast("error", `${deleted} excluídas, ${failed} falharam`);
+    }
+    return { deleted, failed };
+  }
+
+  /** Linhas recentes da caixa-preta do servidor, para o diagnóstico do Sobre. Sem estado: a tela carrega ao abrir. */
+  listFailures(limit = 50): Promise<{ count: number; recent: FailureEntry[] }> {
+    return this.client.listFailures(limit);
   }
 
   private async unarchive(session: SessionSummary): Promise<void> {

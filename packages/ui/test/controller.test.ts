@@ -91,7 +91,7 @@ class FakeClient implements HeliconClient {
   loadTranscript() {
     return this.transcript();
   }
-  async updateSession() {
+  async updateSession(_sessionId: string) {
     return SESSION;
   }
   async sendTurn(
@@ -285,6 +285,10 @@ class FakeClient implements HeliconClient {
   plan: import("../src/types.js").PlanUsage | null = null;
   async planUsage() {
     return this.plan;
+  }
+  failures: { count: number; recent: import("../src/types.js").FailureEntry[] } = { count: 0, recent: [] };
+  async listFailures() {
+    return this.failures;
   }
   writes: { path: string; content: string; baseMtimeMs: number | null }[] = [];
   writeError: Error | null = null;
@@ -2164,6 +2168,126 @@ describe("archived threads", () => {
     await controller.loadArchived();
     await controller.restoreArchived("s9");
     assert.deepEqual(controller.store.get().archived, [S9]);
+    stop();
+  });
+
+  it("restores a selection and ignores unknown ids", async () => {
+    const client = new FakeClient();
+    const A = { ...S9, sessionId: "a" };
+    const B = { ...S9, sessionId: "b" };
+    client.archivedSessions = [A, B];
+    client.updateSession = async (sessionId: string) => ({ ...(sessionId === "a" ? A : B), archived: false });
+    const { controller, stop } = await started(client, "");
+    await controller.loadArchived();
+    const result = await controller.restoreArchivedMany(["a", "b", "ghost"]);
+    assert.deepEqual(result, { restored: 2, failed: 0 });
+    assert.deepEqual(controller.store.get().archived, []);
+    assert.equal(controller.store.get().sessions["a"]?.archived, false);
+    assert.equal(controller.store.get().sessions["b"]?.archived, false);
+    stop();
+  });
+
+  it("deletes a selection", async () => {
+    const client = new FakeClient();
+    client.archivedSessions = [
+      { ...S9, sessionId: "a" },
+      { ...S9, sessionId: "b" },
+    ];
+    const { controller, stop } = await started(client, "");
+    await controller.loadArchived();
+    const result = await controller.deleteArchivedMany(["a", "b"]);
+    assert.deepEqual(result, { deleted: 2, failed: 0 });
+    assert.deepEqual(controller.store.get().archived, []);
+    assert.deepEqual(client.deletedSessions, ["a", "b"]);
+    stop();
+  });
+
+  it("archives only threads idle past the window", async () => {
+    const client = new FakeClient();
+    const old = { ...SESSION, sessionId: "s-old", activityAt: new Date(Date.now() - 100 * 86400000).toISOString() };
+    const fresh = { ...SESSION, sessionId: "s-fresh", activityAt: new Date(Date.now() - 3600000).toISOString() };
+    client.listSessions = async () => [old, fresh];
+    const updated: string[] = [];
+    client.updateSession = async (sessionId: string) => {
+      updated.push(sessionId);
+      return SESSION;
+    };
+    const { controller, stop } = await started(client, "");
+    const result = await controller.archiveOlderThan(30);
+    assert.deepEqual(result, { archived: 1, failed: 0 });
+    assert.deepEqual(updated, ["s-old"]);
+    assert.equal(controller.store.get().sessions["s-old"], undefined);
+    assert.ok(controller.store.get().sessions["s-fresh"]);
+    stop();
+  });
+
+  it("leaves the open thread view when it archives the open thread", async () => {
+    const client = new FakeClient();
+    client.listSessions = async () => [
+      { ...SESSION, sessionId: "s1", activityAt: new Date(Date.now() - 100 * 86400000).toISOString() },
+    ];
+    const { controller, stop } = await started(client, "#/t/s1");
+    await controller.archiveOlderThan(30);
+    assert.deepEqual(controller.store.get().route, { kind: "new", cwd: "/work/app" });
+    stop();
+  });
+
+  it("keeps threads whose archive call fails", async () => {
+    const client = new FakeClient();
+    client.listSessions = async () => [
+      { ...SESSION, sessionId: "s1", activityAt: new Date(Date.now() - 100 * 86400000).toISOString() },
+    ];
+    client.updateSession = async () => {
+      throw new Error("nope");
+    };
+    const { controller, stop } = await started(client, "");
+    const result = await controller.archiveOlderThan(30);
+    assert.deepEqual(result, { archived: 0, failed: 1 });
+    assert.ok(controller.store.get().sessions["s1"]);
+    stop();
+  });
+});
+
+describe("settings section", () => {
+  it("opens a valid section and falls back on unknown ids", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client, "#/settings");
+    assert.equal(controller.store.get().settingsSection, null);
+    controller.openSettingsSection("sobre");
+    assert.equal(controller.store.get().settingsSection, "sobre");
+    controller.openSettingsSection("versao");
+    assert.equal(controller.store.get().settingsSection, "novas-conversas");
+    stop();
+  });
+
+  it("resets to the first section when settings opens", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client, "#/settings");
+    controller.openSettingsSection("sobre");
+    controller.navigate({ kind: "home" });
+    controller.navigate({ kind: "settings" });
+    assert.equal(controller.store.get().settingsSection, null);
+    stop();
+  });
+
+  it("serves recent failures to the diagnostics screen", async () => {
+    const client = new FakeClient();
+    client.failures = {
+      count: 1,
+      recent: [
+        {
+          at: "2026-09-25T10:00:00.000Z",
+          kind: "turn-failed",
+          sessionId: "s1",
+          turnId: null,
+          hostKey: null,
+          errorKind: null,
+          message: null,
+        },
+      ],
+    };
+    const { controller, stop } = await started(client, "");
+    assert.deepEqual(await controller.listFailures(50), client.failures);
     stop();
   });
 });

@@ -227,6 +227,8 @@ export interface AppState {
   prefs: Prefs;
   toasts: Toast[];
   paletteOpen: boolean;
+  /** Seção ativa das Configurações; nulo é a primeira da navegação. Só vive na sessão, não é preferência. */
+  settingsSection: string | null;
   addProjectOpen: boolean;
   /** Chaves de ações do usuário em voo, para desabilitar botões: `send:<id>`, `approval:<id>`... */
   busy: Record<string, true>;
@@ -294,6 +296,7 @@ export function initialState(prefs: Prefs): AppState {
     prefs,
     toasts: [],
     paletteOpen: false,
+    settingsSection: null,
     addProjectOpen: false,
     busy: {},
     bypassAll: false,

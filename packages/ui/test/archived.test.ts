@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { filterArchived, groupArchivedByProject } from "../src/model/archived.js";
+import { filterArchived, groupArchivedByProject, olderThan } from "../src/model/archived.js";
 import type { ProjectView, SessionSummary } from "../src/types.js";
 
 function project(cwd: string, displayName: string): ProjectView {
@@ -85,5 +85,33 @@ describe("filterArchived", () => {
       ["s2"],
     );
     assert.deepEqual(filterArchived(sessions, "sidebar", "/work/b"), []);
+  });
+});
+
+describe("olderThan", () => {
+  const NOW = Date.parse("2026-09-25T12:00:00.000Z");
+  const sessions = [
+    session("old", "/work/a", "Old", "2026-06-01T00:00:00.000Z"),
+    session("edge", "/work/a", "Edge", new Date(NOW - 30 * 24 * 60 * 60 * 1000).toISOString()),
+    session("fresh", "/work/a", "Fresh", "2026-09-25T11:00:00.000Z"),
+    session("broken", "/work/a", "Broken", "not-a-date"),
+  ];
+
+  it("picks only activity strictly past the cutoff", () => {
+    assert.deepEqual(
+      olderThan(sessions, 30, NOW).map((s) => s.sessionId),
+      ["old"],
+    );
+  });
+
+  it("ignores invalid dates and clamps non-positive windows", () => {
+    assert.deepEqual(
+      olderThan(sessions, 0, NOW).map((s) => s.sessionId),
+      ["old", "edge", "fresh"],
+    );
+    assert.deepEqual(
+      olderThan(sessions, -5, NOW).map((s) => s.sessionId),
+      ["old", "edge", "fresh"],
+    );
   });
 });
