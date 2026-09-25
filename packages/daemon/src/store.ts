@@ -710,8 +710,8 @@ export class HeliconStore {
     return row ? { session: this.toSession(row), cwd: String(row["project_cwd"]) } : null;
   }
 
-  listSessionsByProject(projectId: number, options: { includeArchived?: boolean } = {}): SessionRecord[] {
-    const archived = options.includeArchived ? "" : "AND archived = 0";
+  listSessionsByProject(projectId: number, options: { includeArchived?: boolean; onlyArchived?: boolean } = {}): SessionRecord[] {
+    const archived = options.onlyArchived ? "AND archived = 1" : options.includeArchived ? "" : "AND archived = 0";
     const rows = this.db
       .prepare(
         `SELECT * FROM sessions WHERE project_id = ? ${archived}

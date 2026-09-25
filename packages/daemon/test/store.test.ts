@@ -167,6 +167,10 @@ describe("HeliconStore", () => {
       ["s2"],
     );
     assert.equal(store.listSessionsByProject(project.id, { includeArchived: true }).length, 2);
+    assert.deepEqual(
+      store.listSessionsByProject(project.id, { onlyArchived: true }).map((s) => s.id),
+      ["s1"],
+    );
     store.setHidden("/work/p", true);
     assert.equal(store.listProjects().length, 0);
     assert.equal(store.listProjects({ includeHidden: true }).length, 1);

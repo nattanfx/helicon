@@ -1183,13 +1183,13 @@ export class HeliconServer {
     }
     if (method === "GET" && path === "/api/sessions") {
       const cwd = url.searchParams.get("cwd");
-      const includeArchived = url.searchParams.get("archived") === "1";
+      const onlyArchived = url.searchParams.get("archived") === "1";
       const projects = cwd
         ? [this.store.getProject(cwd)].filter((p): p is NonNullable<typeof p> => p !== null)
         : this.store.listProjects();
       const sessions = projects.flatMap((project) =>
         this.store
-          .listSessionsByProject(project.id, { includeArchived })
+          .listSessionsByProject(project.id, { onlyArchived })
           .map((record) => this.summary(record, project.cwd)),
       );
       this.json(res, 200, { sessions });

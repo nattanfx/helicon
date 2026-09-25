@@ -557,6 +557,16 @@ describe("HeliconServer", () => {
     await send(base, "/api/sessions/s1", { archived: true }, "PATCH");
     assert.equal((await get(base, "/api/sessions")).sessions.length, 0);
     assert.equal((await get(base, "/api/sessions?archived=1")).sessions.length, 1);
+    connection.replies.set("session/start", { session: { sessionId: "s2" } });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.deepEqual(
+      (await get(base, "/api/sessions")).sessions.map((s: { sessionId: string }) => s.sessionId),
+      ["s2"],
+    );
+    assert.deepEqual(
+      (await get(base, "/api/sessions?archived=1")).sessions.map((s: { sessionId: string }) => s.sessionId),
+      ["s1"],
+    );
     assert.equal((await send(base, "/api/sessions/missing", { title: "x" }, "PATCH")).status, 404);
 
     await send(base, `/api/projects?cwd=${encodeURIComponent("/work/proj")}`, undefined, "DELETE");
