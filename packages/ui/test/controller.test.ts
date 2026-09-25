@@ -232,8 +232,12 @@ class FakeClient implements HeliconClient {
   async runShell(sessionId: string, command: string) {
     this.actions.push(`shell:${sessionId}:${command}`);
   }
-  async forkSession() {
+  forkCalls: { sessionId: string; lastTurnId?: string }[] = [];
+  forkError: Error | null = null;
+  async forkSession(sessionId: string, lastTurnId?: string) {
     this.actions.push("fork");
+    this.forkCalls.push({ sessionId, lastTurnId });
+    if (this.forkError) throw this.forkError;
     return { ...SESSION, sessionId: "s2", title: "Probe (fork)" };
   }
   async listSkills(_cwd: string, sessionId?: string) {
@@ -1991,6 +1995,36 @@ describe("HeliconController", () => {
     assert.deepEqual(state.route, { kind: "thread", sessionId: "s2" });
     assert.equal(state.sessions["s2"]?.title, "Probe (fork)");
     assert.equal(state.toasts.at(-1)?.title, "Ramificada numa nova conversa");
+    assert.deepEqual(client.forkCalls, [{ sessionId: "s1", lastTurnId: undefined }]);
+    stop();
+  });
+
+  it("forks at an old turn and gives the new composer the selected prompt without sending it", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    client.transcript = async () => load({ session: { ...SESSION, sessionId: "s2", title: "Probe (fork)" } });
+    const attachments = [{ name: "nota.txt", mediaType: "text/plain", base64: "YQ==" }];
+    const previews = [{ name: "nota.txt", mediaType: "text/plain", kind: "file" as const, url: "blob:nota" }];
+    assert.equal(await controller.fork("s1", "t1", { text: "Pedido para revisar", attachments, previews }), true);
+    assert.deepEqual(client.forkCalls, [{ sessionId: "s1", lastTurnId: "t1" }]);
+    assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s2" });
+    assert.deepEqual(controller.store.get().draftHandoff, { key: "s2", text: "Pedido para revisar", attachments, previews });
+    assert.equal(client.sent.length, 0, "editing a prompt never sends it automatically");
+    assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /rascunho/);
+    stop();
+  });
+
+  it("keeps the source open when the host rejects a historical fork", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    client.forkError = new HeliconError("Unknown boundary", 409, "forkBoundaryInvalid");
+    assert.equal(await controller.fork("s1", "missing"), false);
+    assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+    assert.equal(controller.store.get().sessions["s2"], undefined);
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Não foi possível ramificar a conversa");
+    client.forkError = new HeliconError("cut ignored", 409, "forkCutUnconfirmed");
+    assert.equal(await controller.fork("s1", "t1"), false);
+    assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /não confirmou o corte/);
     stop();
   });
 

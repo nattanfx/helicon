@@ -339,8 +339,9 @@ export class WebHeliconClient implements HeliconClient {
     await call("POST", `/api/sessions/${enc(sessionId)}/shell`, { command });
   }
 
-  async forkSession(sessionId: string): Promise<SessionSummary> {
-    return (await call<{ session: SessionSummary }>("POST", `/api/sessions/${enc(sessionId)}/fork`, {})).session;
+  async forkSession(sessionId: string, lastTurnId?: string): Promise<SessionSummary> {
+    return (await call<{ session: SessionSummary }>("POST", `/api/sessions/${enc(sessionId)}/fork`,
+      lastTurnId === undefined ? {} : { cutPoint: { lastTurnId } })).session;
   }
 
   listSkills(cwd: string, sessionId?: string): Promise<SkillCatalog> {

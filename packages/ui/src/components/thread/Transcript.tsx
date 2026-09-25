@@ -1,9 +1,10 @@
-import { ArrowDown, ChevronRight, CircleAlert, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
+import { ArrowDown, ChevronRight, CircleAlert, GitFork, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { useSampled } from "../../app/sampled.js";
 import { buildTurns, type EchoAttachment, type LocalEcho, type ThreadFold, type TurnView } from "../../model/fold.js";
+import { forkPoints, type ForkPoint } from "../../model/fork.js";
 import {
   describeTool,
   formatClock,
@@ -25,7 +26,7 @@ import { CodeBlock, FileLinksContext, type FileLinks } from "../ui/Markdown.js";
 import { fileTarget } from "../../model/files.js";
 import { SentAttachments, refetchAttachments, toOutgoing, toPreview } from "../composer/attachments.js";
 import { CopyButton } from "../ui/Markdown.js";
-import { Modal, Tip } from "../ui/overlays.js";
+import { Menu, MenuContent, MenuItem, MenuTrigger, Modal, Tip } from "../ui/overlays.js";
 import { Button, IconButton, Shimmer, Spinner, cn } from "../ui/primitives.js";
 import { Collapse, PixelLoader } from "../ui/sourced.js";
 import {
@@ -116,6 +117,10 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
     }
     return map;
   }, [thread.attachments]);
+  const forks = useMemo(
+    () => forkPoints(turns, thread.truncated, (id) => (attachmentsByTurn[id]?.length ?? 0) > 0),
+    [turns, thread.truncated, attachmentsByTurn],
+  );
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({ initial: "instant", resize: "smooth" });
 
   // O dock abaixo cresce quando um pedido ou painel aparece, o que encolhe esta visão. Acompanhe para baixo para a
@@ -166,6 +171,7 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
                   sessionId={props.sessionId}
                   isLast={entry.index === turns.length - 1}
                   readOnly={thread.readOnly}
+                  fork={forks[entry.index] ?? null}
                   speed={entry.turn.turnId ? (speeds[entry.turn.turnId] ?? null) : null}
                   cost={entry.turn.turnId ? (costs[entry.turn.turnId] ?? null) : null}
                 />
@@ -217,6 +223,7 @@ const TurnBlock = memo(
     sessionId: string;
     isLast: boolean;
     readOnly: boolean;
+    fork: ForkPoint | null;
     speed: TurnSpeed | null;
     cost: TurnCost | null;
   }) {
@@ -234,7 +241,8 @@ const TurnBlock = memo(
     return (
       <article className="flex flex-col gap-3" aria-label="Mensagem">
         {turn.prompt ? (
-          <PromptBubble item={turn.prompt} sentAt={sentTime(turn)} files={props.attachments[turn.turnId ?? ""] ?? []} />
+          <PromptBubble item={turn.prompt} sentAt={sentTime(turn)} files={props.attachments[turn.turnId ?? ""] ?? []}
+            fork={props.fork} sessionId={props.sessionId} />
         ) : null}
         {turn.running || standalone ? (
           <div className="flex flex-col gap-1.5">
@@ -300,6 +308,7 @@ const TurnBlock = memo(
     a.answers === b.answers &&
     a.isLast === b.isLast &&
     a.readOnly === b.readOnly &&
+    a.fork === b.fork &&
     a.attachments === b.attachments &&
     // Preços chegam após o catálogo carregar, então o custo de uma mensagem pode mudar sem nada mais sobre ela mudar.
     a.cost?.cost === b.cost?.cost &&
@@ -564,7 +573,7 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
   );
 }
 
-function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: AttachmentView[] }) {
+function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: AttachmentView[]; fork: ForkPoint | null; sessionId: string }) {
   const text = stripAttachmentMentions(stripImageMarkers(props.item.displayText ?? props.item.text ?? ""));
   const long = text.split("\n").length > 12 || text.length > 900;
   const [expanded, setExpanded] = useState(false);
@@ -591,6 +600,7 @@ function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: Att
               </button>
             ) : null}
             <CopyButton text={text} label="Copiar pedido" />
+            {props.fork ? <ForkTurnAction sessionId={props.sessionId} point={props.fork} files={files} /> : null}
           </div>
           {props.sentAt !== null ? (
             <Tip label={`Enviado ${formatFullDate(props.sentAt)}`}>
@@ -602,6 +612,72 @@ function PromptBubble(props: { item: MspItem; sentAt: number | null; files?: Att
         </div>
       </div>
     </div>
+  );
+}
+
+/** The selected prompt is the turn selector; the dialog spells out the inclusive cut before creating a branch. */
+function ForkTurnAction(props: { sessionId: string; point: ForkPoint; files: AttachmentView[] }) {
+  const controller = useController();
+  const [gesture, setGesture] = useState<"continue" | "edit" | null>(null);
+  const [busy, setBusy] = useState(false);
+  const canEdit = props.point.beforeTurnId !== null && props.point.editText !== null;
+
+  const confirm = async () => {
+    if (!gesture || busy) return;
+    setBusy(true);
+    try {
+      if (gesture === "continue") {
+        if (await controller.fork(props.sessionId, props.point.lastTurnId)) setGesture(null);
+      } else if (canEdit) {
+        // Read stored attachments before forking: a missing file must not leave a new branch with an incomplete prompt.
+        const read = props.files.length > 0 ? await refetchAttachments(props.files) : [];
+        const draft = {
+          text: props.point.editText ?? "",
+          attachments: read.map(toOutgoing),
+          previews: read.map(toPreview),
+        };
+        if (await controller.fork(props.sessionId, props.point.beforeTurnId as string, draft)) setGesture(null);
+      }
+    } catch (error) {
+      controller.toast("error", "Não foi possível preparar os anexos", error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Menu>
+        <Tip label="Ramificar a partir desta mensagem">
+          <MenuTrigger asChild>
+            <IconButton size="xs" label="Ramificar a partir desta mensagem"><GitFork size={13} /></IconButton>
+          </MenuTrigger>
+        </Tip>
+        <MenuContent align="end">
+          <MenuItem icon={<GitFork size={14} />} onSelect={() => setGesture("continue")}>Continuar depois desta mensagem</MenuItem>
+          <MenuItem icon={<SquarePen size={14} />} onSelect={() => setGesture("edit")} disabled={!canEdit}>
+            Editar e reenviar este pedido
+          </MenuItem>
+          {props.point.editUnavailable ? <p className="px-2 pb-1 text-xs text-subtle">{props.point.editUnavailable}</p> : null}
+        </MenuContent>
+      </Menu>
+      <Modal
+        open={gesture !== null}
+        onOpenChange={(open) => { if (!open && !busy) setGesture(null); }}
+        title={gesture === "edit" ? "Editar este pedido em uma ramificação?" : "Continuar daqui em uma ramificação?"}
+        description={gesture === "edit"
+          ? "A nova conversa copia o histórico até o turno anterior. Este pedido e seus anexos irão para o rascunho, sem envio automático."
+          : "A nova conversa copia o histórico até este turno, inclusive. As mensagens posteriores ficam só na conversa original."}
+      >
+        <p className="mt-3 text-sm text-muted">A conversa original continua como está.</p>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="ghost" disabled={busy} onClick={() => setGesture(null)}>Voltar</Button>
+          <Button loading={busy} onClick={() => void confirm()}>
+            {gesture === "edit" ? "Criar e editar" : "Criar ramificação"}
+          </Button>
+        </div>
+      </Modal>
+    </>
   );
 }
 

@@ -125,8 +125,8 @@ export interface HeliconClient {
   runShell(sessionId: string, command: string): Promise<void>;
   /** Roda um comando `!` na pasta do projeto pelo próprio Helicon, para hosts que não conseguem rodar um. */
   runShellProxy(sessionId: string, command: string): Promise<import("./types.js").ShellRun>;
-  /** Ramifica uma conversa numa nova levando toda mensagem concluída. */
-  forkSession(sessionId: string): Promise<SessionSummary>;
+  /** Ramifica uma conversa; `lastTurnId` corta inclusivamente num turno concluído. */
+  forkSession(sessionId: string, lastTurnId?: string): Promise<SessionSummary>;
   /** Com uma sessão carregada, a lista do próprio Muse para ela; senão, a lista da pasta do projeto via CLI. */
   listSkills(cwd: string, sessionId?: string): Promise<SkillCatalog>;
   /** As instruções completas de uma skill, sem seu frontmatter. */

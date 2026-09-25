@@ -1773,8 +1773,30 @@ describe("slash commands, skills and shell", () => {
     assert.equal(fork.json.session.sessionId, "s2");
     assert.equal(fork.json.session.title, "New thread (fork)");
     assert.deepEqual(connection.calls.at(-1), { method: "session/fork", params: { sessionId: "s1", excludeItems: true } });
+
+    connection.replies.set("session/fork", { session: { sessionId: "s3", modelId: "muse-spark-1.3", forkedFrom: { sessionId: "s1", cutExplicit: true } } });
+    const historical = await send(base, "/api/sessions/s1/fork", { cutPoint: { lastTurnId: "turn-2" } });
+    assert.equal(historical.status, 200);
+    assert.equal(historical.json.session.sessionId, "s3");
+    assert.deepEqual(connection.calls.at(-1), {
+      method: "session/fork",
+      params: { sessionId: "s1", excludeItems: true, cutPoint: { lastTurnId: "turn-2" } },
+    });
+    const before = connection.calls.length;
+    assert.equal((await send(base, "/api/sessions/s1/fork", { cutPoint: { lastTurnId: " " } })).status, 400);
+    assert.equal(connection.calls.length, before);
+    connection.replies.set("session/fork", new MspTestError("Unknown boundary", "forkBoundaryInvalid"));
+    const rejected = await send(base, "/api/sessions/s1/fork", { cutPoint: { lastTurnId: "missing" } });
+    assert.equal(rejected.status, 409);
+    assert.equal(rejected.json.kind, "forkBoundaryInvalid");
+    assert.equal((await get(base, "/api/sessions")).sessions.length, 3, "a rejected fork leaves no new session");
+    connection.replies.set("session/fork", { session: { sessionId: "ignored", forkedFrom: { sessionId: "s1", cutExplicit: false } } });
+    const ignored = await send(base, "/api/sessions/s1/fork", { cutPoint: { lastTurnId: "turn-2" } });
+    assert.equal(ignored.status, 409);
+    assert.equal(ignored.json.kind, "forkCutUnconfirmed");
+    assert.equal((await get(base, "/api/sessions")).sessions.length, 3, "an unconfirmed cut is not presented as a branch");
     const ids = (await get(base, "/api/sessions")).sessions.map((s: { sessionId: string }) => s.sessionId).sort();
-    assert.deepEqual(ids, ["s1", "s2"]);
+    assert.deepEqual(ids, ["s1", "s2", "s3"]);
   });
 
   it("runs a `!` command itself and keeps it with the thread", async () => {

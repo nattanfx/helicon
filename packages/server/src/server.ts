@@ -1332,7 +1332,16 @@ export class HeliconServer {
           return true;
         }
         if (action === "fork") {
-          this.json(res, 200, { session: await this.forkSession(sessionId, manager) });
+          let lastTurnId: string | undefined;
+          if ("cutPoint" in body) {
+            const cutPoint = asRecord(body["cutPoint"]);
+            const candidate = cutPoint?.["lastTurnId"];
+            if (typeof candidate !== "string" || !candidate.trim()) {
+              throw new HttpError(400, "cutPoint.lastTurnId is required.");
+            }
+            lastTurnId = candidate;
+          }
+          this.json(res, 200, { session: await this.forkSession(sessionId, manager, lastTurnId) });
           return true;
         }
         if (action === "effort") {
@@ -2112,12 +2121,12 @@ export class HeliconServer {
     return body;
   }
 
-  private async forkSession(sessionId: string, manager: SessionManager): Promise<Record<string, unknown>> {
+  private async forkSession(sessionId: string, manager: SessionManager, lastTurnId?: string): Promise<Record<string, unknown>> {
     const found = this.store.findSession(sessionId);
     if (!found) {
       throw new HttpError(404, "Unknown session.");
     }
-    const forked = await manager.forkSession(sessionId);
+    const forked = await manager.forkSession(sessionId, lastTurnId);
     const raw = asRecord(asRecord(forked.raw)?.["session"]);
     const record = this.store.recordSession({
       id: forked.sessionId,

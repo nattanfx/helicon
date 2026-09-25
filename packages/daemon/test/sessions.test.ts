@@ -23,7 +23,9 @@ class FakeConnection implements CommandConnection {
   async command(method: string, params?: Record<string, unknown>): Promise<unknown> {
     this.calls.push({ method, params });
     if (this.replies.has(method)) {
-      return this.replies.get(method);
+      const reply = this.replies.get(method);
+      if (reply instanceof Error) throw reply;
+      return reply;
     }
     return { ok: true };
   }
@@ -47,6 +49,25 @@ describe("SessionManager", () => {
     const forked = await manager.forkSession("s1");
     assert.equal(forked.sessionId, "s2");
     assert.deepEqual(lastCall(conn), { method: "session/fork", params: { sessionId: "s1", excludeItems: true } });
+  });
+
+  it("sends an inclusive completed-turn cutPoint and leaves boundary errors to the host", async () => {
+    const conn = new FakeConnection();
+    const manager = new SessionManager(conn);
+    conn.reply("session/fork", { session: { sessionId: "branch", forkedFrom: { sessionId: "source", cutExplicit: true } } });
+    assert.equal((await manager.forkSession("source", "turn-2")).sessionId, "branch");
+    assert.deepEqual(lastCall(conn), {
+      method: "session/fork",
+      params: { sessionId: "source", excludeItems: true, cutPoint: { lastTurnId: "turn-2" } },
+    });
+    const before = conn.calls.length;
+    await assert.rejects(manager.forkSession("source", " "), /turn id/);
+    assert.equal(conn.calls.length, before);
+    conn.reply("session/fork", Object.assign(new Error("Unknown boundary"), { kind: "forkBoundaryInvalid" }));
+    await assert.rejects(manager.forkSession("source", "missing"), /Unknown boundary/);
+    assert.deepEqual(lastCall(conn).params?.["cutPoint"], { lastTurnId: "missing" });
+    conn.reply("session/fork", { session: { sessionId: "branch", forkedFrom: { sessionId: "source", cutExplicit: false } } });
+    await assert.rejects(manager.forkSession("source", "turn-2"), /did not confirm/);
   });
 
   it("lists sessions scoped to a workspace", async () => {

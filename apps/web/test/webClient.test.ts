@@ -189,6 +189,18 @@ describe("web client", () => {
     assert.deepEqual(JSON.parse(String(posted?.init?.body)), { sessionId: "s1", turnId: "live-1" });
   });
 
+  it("sends an optional inclusive turn boundary when forking", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+    const client = new WebHeliconClient();
+
+    await client.forkSession("s1");
+    assert.equal(world.calls.at(-1)?.url, "/api/sessions/s1/fork");
+    assert.deepEqual(JSON.parse(String(world.calls.at(-1)?.init?.body)), {});
+    await client.forkSession("s1", "turn-2");
+    assert.deepEqual(JSON.parse(String(world.calls.at(-1)?.init?.body)), { cutPoint: { lastTurnId: "turn-2" } });
+  });
+
   it("restarts the Muse hosts through the hosts route", async () => {
     const world = browser();
     const { WebHeliconClient } = await freshClient();

@@ -2608,24 +2608,35 @@ export class HeliconController {
     return this.sendToThread(sessionId, text, {}, false);
   }
 
-  /** Ramifica uma conversa numa nova e a abre. */
-  async fork(sessionId: string): Promise<boolean> {
+  /** Ramifica uma conversa no turno escolhido e, quando pedido, põe o prompt no rascunho do ramo. */
+  async fork(
+    sessionId: string,
+    lastTurnId?: string,
+    draft?: { text: string; attachments?: OutgoingAttachment[]; previews?: EchoAttachment[] },
+  ): Promise<boolean> {
     const key = `fork:${sessionId}`;
     if (this.state.busy[key]) {
       return false;
     }
     this.setBusy(key, true);
     try {
-      const session = await this.client.forkSession(sessionId);
+      const session = await this.client.forkSession(sessionId, lastTurnId);
       this.upsertSession(session);
+      if (draft) {
+        this.update((s) => ({ ...s, draftHandoff: { key: session.sessionId, ...draft } }));
+      }
       this.navigate({ kind: "thread", sessionId: session.sessionId });
-      this.toast("success", "Ramificada numa nova conversa", "A conversa original continua como estava.");
+      this.toast("success", "Ramificada numa nova conversa", draft
+        ? "O pedido está no rascunho da nova conversa; confira e envie quando quiser."
+        : "A conversa original continua como estava.");
       return true;
     } catch (error) {
       this.toast(
         "error",
         "Não foi possível ramificar a conversa",
-        errorKind(error) === "forkBoundaryInvalid" ? "O Muse não encontrou um ponto nesta conversa para ramificá-la." : userFacingError(error),
+        errorKind(error) === "forkBoundaryInvalid" ? "O Muse não encontrou um ponto nesta conversa para ramificá-la."
+          : errorKind(error) === "forkCutUnconfirmed" ? "O Muse não confirmou o corte. Pode ter criado uma sessão sem ele; confira a lista antes de tentar de novo. A conversa original não mudou."
+            : userFacingError(error),
       );
       return false;
     } finally {

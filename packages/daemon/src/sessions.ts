@@ -355,9 +355,22 @@ export class SessionManager {
     return this.connection.command("session/userShell", { sessionId, commandText });
   }
 
-  /** Branches a session into a new one that carries every completed turn. */
-  async forkSession(sessionId: string): Promise<StartedSession> {
-    const result = await this.connection.command("session/fork", { sessionId, excludeItems: true });
+  /** Branches a session at a completed turn, inclusive; without one, carries every completed turn. */
+  async forkSession(sessionId: string, lastTurnId?: string): Promise<StartedSession> {
+    if (lastTurnId !== undefined && !lastTurnId.trim()) {
+      throw new Error("A fork boundary needs a turn id.");
+    }
+    const params: Record<string, unknown> = { sessionId, excludeItems: true };
+    if (lastTurnId !== undefined) {
+      params["cutPoint"] = { lastTurnId };
+    }
+    const result = await this.connection.command("session/fork", params);
+    if (lastTurnId !== undefined) {
+      const source = asRecord(asRecord(asRecord(result)?.["session"])?.["forkedFrom"]);
+      if (source?.["cutExplicit"] !== true || source["sessionId"] !== sessionId) {
+        throw Object.assign(new Error("Muse did not confirm the requested fork boundary."), { kind: "forkCutUnconfirmed" });
+      }
+    }
     return { sessionId: sessionIdOf(result), raw: result };
   }
 
