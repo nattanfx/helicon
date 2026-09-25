@@ -706,6 +706,21 @@ export function applyEvent(fold: ThreadFold, event: ViewEvent): ThreadFold {
   return applyEvents(fold, [event]);
 }
 
+/**
+ * Os ecos locais que valem a pena manter ao recarregar, como o #55 do original: a queda dos
+ * assentados já existia aqui (`echoSettledInLoad`, com o refinamento de anexos do fork), e um eco
+ * em fila cujo turno o histórico mostra iniciado já está rodando, como o fluxo ao vivo diria.
+ */
+function carriedEchoes(fold: ThreadFold, echoes: readonly LocalEcho[]): LocalEcho[] {
+  return echoes
+    .filter((echo) => !echoSettledInLoad(fold, echo))
+    .map((echo) =>
+      echo.disposition === "queued" && echo.turnId !== null && fold.turns[echo.turnId]
+        ? { ...echo, disposition: "started" as const }
+        : echo,
+    );
+}
+
 /** Build a fold from a resume response; the server's pending set is authoritative. */
 export function foldFromLoad(load: TranscriptLoad, previous?: ThreadFold | null): ThreadFold {
   let fold = applyEvents(emptyFold(), load.events);
@@ -727,7 +742,7 @@ export function foldFromLoad(load: TranscriptLoad, previous?: ThreadFold | null)
     activeTurnId: reportedActive && !fold.turns[reportedActive]?.terminal ? reportedActive : null,
     // A reload must not resurrect prompts the history already settled: echoes whose turn finished or whose
     // prompt is already in the transcript would otherwise sit stuck for the rest of the thread.
-    echoes: (previous?.echoes ?? []).filter((echo) => !echoSettledInLoad(fold, echo)),
+    echoes: carriedEchoes(fold, previous?.echoes ?? []),
     meta: {
       ...fold.meta,
       // History pages carry no context readings; the session's own fill in until the next live one.

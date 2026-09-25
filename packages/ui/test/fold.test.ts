@@ -318,6 +318,28 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(fold.activeTurnId, null, "a stale start for an abandoned turn reopens nothing");
   });
 
+  it("marks a queued echo started when reload history shows its turn running (#55)", () => {
+    const fold = foldFromLoad(
+      {
+        session: null,
+        msp: { status: "running", activeTurnId: "t1", modelId: null, approvalMode: null, workspaceRoot: null, turnCount: 1 },
+        events: [{ method: "turn/started", params: { turnId: "t1" }, at: 1 }],
+        truncated: false,
+        pending: { approvals: [], userInputs: [] },
+        readOnly: false,
+        readOnlyReason: null,
+      },
+      addEcho(
+        addEcho(emptyFold(), { localId: "running", text: "go", turnId: "t1", disposition: "queued", createdAt: 1 }),
+        { localId: "waiting", text: "later", turnId: "t9", disposition: "queued", createdAt: 1 },
+      ),
+    );
+    assert.deepEqual(
+      fold.echoes.map((e) => `${e.localId}:${e.disposition}`),
+      ["running:started", "waiting:queued"],
+    );
+  });
+
   it("reloads without echoes whose turn finished or prompt already landed", () => {
     const events: ViewEvent[] = [
       { method: "turn/started", params: { turnId: "t1" }, at: 1 },
