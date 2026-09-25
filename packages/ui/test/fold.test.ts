@@ -183,6 +183,107 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(fold.turns["t1"]?.error?.message, "A mensagem falhou.");
   });
 
+  it("ignora falha vazia sobre resposta completa (artefato do F5)", () => {
+    const fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      {
+        method: "item/completed",
+        params: { item: { itemId: "a1", kind: "agentMessage", status: "completed", revision: 1, turnId: "t1", text: "resposta inteira" } },
+        at: 2,
+      },
+      // O retrato do recarregamento cortou o stream: falha sem detalhe algum.
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 3 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, undefined, "falha vazia sobre conteúdo completo não marca o turno");
+    assert.equal(fold.turns["t1"]?.error, undefined);
+  });
+
+  it("falha vazia sem conteúdo continua marcando o turno", () => {
+    const fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 2 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+  });
+
+  it("só a pergunta não conta como conteúdo completo", () => {
+    const fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      {
+        method: "item/completed",
+        params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, turnId: "t1", text: "oi?" } },
+        at: 2,
+      },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 3 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+  });
+
+  it("falha com detalhe continua mesmo com resposta completa", () => {
+    const fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      {
+        method: "item/completed",
+        params: { item: { itemId: "a1", kind: "agentMessage", status: "completed", revision: 1, turnId: "t1", text: "resposta inteira" } },
+        at: 2,
+      },
+      {
+        method: "turn/completed",
+        params: { turnId: "t1", terminal: "failed", error: { kind: "modelError", message: "Provider down", retryable: true } },
+        at: 3,
+      },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+    assert.equal(fold.turns["t1"]?.error?.message, "Provider down");
+  });
+
+  it("resposta completa que chega depois limpa a falha vazia", () => {
+    let fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 2 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+    fold = applyEvent(fold, {
+      method: "item/completed",
+      params: { item: { itemId: "a1", kind: "agentMessage", status: "completed", revision: 1, turnId: "t1", text: "resposta inteira" } },
+      at: 3,
+    });
+    assert.equal(fold.turns["t1"]?.terminal, undefined);
+    assert.equal(fold.turns["t1"]?.error, undefined);
+  });
+
+  it("conteúdo parcial não limpa a falha vazia", () => {
+    let fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 2 },
+    ]);
+    fold = applyEvent(fold, {
+      method: "item/updated",
+      params: { item: { itemId: "a1", kind: "agentMessage", status: "inProgress", revision: 1, turnId: "t1", text: "pela metade" } },
+      at: 3,
+    });
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+  });
+
+  it("conclusão ao vivo limpa a falha vazia (merge de revisão)", () => {
+    let fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      {
+        method: "item/started",
+        params: { item: { itemId: "a1", kind: "agentMessage", status: "inProgress", revision: 0, turnId: "t1", text: "" } },
+        at: 2,
+      },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 3 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+    fold = applyEvent(fold, {
+      method: "item/completed",
+      params: { item: { itemId: "a1", kind: "agentMessage", status: "completed", revision: 1, turnId: "t1", text: "resposta inteira" } },
+      at: 4,
+    });
+    assert.equal(fold.turns["t1"]?.terminal, undefined);
+  });
+
   it("drops the local echo once the prompt comes back from the stream", () => {
     let fold = addEcho(emptyFold(), { localId: "l1", text: "hello  there", turnId: null, disposition: "sending", createdAt: 1 });
     fold = updateEcho(fold, "l1", { turnId: "t1", disposition: "started" });

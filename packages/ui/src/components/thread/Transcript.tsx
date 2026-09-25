@@ -523,6 +523,7 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
   const duration = turnDuration(props.turn);
   const hasWork = props.turn.entries.length > 0;
   const completed = completedTime(props.turn);
+  const failed = props.turn.info?.terminal === "failed";
   const dot = (
     <span aria-hidden="true" className="text-line-strong">
       ·
@@ -531,9 +532,9 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
   return (
     <div className="flex h-6 items-center gap-1.5 text-xs text-subtle">
       {completed !== null ? (
-        <Tip label={`Concluída ${formatFullDate(completed)}`}>
+        <Tip label={`${failed ? "Falhou" : "Concluída"} ${formatFullDate(completed)}`}>
           <span tabIndex={0} className="tabular-nums">
-            Concluída {formatClock(completed)}
+            {failed ? "Falhou" : "Concluída"} {formatClock(completed)}
           </span>
         </Tip>
       ) : null}

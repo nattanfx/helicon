@@ -1038,7 +1038,7 @@ describe("HeliconServer", () => {
     log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
     assert.equal(log.count, 2);
     assert.deepEqual(log.recent.map((row) => row.kind), ["turn-view-failed", "turn-view-recovered"]);
-    assert.match(log.recent[1].message, /view\/page later reported completed/);
+    assert.match(log.recent[1].message, /view\/page informou concluído/);
   });
 
   it("records a live completion after a failed view/page snapshot", async () => {
@@ -1059,7 +1059,7 @@ describe("HeliconServer", () => {
     const log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
     assert.deepEqual(log.recent.map((row) => row.kind), ["turn-view-failed", "turn-view-recovered"]);
     assert.equal(log.count, 2);
-    assert.match(log.recent[1].message, /Live turn\/completed/);
+    assert.match(log.recent[1].message, /turn\/completed ao vivo/);
   });
 
   it("records host exits and manual restarts", async () => {

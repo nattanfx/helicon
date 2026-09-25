@@ -220,7 +220,7 @@ function Diagnostico() {
           ) : (
             <>
               <p className="text-xs text-muted">
-                {failures.count === 1 ? "1 falha guardada" : `${failures.count} falhas guardadas`}; as mais recentes primeiro.
+                {failures.count === 1 ? "1 registro guardado" : `${failures.count} registros guardados`}; as mais recentes primeiro.
               </p>
               <ul className="mt-1 space-y-1">
                 {[...failures.recent].reverse().map((entry, index) => (
@@ -262,7 +262,7 @@ function Diagnostico() {
         title="Apagar o histórico de falhas?"
         description={
           failures.status === "ready" && failures.count > 0
-            ? `${failures.count === 1 ? "A falha guardada some" : `As ${failures.count} falhas guardadas somem`} da caixa-preta e do arquivo, para sempre. Falhas novas continuam sendo registradas.`
+            ? `${failures.count === 1 ? "O registro guardado some" : `Os ${failures.count} registros guardados somem`} da caixa-preta e do arquivo, para sempre. Falhas novas continuam sendo registradas.`
             : "O histórico da caixa-preta é apagado, para sempre. Falhas novas continuam sendo registradas."
         }
       >

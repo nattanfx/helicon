@@ -273,6 +273,45 @@ class Draft {
   }
 }
 
+/** Texto que a transcrição de fato mostra para um item, nos campos de resposta. */
+function itemText(item: MspItem): string {
+  const fields = [item.text, item.displayText, item.visibleOutput, item.fallbackText];
+  const summary = (item.summary ?? []).join("\n");
+  return [...fields.filter((field): field is string => typeof field === "string"), summary].join("\n");
+}
+
+/**
+ * Se o turno já entregou conteúdo pronto na transcrição: um item que não é a pergunta, fora de
+ * streaming, com texto à mostra. Um stream cortado (F5 com o turno rodando) deixa exatamente isso
+ * para trás junto de um fim com falha e sem detalhe — a assinatura de uma falha espúria.
+ */
+function turnHasCompletedContent(d: ThreadFold, turnId: string): boolean {
+  return Object.values(d.items).some(
+    (item) =>
+      item.turnId === turnId && item.kind !== "userMessage" && item.status !== "inProgress" && itemText(item).trim() !== "",
+  );
+}
+
+/**
+ * Resposta completa que chega sobre uma falha vazia prova que o fim com falha era o retrato
+ * cortado de um recarregamento: limpa a marca para a caixinha não cobrir uma resposta pronta.
+ * Falha com detalhe nunca é limpa aqui.
+ */
+function clearSpuriousFailure(d: ThreadFold, item: MspItem): void {
+  const turnId = item.turnId;
+  const turn = typeof turnId === "string" ? d.turns[turnId] : undefined;
+  if (
+    typeof turnId === "string" &&
+    turn?.terminal === "failed" &&
+    !turn.error &&
+    item.kind !== "userMessage" &&
+    item.status !== "inProgress" &&
+    itemText(item).trim() !== ""
+  ) {
+    d.turns[turnId] = { ...turn, terminal: undefined, error: undefined };
+  }
+}
+
 function upsertItem(draft: Draft, incoming: MspItem): void {
   const d = draft.fold;
   // Subagent children are never rendered, and a plan that runs subagents produces far more of them than of anything
@@ -284,6 +323,7 @@ function upsertItem(draft: Draft, incoming: MspItem): void {
   if (!current) {
     d.items[incoming.itemId] = incoming;
     draft.pushOrder(incoming.itemId);
+    clearSpuriousFailure(d, incoming);
     if (incoming.kind === "userMessage") {
       matchEcho(draft, incoming);
     }
@@ -313,6 +353,7 @@ function upsertItem(draft: Draft, incoming: MspItem): void {
     next.turnId = current.turnId;
   }
   d.items[incoming.itemId] = next;
+  clearSpuriousFailure(d, next);
   // A later revision can bring the shown text (`displayText`) the first one lacked, so match again.
   if (next.kind === "userMessage") {
     matchEcho(draft, next);
@@ -497,10 +538,18 @@ function applyOne(draft: Draft, event: ViewEvent): void {
         break;
       }
       const error = asRecord(params["error"]);
+      const terminal = str(params["terminal"]) ?? "completed";
+      // Falha sem detalhe algum sobre resposta completa: o retrato cortado de um recarregamento, não
+      // uma falha de verdade — o host conclui logo depois. Ignorar aqui poupa a caixinha falsa; a
+      // caixa-preta do servidor continua registrando o retrato. Falha com detalhe, ou sem conteúdo
+      // completo, marca o turno como antes.
+      if (terminal === "failed" && !error && turnHasCompletedContent(d, turnId)) {
+        break;
+      }
       d.turns[turnId] = {
         ...d.turns[turnId],
         turnId,
-        terminal: str(params["terminal"]) ?? "completed",
+        terminal,
         durationMs: numberOr(params["durationMs"]) ?? d.turns[turnId]?.durationMs,
         firstTokenMs: numberOr(params["timeToFirstTokenMs"]) ?? d.turns[turnId]?.firstTokenMs,
         completedAt: event.at ?? d.turns[turnId]?.completedAt,

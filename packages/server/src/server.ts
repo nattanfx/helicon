@@ -2483,7 +2483,7 @@ export class HeliconServer {
           turnId,
           hostKey,
           errorKind: null,
-          message: "view/page later reported completed after a failed snapshot.",
+          message: "view/page informou concluído após um retrato com falha.",
           usage: null,
         });
       }
@@ -3123,7 +3123,7 @@ export class HeliconServer {
             turnId,
             hostKey: this.sessionHosts.get(sessionId) ?? null,
             errorKind: null,
-            message: "Live turn/completed reported completed after a failed view/page snapshot.",
+            message: "turn/completed ao vivo informou concluído após um retrato view/page com falha.",
             usage: null,
           });
         }
