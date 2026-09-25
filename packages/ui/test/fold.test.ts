@@ -252,14 +252,77 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(fold.turns["t1"]?.error, undefined);
   });
 
-  it("conteúdo parcial não limpa a falha vazia", () => {
+  it("atividade nova limpa a falha vazia (turno vivo, vídeo 20:17)", () => {
+    let fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 2 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+    // O host segue emitindo para o turno: ele está vivo, o fim com falha era retrato cortado.
+    fold = applyEvent(fold, {
+      method: "item/updated",
+      params: { item: { itemId: "a1", kind: "agentMessage", status: "inProgress", revision: 1, turnId: "t1", text: "pela metade" } },
+      at: 3,
+    });
+    assert.equal(fold.turns["t1"]?.terminal, undefined);
+  });
+
+  it("retrato parado com parcial mantém a falha vazia", () => {
+    // Ordem do retrato: conteúdo parcial primeiro, falha depois, e mais nada chega.
+    const fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      {
+        method: "item/updated",
+        params: { item: { itemId: "a1", kind: "agentMessage", status: "inProgress", revision: 1, turnId: "t1", text: "pela metade" } },
+        at: 2,
+      },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 3 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+  });
+
+  it("delta novo limpa a falha vazia", () => {
     let fold = applyEvents(emptyFold(), [
       { method: "turn/started", params: { turnId: "t1" }, at: 1 },
       { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 2 },
     ]);
     fold = applyEvent(fold, {
-      method: "item/updated",
-      params: { item: { itemId: "a1", kind: "agentMessage", status: "inProgress", revision: 1, turnId: "t1", text: "pela metade" } },
+      method: "item/delta",
+      params: { itemId: "a1", turnId: "t1", field: "text", delta: "oi" },
+      at: 3,
+    });
+    assert.equal(fold.turns["t1"]?.terminal, undefined);
+    assert.equal(fold.items["a1"]?.text, "oi");
+  });
+
+  it("delta ignorado (item pronto) não limpa a falha vazia", () => {
+    let fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      {
+        method: "item/completed",
+        params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, turnId: "t1", text: "oi?" } },
+        at: 2,
+      },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 3 },
+    ]);
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+    fold = applyEvent(fold, {
+      method: "item/delta",
+      params: { itemId: "u1", turnId: "t1", field: "text", delta: "tardio" },
+      at: 4,
+    });
+    assert.equal(fold.turns["t1"]?.terminal, "failed");
+    assert.equal(fold.items["u1"]?.text, "oi?");
+  });
+
+  it("só a pergunta chegando depois não limpa a falha vazia", () => {
+    let fold = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" }, at: 1 },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "failed" }, at: 2 },
+    ]);
+    fold = applyEvent(fold, {
+      method: "item/completed",
+      params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, turnId: "t1", text: "oi?" } },
       at: 3,
     });
     assert.equal(fold.turns["t1"]?.terminal, "failed");

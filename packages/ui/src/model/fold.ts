@@ -293,21 +293,15 @@ function turnHasCompletedContent(d: ThreadFold, turnId: string): boolean {
 }
 
 /**
- * Resposta completa que chega sobre uma falha vazia prova que o fim com falha era o retrato
- * cortado de um recarregamento: limpa a marca para a caixinha não cobrir uma resposta pronta.
- * Falha com detalhe nunca é limpa aqui.
+ * Atividade nova sobre uma falha vazia prova que o turno está vivo: o fim com falha era o retrato
+ * cortado de um recarregamento, não uma morte de verdade (vídeo 20:17: etapas 45→48 sob a caixinha).
+ * Limpa a marca para a caixinha não cobrir um turno que trabalha. Só a pergunta não conta como
+ * atividade; falha com detalhe nunca é limpa aqui.
  */
 function clearSpuriousFailure(d: ThreadFold, item: MspItem): void {
   const turnId = item.turnId;
   const turn = typeof turnId === "string" ? d.turns[turnId] : undefined;
-  if (
-    typeof turnId === "string" &&
-    turn?.terminal === "failed" &&
-    !turn.error &&
-    item.kind !== "userMessage" &&
-    item.status !== "inProgress" &&
-    itemText(item).trim() !== ""
-  ) {
+  if (typeof turnId === "string" && turn?.terminal === "failed" && !turn.error && item.kind !== "userMessage") {
     d.turns[turnId] = { ...turn, terminal: undefined, error: undefined };
   }
 }
@@ -456,6 +450,9 @@ function appendDelta(draft: Draft, params: Record<string, unknown>): void {
     return;
   }
   const next: MspItem = { ...item };
+  // Delta aceito sobre falha vazia prova que o turno está vivo: o host segue emitindo, então o fim
+  // com falha era retrato cortado. Deltas ignorados (item já pronto) param no guarda acima.
+  clearSpuriousFailure(d, { ...next, turnId: str(params["turnId"]) ?? next.turnId ?? null });
   if (field === "text") {
     next.text = (next.text ?? "") + delta;
   } else if (field === "output") {
