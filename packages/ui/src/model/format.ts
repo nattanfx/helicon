@@ -451,12 +451,13 @@ export function describeTool(item: MspItem): ToolDescription {
 }
 
 export interface DiffRow {
-  kind: "same" | "del" | "add";
+  kind: "same" | "del" | "add" | "meta";
   text: string;
 }
 
 export interface DiffHunk {
   rows: DiffRow[];
+  header?: string;
 }
 
 export type DiffView = { path: string | null; hunks: DiffHunk[] } | { path: string | null; patch: string };
@@ -666,7 +667,62 @@ function patchRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-/** Read only shapes with unambiguous patch lines; other JSON remains visible as a document. */
+function patchCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/** Convert the files/hunks/lines document observed from Muse without guessing at malformed or future shapes. */
+function structuredPatchHunks(value: unknown): DiffHunk[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  const hunks: DiffHunk[] = [];
+  for (const raw of value) {
+    const hunk = patchRecord(raw);
+    if (!hunk) {
+      return null;
+    }
+    const { oldStart, oldLines, newStart, newLines, lines } = hunk;
+    if (
+      !patchCoordinate(oldStart) || !patchCoordinate(oldLines) ||
+      !patchCoordinate(newStart) || !patchCoordinate(newLines) ||
+      !Array.isArray(lines) || lines.length === 0
+    ) {
+      return null;
+    }
+    const rows: DiffRow[] = [];
+    let oldCount = 0;
+    let newCount = 0;
+    for (const line of lines) {
+      if (typeof line !== "string") {
+        return null;
+      }
+      const mark = line[0];
+      if (mark === "-") {
+        rows.push({ kind: "del", text: line.slice(1) });
+        oldCount += 1;
+      } else if (mark === "+") {
+        rows.push({ kind: "add", text: line.slice(1) });
+        newCount += 1;
+      } else if (mark === " ") {
+        rows.push({ kind: "same", text: line.slice(1) });
+        oldCount += 1;
+        newCount += 1;
+      } else if (line === "\\ No newline at end of file") {
+        rows.push({ kind: "meta", text: line });
+      } else {
+        return null;
+      }
+    }
+    if (oldCount !== oldLines || newCount !== newLines) {
+      return null;
+    }
+    hunks.push({ header: `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@`, rows });
+  }
+  return hunks;
+}
+
+/** Read only complete shapes with unambiguous patch lines; other JSON remains visible as a document. */
 export function hostPatchViews(content: string): DiffView[] {
   let parsed: unknown;
   try {
@@ -692,6 +748,12 @@ export function hostPatchViews(content: string): DiffView[] {
     const patch = ["patch", "diff"].map((key) => entry[key]).find((value): value is string => typeof value === "string");
     if (patch && /^(diff --git|--- |\+\+\+ |@@)/m.test(patch)) {
       views.push({ path, patch });
+    } else if (path && Array.isArray(entry["hunks"])) {
+      const hunks = structuredPatchHunks(entry["hunks"]);
+      if (!hunks) {
+        return [];
+      }
+      views.push({ path, hunks });
     } else {
       // A partially recognized multi-file document must not hide other files.
       return [];
@@ -758,7 +820,9 @@ export function diffLines(diff: DiffView): DiffLine[] {
     return lines;
   }
   diff.hunks.forEach((hunk, index) => {
-    if (index > 0) {
+    if (hunk.header) {
+      lines.push({ kind: "meta", text: hunk.header });
+    } else if (index > 0) {
       lines.push({ kind: "meta", text: "..." });
     }
     for (const row of hunk.rows) {

@@ -208,6 +208,32 @@ describe("descrições de ferramenta", () => {
     assert.deepEqual(hostPatchViews(JSON.stringify({ files: [{ path: "a.ts", patch: "@@\n-a\n+b" }, { path: "b.ts", chunks: [] }] })), []);
   });
 
+  it("renderiza files/hunks/lines do Muse como diff sem ocultar arquivos desconhecidos", () => {
+    const firstFile = {
+      path: "a.txt",
+      hunks: [
+        { oldStart: 1, oldLines: 2, newStart: 1, newLines: 2, lines: [" contexto", "-antigo", "+novo"] },
+        { oldStart: 8, oldLines: 0, newStart: 8, newLines: 1, lines: ["+mais"] },
+      ],
+    };
+    const secondFile = {
+      path: "b.txt",
+      hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ["---especial", "+++especial"] }],
+    };
+    const views = hostPatchViews(JSON.stringify({ files: [firstFile, secondFile] }));
+    assert.equal(views.length, 2);
+    const first = views[0];
+    const second = views[1];
+    assert.ok(first && "hunks" in first);
+    assert.ok(second && "hunks" in second);
+    assert.deepEqual(diffStats(first), { added: 2, removed: 1 });
+    assert.deepEqual(diffLines(first).map((line) => line.kind), ["meta", "ctx", "del", "add", "meta", "add"]);
+    assert.deepEqual(diffLines(second).map((line) => [line.kind, line.text]), [
+      ["meta", "@@ -1,1 +1,1 @@"], ["del", "--especial"], ["add", "++especial"],
+    ]);
+    assert.deepEqual(hostPatchViews(JSON.stringify({ files: [firstFile, { path: "futuro.txt", hunks: [{ lines: ["?novo"] }] }] })), []);
+  });
+
   it("alinha as linhas de preenchimento de uma edição como contexto em vez de remover-e-readicionar", () => {
     const diff = extractDiff(
       tool("edit", {
