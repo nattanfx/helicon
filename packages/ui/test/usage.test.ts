@@ -53,6 +53,21 @@ describe("contexto e uso da sessão", () => {
     assert.equal(sessionUsage(once, []).totalTokens, once.meta.tokenTotals?.totalTokens);
   });
 
+  it("usa as contagens do patch do Muse no resumo da sessão", () => {
+    const fold = applyEvents(emptyFold(), [{
+      method: "item/completed",
+      params: {
+        item: {
+          itemId: "patch-1", kind: "toolCall", status: "completed", revision: 1, turnId: "t1",
+          tool: "edit", args: JSON.stringify({ path: "a.ts", old_string: "x", new_string: "y" }),
+          patchSummary: { files: 2, added: 9, removed: 4 },
+          patchRef: { id: "ref-1", kind: "tool_patch", mediaType: "application/json" },
+        },
+      },
+    }]);
+    assert.deepEqual(sessionUsage(fold, []).lines, { files: 2, added: 9, removed: 4 });
+  });
+
   it("precifica chamadas pelo catálogo e marca as que não conseguiu precificar", () => {
     const fold = applyEvents(emptyFold(), [
       tokenUsage("v:1", {

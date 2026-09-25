@@ -23,18 +23,21 @@ import { Popover } from "radix-ui";
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { useApp, useController } from "../../app/context.js";
 import { fileTarget } from "../../model/files.js";
+import { loadHostPatch } from "../../model/patch.js";
 import {
   basename,
   describeTool,
   diffLines,
   diffStats,
-  extractDiff,
   formatDuration,
   formatTokens,
   humanize,
+  hostPatchViews,
+  itemDiff,
   lastLine,
   mergeDiffLines,
   parseArgs,
+  readableHostPatch,
   stripAttachmentMentions,
   stripImageMarkers,
   withoutDiffEcho,
@@ -316,6 +319,59 @@ export function DiffBlock(props: { diff: DiffView }) {
   return <DiffCard lines={diffLines(props.diff)} language={languageFromPath(props.diff.path)} />;
 }
 
+/** Load the host's stored patch only when the user opens its detail. */
+function HostPatchDetails(props: { sessionId?: string; itemId: string; ref: OutputRef | null }) {
+  const controller = useController();
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const views = useMemo(() => content === null ? [] : hostPatchViews(content), [content]);
+  const readable = useMemo(() => content === null ? null : readableHostPatch(content), [content]);
+
+  const load = async () => {
+    if (!props.sessionId || !props.ref || loading || content !== null) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      setContent(await loadHostPatch(
+        (sessionId, itemId, outputRef, offset) => controller.readOutput(sessionId, itemId, outputRef, offset),
+        props.sessionId, props.itemId, props.ref.id,
+      ));
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!props.sessionId || !props.ref) {
+    return <p className="text-xs text-subtle">Os detalhes do patch do Muse não estão disponíveis nesta conversa.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {content === null ? (
+        <Button size="sm" variant="ghost" className="w-fit px-2 text-xs" loading={loading} onClick={() => void load()}>
+          Carregar diff do Muse
+        </Button>
+      ) : content === "" ? (
+        <p className="text-xs text-subtle">O patch do Muse está vazio.</p>
+      ) : views.length > 0 ? (
+        views.map((view, index) => (
+          <div key={`${view.path ?? "patch"}-${index}`} className="flex flex-col gap-1">
+            {view.path ? <p className="truncate font-mono text-2xs text-subtle" title={view.path}>{view.path}</p> : null}
+            <DiffBlock diff={view} />
+          </div>
+        ))
+      ) : (
+        <OutputBlock text={readable ?? ""} label="Patch estruturado do Muse" />
+      )}
+      {error ? <p className="text-xs text-danger-text">Não foi possível carregar o diff do Muse: {error}</p> : null}
+    </div>
+  );
+}
+
 /** Toda mudança de um arquivo pairado como um cartão contínuo único, em ordem de mensagem. */
 function FileDiffCard(props: { diffs: DiffView[] }) {
   return <DiffCard lines={mergeDiffLines(props.diffs)} language={languageFromPath(props.diffs[0]?.path ?? null)} />;
@@ -378,10 +434,12 @@ export function DiffCount(props: { added: number; removed: number }) {
 }
 
 interface FileChanges {
+  key: string;
   path: string;
   added: number;
   removed: number;
   diffs: DiffView[];
+  host?: { itemId: string; ref: OutputRef | null };
 }
 
 /**
@@ -396,13 +454,29 @@ export function DiffChips(props: { entries: MspItem[]; className?: string; sessi
       if (item.kind !== "toolCall") {
         continue;
       }
-      const diff = extractDiff(item);
-      if (!diff) {
+      const choice = itemDiff(item);
+      if (!choice) {
         continue;
       }
+      if (choice.source === "host") {
+        const description = describeTool(item);
+        const path = choice.summary.files === 1 && (description.kind === "edit" || description.kind === "write") && description.subject
+          ? description.subject
+          : `${choice.summary.files} ${choice.summary.files === 1 ? "arquivo" : "arquivos"}`;
+        byPath.set(`host:${item.itemId}`, {
+          key: `host:${item.itemId}`,
+          path,
+          added: choice.summary.added,
+          removed: choice.summary.removed,
+          diffs: [],
+          host: { itemId: item.itemId, ref: choice.ref },
+        });
+        continue;
+      }
+      const diff = choice.diff;
       const key = diff.path ?? item.itemId;
       const stats = diffStats(diff);
-      const entry = byPath.get(key) ?? { path: diff.path ?? "arquivo", added: 0, removed: 0, diffs: [] };
+      const entry = byPath.get(key) ?? { key, path: diff.path ?? "arquivo", added: 0, removed: 0, diffs: [] };
       entry.added += stats.added;
       entry.removed += stats.removed;
       entry.diffs.push(diff);
@@ -416,7 +490,7 @@ export function DiffChips(props: { entries: MspItem[]; className?: string; sessi
   return (
     <div className={cn("flex max-w-full flex-wrap gap-1.5", props.className)} aria-label="Arquivos alterados">
       {files.map((file) => (
-        <DiffChip key={file.path} file={file} sessionId={props.sessionId} />
+        <DiffChip key={file.key} file={file} sessionId={props.sessionId} />
       ))}
     </div>
   );
@@ -425,7 +499,7 @@ export function DiffChips(props: { entries: MspItem[]; className?: string; sessi
 function DiffChip(props: { file: FileChanges; sessionId?: string }) {
   const controller = useController();
   const cwd = useApp((s) => (props.sessionId ? (s.sessions[props.sessionId]?.cwd ?? null) : null));
-  const target = cwd ? fileTarget(props.file.path, cwd) : null;
+  const target = cwd && !props.file.host ? fileTarget(props.file.path, cwd) : null;
   const [open, setOpen] = useState(false);
   const timer = useRef<number | null>(null);
   const show = () => {
@@ -479,7 +553,11 @@ function DiffChip(props: { file: FileChanges; sessionId?: string }) {
               </Button>
             </div>
           ) : null}
-          <FileDiffCard diffs={props.file.diffs} />
+          {props.file.host ? (
+            <HostPatchDetails sessionId={props.sessionId} itemId={props.file.host.itemId} ref={props.file.host.ref} />
+          ) : (
+            <FileDiffCard diffs={props.file.diffs} />
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -509,10 +587,12 @@ function QuestionSummary(props: { item: MspItem; answers: UserInputAnswer[] | nu
 export const ToolRow = memo(function ToolRow(props: { item: MspItem; gate?: Gate; answers?: UserInputAnswer[] | null; sessionId?: string }) {
   const { item } = props;
   const d = useMemo(() => describeTool(item), [item]);
-  const diff = useMemo(() => (d.kind === "edit" || d.kind === "write" ? extractDiff(item) : null), [d.kind, item]);
+  const choice = useMemo(() => itemDiff(item), [item]);
+  const host = choice?.source === "host" ? choice : null;
+  const diff = choice?.source === "inferred" && (d.kind === "edit" || d.kind === "write") ? choice.diff : null;
   const running = item.status === "inProgress";
   const failed = TERMINAL_FAILURES.has(item.status);
-  const stats = diff ? diffStats(diff) : null;
+  const stats = host ? host.summary : diff ? diffStats(diff) : null;
   const Icon = TOOL_ICONS[d.kind];
   const args = parseArgs(item.args);
 
@@ -551,7 +631,9 @@ export const ToolRow = memo(function ToolRow(props: { item: MspItem; gate?: Gate
     if (d.kind === "shell" && d.subject && d.subject.includes("\n")) {
       body.push(<CodeBlock key="cmd" code={d.subject} language="bash" className="my-0" />);
     }
-    if (diff) {
+    if (host) {
+      body.push(<HostPatchDetails key={host.ref?.id ?? "host-patch"} sessionId={props.sessionId} itemId={item.itemId} ref={host.ref} />);
+    } else if (diff) {
       body.push(<DiffBlock key="diff" diff={diff} />);
     }
     if (item.visibleOutput) {

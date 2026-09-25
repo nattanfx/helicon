@@ -1,4 +1,4 @@
-import type { ApprovalRequest, MspItem, SessionSummary } from "../types.js";
+import type { ApprovalRequest, MspItem, OutputRef, PatchSummary, SessionSummary } from "../types.js";
 import { GOAL_TOOLS } from "./goal.js";
 
 /** Tempo relativo compacto para barras laterais: agora, 4min, 3h, 2d, 3sem, depois uma data curta. */
@@ -635,6 +635,72 @@ export function extractDiff(item: MspItem): DiffView | null {
     }
   }
   return null;
+}
+
+export type ItemDiff =
+  | { source: "host"; summary: PatchSummary; ref: OutputRef | null }
+  | { source: "inferred"; diff: DiffView };
+
+/** The host's committed patch facts take priority over guesses from tool arguments. */
+export function itemDiff(item: MspItem): ItemDiff | null {
+  const summary = item.patchSummary;
+  if (
+    item.kind === "toolCall" && summary &&
+    Number.isSafeInteger(summary.files) && summary.files >= 0 &&
+    Number.isSafeInteger(summary.added) && summary.added >= 0 &&
+    Number.isSafeInteger(summary.removed) && summary.removed >= 0
+  ) {
+    const ref = item.patchRef;
+    return { source: "host", summary, ref: ref && typeof ref.id === "string" && ref.id.length > 0 ? ref : null };
+  }
+  const diff = extractDiff(item);
+  return diff ? { source: "inferred", diff } : null;
+}
+
+function patchRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+/** Read only shapes with unambiguous patch lines; other JSON remains visible as a document. */
+export function hostPatchViews(content: string): DiffView[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return /^(diff --git|--- |\+\+\+ |@@)/m.test(content) ? [{ path: null, patch: content }] : [];
+  }
+  if (typeof parsed === "string") {
+    return /^(diff --git|--- |\+\+\+ |@@)/m.test(parsed) ? [{ path: null, patch: parsed }] : [];
+  }
+  const document = patchRecord(parsed);
+  if (!document && !Array.isArray(parsed)) {
+    return [];
+  }
+  const files = Array.isArray(parsed) ? parsed : Array.isArray(document?.["files"]) ? document["files"] as unknown[] : [document];
+  const views: DiffView[] = [];
+  for (const file of files) {
+    const entry = patchRecord(file);
+    if (!entry) {
+      return [];
+    }
+    const path = ["path", "newPath", "filePath", "filename"].map((key) => entry[key]).find((value): value is string => typeof value === "string") ?? null;
+    const patch = ["patch", "diff"].map((key) => entry[key]).find((value): value is string => typeof value === "string");
+    if (patch && /^(diff --git|--- |\+\+\+ |@@)/m.test(patch)) {
+      views.push({ path, patch });
+    } else {
+      // A partially recognized multi-file document must not hide other files.
+      return [];
+    }
+  }
+  return views;
+}
+
+export function readableHostPatch(content: string): string {
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    return content;
+  }
 }
 
 export function diffStats(diff: DiffView): { added: number; removed: number } {

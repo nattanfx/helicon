@@ -127,7 +127,17 @@ export interface MspItem {
   childSessionId?: string;
   /** `toolCall` and `userShell`: where the full output is kept when the view truncated it. */
   outputRef?: OutputRef;
+  /** `toolCall`: patch and line counts authored by the Muse host for an edit. */
+  patchSummary?: PatchSummary;
+  /** `toolCall`: stored JSON patch, fetched through `item/readOutput` using its id. */
+  patchRef?: OutputRef;
   [key: string]: unknown;
+}
+
+export interface PatchSummary {
+  files: number;
+  added: number;
+  removed: number;
 }
 
 /** A tool's stored output. Read it through `item/readOutput` by `id`; the uri is only for display. */

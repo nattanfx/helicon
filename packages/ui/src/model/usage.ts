@@ -1,6 +1,6 @@
 import type { ContextUsage, ModelOption, MspItem } from "../types.js";
 import { HIDDEN_KINDS, STREAM_GAP_MS, type CallUsage, type ThreadFold, type TurnInfo } from "./fold.js";
-import { diffStats, extractDiff, formatCompactTokens, formatTokensPerSecond, modelDisplayName } from "./format.js";
+import { diffStats, formatCompactTokens, formatTokensPerSecond, itemDiff, modelDisplayName } from "./format.js";
 
 /**
  * Uso de contexto e de sessão para o painel de contexto do composer. O Muse informa o total de contexto,
@@ -365,6 +365,7 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
   let added = 0;
   let removed = 0;
   const files = new Set<string>();
+  let hostFileEntries = 0;
   const tools = new Map<string, ToolUsage>();
   const subagents: SubagentUsage[] = [];
   const compactions: CompactionRecord[] = [];
@@ -374,12 +375,16 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
       continue;
     }
     if (item.kind === "toolCall") {
-      const diff = extractDiff(item);
-      if (diff) {
-        const stats = diffStats(diff);
+      const choice = itemDiff(item);
+      if (choice?.source === "host") {
+        added += choice.summary.added;
+        removed += choice.summary.removed;
+        hostFileEntries += choice.summary.files;
+      } else if (choice?.source === "inferred") {
+        const stats = diffStats(choice.diff);
         added += stats.added;
         removed += stats.removed;
-        files.add(diff.path ?? item.itemId);
+        files.add(choice.diff.path ?? item.itemId);
       }
       const name = item.tool ?? "ferramenta";
       const entry = tools.get(name) ?? { tool: name, calls: 0, tokens: 0 };
@@ -419,7 +424,7 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
     cost: priced > 0 ? cost : null,
     currency,
     costComplete: priced === calls.length,
-    lines: { added, removed, files: files.size },
+    lines: { added, removed, files: files.size + hostFileEntries },
     turns: turns.length,
     workedMs: turns.reduce((total, turn) => total + (turn.durationMs ?? 0), 0),
     firstTokenMs: firstTokens.length > 0 ? firstTokens.reduce((a, b) => a + b, 0) / firstTokens.length : null,

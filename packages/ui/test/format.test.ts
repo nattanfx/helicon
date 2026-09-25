@@ -13,8 +13,11 @@ import {
   extractDiff,
   formatDuration,
   formatTokens,
+  hostPatchViews,
+  itemDiff,
   lastLine,
   mergeDiffLines,
+  readableHostPatch,
   CONTRIBUTOR_LABEL,
   CONTRIBUTOR_NOTICE,
   contributorChoiceLabel,
@@ -180,6 +183,26 @@ describe("descrições de ferramenta", () => {
     assert.ok(patch && "patch" in patch);
     assert.deepEqual(diffStats(patch), { added: 2, removed: 1 });
     assert.equal(extractDiff(tool("bash", { command: "ls" })), null);
+  });
+
+  it("prefere contagens do Muse quando a inferência dos argumentos discorda", () => {
+    const item: MspItem = {
+      ...tool("edit", { path: "a.ts", old_string: "uma linha", new_string: "outra linha" }),
+      patchSummary: { files: 2, added: 7, removed: 3 },
+      patchRef: { id: "patch-1", kind: "tool_patch", mediaType: "application/json" },
+    };
+    assert.deepEqual(itemDiff(item), { source: "host", summary: item.patchSummary, ref: item.patchRef });
+    assert.deepEqual(itemDiff({ ...item, patchSummary: undefined }), { source: "inferred", diff: extractDiff(item) });
+    assert.equal(itemDiff(tool("bash", { command: "ls" })), null);
+  });
+
+  it("mostra o patch JSON do host sem perder um formato ainda desconhecido", () => {
+    const known = JSON.stringify({ files: [{ path: "a.ts", patch: "@@ -1 +1 @@\n-antigo\n+novo" }] });
+    assert.deepEqual(hostPatchViews(known), [{ path: "a.ts", patch: "@@ -1 +1 @@\n-antigo\n+novo" }]);
+    const future = JSON.stringify({ files: [{ path: "a.ts", chunks: [{ before: "antigo", after: "novo" }] }] });
+    assert.deepEqual(hostPatchViews(future), []);
+    assert.match(readableHostPatch(future), /"chunks": \[/);
+    assert.deepEqual(hostPatchViews(JSON.stringify({ files: [{ path: "a.ts", patch: "@@\n-a\n+b" }, { path: "b.ts", chunks: [] }] })), []);
   });
 
   it("alinha as linhas de preenchimento de uma edição como contexto em vez de remover-e-readicionar", () => {
