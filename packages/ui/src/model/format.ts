@@ -638,7 +638,7 @@ export function extractDiff(item: MspItem): DiffView | null {
 }
 
 export type ItemDiff =
-  | { source: "host"; summary: PatchSummary; ref: OutputRef | null }
+  | { source: "host"; summary: PatchSummary; ref: OutputRef | null; fallback: DiffView | null }
   | { source: "inferred"; diff: DiffView };
 
 /** The host's committed patch facts take priority over guesses from tool arguments. */
@@ -651,7 +651,12 @@ export function itemDiff(item: MspItem): ItemDiff | null {
     Number.isSafeInteger(summary.removed) && summary.removed >= 0
   ) {
     const ref = item.patchRef;
-    return { source: "host", summary, ref: ref && typeof ref.id === "string" && ref.id.length > 0 ? ref : null };
+    return {
+      source: "host",
+      summary,
+      ref: ref && typeof ref.id === "string" && ref.id.length > 0 ? ref : null,
+      fallback: extractDiff(item),
+    };
   }
   const diff = extractDiff(item);
   return diff ? { source: "inferred", diff } : null;

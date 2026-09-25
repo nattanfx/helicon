@@ -320,16 +320,22 @@ export function DiffBlock(props: { diff: DiffView }) {
 }
 
 /** Load the host's stored patch only when the user opens its detail. */
-function HostPatchDetails(props: { sessionId?: string; itemId: string; ref: OutputRef | null }) {
+export function HostPatchDetails(props: { sessionId?: string; itemId: string; patchRef: OutputRef | null; fallback: DiffView | null }) {
   const controller = useController();
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const views = useMemo(() => content === null ? [] : hostPatchViews(content), [content]);
   const readable = useMemo(() => content === null ? null : readableHostPatch(content), [content]);
+  const fallback = props.fallback ? (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs text-subtle">Prévia reconstruída da edição; as contagens acima são do Muse.</p>
+      <DiffBlock diff={props.fallback} />
+    </div>
+  ) : null;
 
   const load = async () => {
-    if (!props.sessionId || !props.ref || loading || content !== null) {
+    if (!props.sessionId || !props.patchRef || loading || content !== null) {
       return;
     }
     setLoading(true);
@@ -337,7 +343,7 @@ function HostPatchDetails(props: { sessionId?: string; itemId: string; ref: Outp
     try {
       setContent(await loadHostPatch(
         (sessionId, itemId, outputRef, offset) => controller.readOutput(sessionId, itemId, outputRef, offset),
-        props.sessionId, props.itemId, props.ref.id,
+        props.sessionId, props.itemId, props.patchRef.id,
       ));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -346,8 +352,15 @@ function HostPatchDetails(props: { sessionId?: string; itemId: string; ref: Outp
     }
   };
 
-  if (!props.sessionId || !props.ref) {
-    return <p className="text-xs text-subtle">Os detalhes do patch do Muse não estão disponíveis nesta conversa.</p>;
+  if (!props.sessionId || !props.patchRef) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-subtle">
+          {props.patchRef ? "Não foi possível localizar esta conversa para ler o patch do Muse." : "As contagens chegaram sem uma referência de patch consultável."}
+        </p>
+        {fallback}
+      </div>
+    );
   }
   return (
     <div className="flex flex-col gap-2">
@@ -368,6 +381,7 @@ function HostPatchDetails(props: { sessionId?: string; itemId: string; ref: Outp
         <OutputBlock text={readable ?? ""} label="Patch estruturado do Muse" />
       )}
       {error ? <p className="text-xs text-danger-text">Não foi possível carregar o diff do Muse: {error}</p> : null}
+      {error ? fallback : null}
     </div>
   );
 }
@@ -439,7 +453,7 @@ interface FileChanges {
   added: number;
   removed: number;
   diffs: DiffView[];
-  host?: { itemId: string; ref: OutputRef | null };
+  host?: { itemId: string; ref: OutputRef | null; fallback: DiffView | null };
 }
 
 /**
@@ -469,7 +483,7 @@ export function DiffChips(props: { entries: MspItem[]; className?: string; sessi
           added: choice.summary.added,
           removed: choice.summary.removed,
           diffs: [],
-          host: { itemId: item.itemId, ref: choice.ref },
+          host: { itemId: item.itemId, ref: choice.ref, fallback: choice.fallback },
         });
         continue;
       }
@@ -554,7 +568,7 @@ function DiffChip(props: { file: FileChanges; sessionId?: string }) {
             </div>
           ) : null}
           {props.file.host ? (
-            <HostPatchDetails sessionId={props.sessionId} itemId={props.file.host.itemId} ref={props.file.host.ref} />
+            <HostPatchDetails sessionId={props.sessionId} itemId={props.file.host.itemId} patchRef={props.file.host.ref} fallback={props.file.host.fallback} />
           ) : (
             <FileDiffCard diffs={props.file.diffs} />
           )}
@@ -632,15 +646,16 @@ export const ToolRow = memo(function ToolRow(props: { item: MspItem; gate?: Gate
       body.push(<CodeBlock key="cmd" code={d.subject} language="bash" className="my-0" />);
     }
     if (host) {
-      body.push(<HostPatchDetails key={host.ref?.id ?? "host-patch"} sessionId={props.sessionId} itemId={item.itemId} ref={host.ref} />);
+      body.push(<HostPatchDetails key={host.ref?.id ?? "host-patch"} sessionId={props.sessionId} itemId={item.itemId} patchRef={host.ref} fallback={host.fallback} />);
     } else if (diff) {
       body.push(<DiffBlock key="diff" diff={diff} />);
     }
     if (item.visibleOutput) {
       // O runtime ecoa a edição abaixo de seu cabeçalho de resultado, sem alinhar; o diff acima já mostra
       // aquela mudança direito, então só o resto que a saída trouxe fica visível.
+      const displayedDiff = diff ?? (host && !host.ref ? host.fallback : null);
       const stripped =
-        diff && (d.kind === "edit" || d.kind === "write") && !item.truncated ? withoutDiffEcho(item.visibleOutput) : null;
+        displayedDiff && (d.kind === "edit" || d.kind === "write") && !item.truncated ? withoutDiffEcho(item.visibleOutput) : null;
       const text = stripped ?? item.visibleOutput;
       if (text.trim().length > 0) {
         body.push(

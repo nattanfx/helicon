@@ -191,7 +191,10 @@ describe("descrições de ferramenta", () => {
       patchSummary: { files: 2, added: 7, removed: 3 },
       patchRef: { id: "patch-1", kind: "tool_patch", mediaType: "application/json" },
     };
-    assert.deepEqual(itemDiff(item), { source: "host", summary: item.patchSummary, ref: item.patchRef });
+    const fallback = extractDiff(item);
+    assert.deepEqual(itemDiff(item), { source: "host", summary: item.patchSummary, ref: item.patchRef, fallback });
+    assert.deepEqual(itemDiff({ ...item, patchRef: undefined }), { source: "host", summary: item.patchSummary, ref: null, fallback });
+    assert.deepEqual(itemDiff({ ...item, patchRef: { id: "" } }), { source: "host", summary: item.patchSummary, ref: null, fallback });
     assert.deepEqual(itemDiff({ ...item, patchSummary: undefined }), { source: "inferred", diff: extractDiff(item) });
     assert.equal(itemDiff(tool("bash", { command: "ls" })), null);
   });

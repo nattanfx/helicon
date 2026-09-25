@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ControllerProvider } from "../src/app/context.js";
+import { HostPatchDetails } from "../src/components/thread/items.js";
 import { loadHostPatch } from "../src/model/patch.js";
+import type { HeliconController } from "../src/model/controller.js";
 import type { OutputRange } from "../src/types.js";
 
 function page(content: string, offsetBytes: number, byteLen: number, eof: boolean): OutputRange {
@@ -27,5 +32,44 @@ describe("patch armazenado no Muse", () => {
       loadHostPatch(async () => page("abc", 0, 3, false), "s", "i", "patch", 2),
       /excede o limite/,
     );
+  });
+
+  it("mostra a prévia inferida e a limitação quando as contagens chegam sem patchRef", () => {
+    const fallback = { path: "arquivo.txt", patch: "@@ -1 +1 @@\n-antigo\n+novo" };
+    const html = renderToStaticMarkup(createElement(
+      ControllerProvider,
+      { controller: {} as HeliconController, children: createElement(HostPatchDetails, { sessionId: "s", itemId: "i", patchRef: null, fallback }) },
+    ));
+    assert.match(html, /sem uma referência de patch consultável/);
+    assert.match(html, /Prévia reconstruída da edição/);
+    assert.match(html, /antigo/);
+    assert.match(html, /novo/);
+    assert.doesNotMatch(html, /Carregar diff do Muse/);
+  });
+
+  it("explica quando não há patchRef nem dados para reconstruir o diff", () => {
+    const html = renderToStaticMarkup(createElement(
+      ControllerProvider,
+      { controller: {} as HeliconController, children: createElement(HostPatchDetails, { sessionId: "s", itemId: "i", patchRef: null, fallback: null }) },
+    ));
+    assert.match(html, /sem uma referência de patch consultável/);
+    assert.doesNotMatch(html, /Prévia reconstruída/);
+  });
+
+  it("prioriza o patch armazenado quando a referência está disponível", () => {
+    const html = renderToStaticMarkup(createElement(
+      ControllerProvider,
+      {
+        controller: {} as HeliconController,
+        children: createElement(HostPatchDetails, {
+          sessionId: "s",
+          itemId: "i",
+          patchRef: { id: "patch-1" },
+          fallback: { path: "arquivo.txt", patch: "@@ -1 +1 @@\n-antigo\n+novo" },
+        }),
+      },
+    ));
+    assert.match(html, /Carregar diff do Muse/);
+    assert.doesNotMatch(html, /Prévia reconstruída/);
   });
 });
