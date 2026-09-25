@@ -210,6 +210,10 @@ export interface AppState {
   projects: ProjectView[];
   sessions: Record<string, SessionSummary>;
   sessionsLoaded: boolean;
+  /** Arquivadas para a seção de Configurações; a barra lateral nunca as lista. */
+  archived: SessionSummary[];
+  archivedLoaded: boolean;
+  archivedError: string | null;
   discovering: boolean;
   route: Route;
   threads: Record<string, ThreadState>;
@@ -277,6 +281,9 @@ export function initialState(prefs: Prefs): AppState {
     projects: [],
     sessions: {},
     sessionsLoaded: false,
+    archived: [],
+    archivedLoaded: false,
+    archivedError: null,
     discovering: false,
     route: { kind: "home" },
     threads: {},

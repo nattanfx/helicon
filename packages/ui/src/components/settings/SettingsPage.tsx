@@ -13,10 +13,12 @@ import {
 } from "../../model/identity.js";
 import type { NotifyPermission, NotifyTrace } from "../../model/notify.js";
 import { CODE_THEMES, ZOOM_MAX, ZOOM_MIN, type CodeTheme, type GroupBy, type ThemePref } from "../../model/store.js";
+import { settingsSectionTitle, type SettingsSectionId } from "../../model/settingsSections.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
 import { CODE_THEME_LABELS, updateSummary } from "../sidebar/Sidebar.js";
 import { NotasDaEdicao } from "../app/NotasDaEdicao.js";
+import { ArchivedChats } from "./ArchivedChats.js";
 import { Modal } from "../ui/overlays.js";
 import { TopBar } from "../chrome.js";
 import { Button, IconButton, MOD, cn } from "../ui/primitives.js";
@@ -64,10 +66,10 @@ function Toggle(props: { checked: boolean; onChange: (on: boolean) => void; labe
   );
 }
 
-function Section(props: { title: string; children: ReactNode }) {
+function Section(props: { id: SettingsSectionId; children: ReactNode }) {
   return (
-    <section className="mt-6">
-      <h2 className="mb-2 text-2xs font-semibold tracking-wide text-subtle uppercase">{props.title}</h2>
+    <section id={`settings-${props.id}`} className="mt-6">
+      <h2 className="mb-2 text-2xs font-semibold tracking-wide text-subtle uppercase">{settingsSectionTitle(props.id)}</h2>
       <div className="overflow-hidden rounded-2xl bg-raised shadow-card">{props.children}</div>
     </section>
   );
@@ -183,7 +185,7 @@ export function SettingsPage() {
       </header>
 
       <div className="mx-auto w-full min-w-0 max-w-[720px] px-4 pb-16 @min-[520px]:px-6">
-        <Section title="Aparência">
+        <Section id="aparencia">
           <Row label="Tema" description="Claro, escuro ou o que este aparelho estiver usando.">
             <Pick value={prefs.theme} options={THEMES} onChange={(value) => controller.setTheme(value)} />
           </Row>
@@ -227,7 +229,7 @@ export function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Novas conversas">
+        <Section id="novas-conversas">
           <Row label="Modelo" description="Com o que uma nova conversa começa. Mudar aqui não afeta conversas em andamento.">
             {models.length === 0 ? (
               <p className="text-xs text-subtle">Nenhum modelo carregado</p>
@@ -270,13 +272,17 @@ export function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Lista de conversas">
+        <Section id="lista-de-conversas">
           <Row label="Agrupar por" description="Como a barra lateral organiza as conversas.">
             <Pick value={prefs.groupBy} options={GROUPS} onChange={(value) => controller.setGroupBy(value)} />
           </Row>
         </Section>
 
-        <Section title="Títulos das conversas">
+        <Section id="chats-arquivados">
+          <ArchivedChats />
+        </Section>
+
+        <Section id="titulos-das-conversas">
           <Row
             label="Gerar títulos"
             description="Faz no máximo uma tentativa de título por conversa criada com esta opção ligada. Consome seu plano do Muse Code. Se falhar, mantém o primeiro pedido como título e não tenta novamente, mesmo após reiniciar. Conversas antigas não são renomeadas automaticamente. Desligar cancela tentativas pendentes; uma chamada já enviada pode consumir cota."
@@ -313,7 +319,7 @@ export function SettingsPage() {
           ) : null}
         </Section>
 
-        <Section title="Modo YOLO">
+        <Section id="modo-yolo">
           <Row
             label="Modo YOLO"
             description="Como muse --yolo: nada pede aprovação em nenhuma conversa, novas conversas rodam sem confinamento da sandbox, e os workspaces são confiáveis. As conversas já abertas mantêm a proteção de sandbox com que começaram. Mudar isto reinicia os servidores Muse em execução, interrompendo seus turnos."
@@ -330,7 +336,7 @@ export function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Sandbox">
+        <Section id="sandbox">
           <Row
             label="Desativar a sandbox"
             description={
@@ -352,7 +358,7 @@ export function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Aprovações">
+        <Section id="aprovacoes">
           <Row
             label="Responder aprovações por mim"
             description={
@@ -376,7 +382,7 @@ export function SettingsPage() {
           ) : null}
         </Section>
 
-        <Section title="Notificações">
+        <Section id="notificacoes">
           <Row
             label="Me avisar quando uma conversa precisar de mim"
             description="Uma notificação do sistema quando uma conversa pedir aprovação, fizer uma pergunta, terminar, falhar ou sua meta parar de andar."
@@ -467,7 +473,7 @@ export function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Versão">
+        <Section id="versao">
           <Row
             label={identity ? identityHeading(identity) : `Helicon ${env?.version ?? ""}`.trim() || "Helicon"}
             description={identity ? identitySummary(identity) : "Versão informada pelo servidor local."}
@@ -491,7 +497,7 @@ export function SettingsPage() {
         </Section>
 
         {updates ? (
-          <Section title="Atualizações">
+          <Section id="atualizacoes">
             <Row label={`Helicon ${updates.currentVersion ?? ""}`} description={updateSummary(updates, prefs.autoUpdate, prefs.updatesPaused, now)}>
               <div className="flex flex-wrap items-center gap-2">
                 {updates.status === "ready" ? (
@@ -519,7 +525,7 @@ export function SettingsPage() {
           </Section>
         ) : null}
 
-        <Section title="Ambiente">
+        <Section id="ambiente">
           <Row
             label="Novidades desta edição"
             description="As notas desta edição do fork, guardadas no próprio aplicativo. Ler não envia nada nem muda nada."

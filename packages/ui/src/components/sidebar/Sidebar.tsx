@@ -36,6 +36,7 @@ import { isTurnFinalizing } from "../../model/fold.js";
 import { basename, displayTitle, formatElapsed, relativeTime } from "../../model/format.js";
 import { statusLabel } from "../../model/goal.js";
 import { PlanPill } from "../usage/PlanMeter.js";
+import { SettingsNav } from "./SettingsNav.js";
 import {
   STATUS_LABEL,
   groupByProject,
@@ -79,6 +80,7 @@ function projectUnderPoint(x: number, y: number): string | null {
 export function Sidebar() {
   const width = useApp((s) => s.prefs.sidebarWidth);
   const overlay = useTitlebarOverlay();
+  const routeKind = useApp((s) => s.route.kind);
   return (
     <aside
       aria-label="Barra lateral"
@@ -87,7 +89,7 @@ export function Sidebar() {
     >
       {overlay ? <TrafficLightsSlot /> : null}
       <SidebarTop />
-      <ThreadList />
+      {routeKind === "settings" ? <SettingsNav /> : <ThreadList />}
       <SidebarFooter />
       <ResizeHandle />
     </aside>

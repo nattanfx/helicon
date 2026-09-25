@@ -96,6 +96,65 @@ describe("HeliconStore", () => {
     assert.equal(store.findSession("s1")?.cwd, "/work/p");
   });
 
+  it("deletes a session with its rows and tombstones the id", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    const project = store.upsertProject("/work/p");
+    store.recordSession({ id: "s1", projectId: project.id });
+    store.recordTurn("t1", "s1");
+    store.updateTurnStatus("t1", "completed");
+    store.addShellRun({
+      id: "r1",
+      sessionId: "s1",
+      command: "ls",
+      exitCode: 0,
+      output: "",
+      truncated: false,
+      durationMs: null,
+      at: "2026-09-11T22:00:00.000Z",
+    });
+    store.addAttachment({
+      id: "a1",
+      sessionId: "s1",
+      turnId: null,
+      ord: 0,
+      name: "f.txt",
+      mediaType: "text/plain",
+      kind: "file",
+      width: null,
+      height: null,
+      bytes: new Uint8Array([1]),
+    });
+    store.recordUsage({
+      key: "k1",
+      sessionId: "s1",
+      turnId: "t1",
+      modelId: null,
+      promptTokens: 1,
+      outputTokens: 2,
+      inputTokens: 3,
+      cachedTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      durationMs: null,
+      at: "2026-09-11T22:00:00.000Z",
+    });
+    store.allowTitleAttempt("s1");
+    assert.equal(store.deleteSession("missing"), false);
+    assert.equal(store.deleteSession("s1"), true);
+    assert.equal(store.getSession("s1"), null);
+    assert.equal(store.isDeleted("s1"), true);
+    assert.equal(store.isDeleted("s2"), false);
+    assert.deepEqual(store.listShellRuns("s1"), []);
+    assert.deepEqual(store.listAttachments("s1"), []);
+    assert.deepEqual(store.listUsage(), []);
+    assert.equal(store.titleAttemptState("s1"), null);
+    // The turn rows go too: re-recording the id starts from zero, not from the old turn.
+    store.recordSession({ id: "s1", projectId: project.id });
+    assert.equal(store.listSessionsByProject(project.id)[0]?.turnCount, 0);
+  });
+
   it("archives sessions and hides projects without deleting them", () => {
     const store = new HeliconStore();
     after(() => store.close());

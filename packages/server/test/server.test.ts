@@ -526,6 +526,25 @@ describe("HeliconServer", () => {
     assert.equal(failed.json.error, "input too large");
   });
 
+  it("deletes threads and never re-discovers them", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/list", {
+      sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", turnCount: 1 }],
+      nextCursor: null,
+    });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const deleted = await send(base, "/api/sessions/s1", undefined, "DELETE");
+    assert.equal(deleted.status, 200);
+    assert.equal((await get(base, "/api/sessions")).sessions.length, 0);
+    assert.equal((await get(base, "/api/sessions?archived=1")).sessions.length, 0);
+    assert.equal((await send(base, "/api/sessions/s1", undefined, "DELETE")).status, 404);
+    const found = await send(base, "/api/discover", {});
+    assert.equal(found.status, 200);
+    assert.equal((await get(base, "/api/sessions")).sessions.length, 0);
+  });
+
   it("renames and archives threads, and hides projects", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });

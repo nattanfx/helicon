@@ -348,6 +348,7 @@ export class HeliconController {
   private sandboxSettingsChain: Promise<void> = Promise.resolve();
   /** Incrementada a cada pedido de YOLO, para aplicar apenas a resposta ou reversão mais recente. */
   private yoloSettingsRev = 0;
+  private archivedRev = 0;
   /** PATCHs do YOLO andam em fila para que viradas opostas rápidas persistam em ordem. */
   private yoloSettingsChain: Promise<void> = Promise.resolve();
   /** Modos de aprovação de antes de ligar o YOLO, restaurados ao desligá-lo. Null quando nunca foi ligado aqui. */
@@ -787,6 +788,7 @@ export class HeliconController {
     } else if (route.kind === "new" && route.cwd) {
       this.setPrefs({ lastProject: route.cwd });
     } else if (route.kind === "settings") {
+      void this.loadArchived();
       if (this.state.titleSettings === null) {
         void this.loadTitleSettings();
       }
@@ -2041,6 +2043,53 @@ export class HeliconController {
   toggleShelf(key: string): void {
     const open = this.state.prefs.openShelves;
     this.setPrefs({ openShelves: open.includes(key) ? open.filter((k) => k !== key) : [...open, key] });
+  }
+
+  /** Arquivadas para a seção de Configurações; recarrega a cada abertura. */
+  async loadArchived(): Promise<void> {
+    const rev = ++this.archivedRev;
+    try {
+      const archived = await this.client.listSessions({ archived: true });
+      if (rev === this.archivedRev) {
+        this.update((s) => ({ ...s, archived, archivedLoaded: true, archivedError: null }));
+      }
+    } catch (error) {
+      if (rev === this.archivedRev) {
+        this.update((s) => ({ ...s, archivedLoaded: false, archivedError: userFacingError(error) }));
+      }
+    }
+  }
+
+  async restoreArchived(sessionId: string): Promise<void> {
+    const current = this.state.archived.find((s) => s.sessionId === sessionId);
+    if (!current) {
+      return;
+    }
+    try {
+      const saved = await this.client.updateSession(sessionId, { archived: false });
+      this.upsertSession(saved ?? { ...current, archived: false });
+      this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== sessionId) }));
+      this.toast("info", "Conversa restaurada", current.title);
+    } catch (error) {
+      this.toast("error", "Não foi possível restaurar a conversa", userFacingError(error));
+    }
+  }
+
+  async deleteArchived(sessionId: string): Promise<void> {
+    const current = this.state.archived.find((s) => s.sessionId === sessionId);
+    if (!current || this.state.busy[`delete:${sessionId}`]) {
+      return;
+    }
+    this.setBusy(`delete:${sessionId}`, true);
+    try {
+      await this.client.deleteSession(sessionId);
+      this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== sessionId) }));
+      this.toast("info", "Conversa excluída", current.title);
+    } catch (error) {
+      this.toast("error", "Não foi possível excluir a conversa", userFacingError(error));
+    } finally {
+      this.setBusy(`delete:${sessionId}`, false);
+    }
   }
 
   private async unarchive(session: SessionSummary): Promise<void> {

@@ -132,6 +132,17 @@ describe("web client", () => {
     stop();
   });
 
+  it("deletes a thread by id", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+
+    await new WebHeliconClient().deleteSession("s1");
+
+    const call = world.calls.at(-1);
+    assert.equal(call?.url, "/api/sessions/s1");
+    assert.equal(call?.init?.method, "DELETE");
+  });
+
   it("reads and writes the thread-title switch", async () => {
     const world = browser();
     const { WebHeliconClient } = await freshClient();

@@ -74,8 +74,13 @@ class FakeClient implements HeliconClient {
   async revealPath() {}
   async hideProject() {}
   async setPinned() {}
-  async listSessions() {
-    return [SESSION];
+  archivedSessions: SessionSummary[] = [];
+  deletedSessions: string[] = [];
+  async listSessions(options?: { archived?: boolean }) {
+    return options?.archived ? this.archivedSessions : [SESSION];
+  }
+  async deleteSession(sessionId: string) {
+    this.deletedSessions.push(sessionId);
   }
   async discover() {}
   startCalls: { cwd: string; approvalMode?: string; modelId?: string }[] = [];
@@ -2107,6 +2112,58 @@ describe("HeliconController", () => {
     await controller.archive("s1");
     controller.goBack();
     assert.deepEqual(controller.store.get().route, { kind: "home" });
+    stop();
+  });
+});
+
+describe("archived threads", () => {
+  const S9: SessionSummary = { ...SESSION, sessionId: "s9", title: "Old probe", archived: true };
+
+  it("loads archived threads when settings opens", async () => {
+    const client = new FakeClient();
+    client.archivedSessions = [S9];
+    const { controller, stop } = await started(client, "");
+    assert.deepEqual(controller.store.get().archived, []);
+    controller.navigate({ kind: "settings" });
+    await controller.loadArchived();
+    assert.deepEqual(controller.store.get().archived, [S9]);
+    assert.equal(controller.store.get().archivedLoaded, true);
+    stop();
+  });
+
+  it("restores an archived thread to the sidebar", async () => {
+    const client = new FakeClient();
+    client.archivedSessions = [S9];
+    client.updateSession = async () => ({ ...S9, archived: false });
+    const { controller, stop } = await started(client, "");
+    await controller.loadArchived();
+    await controller.restoreArchived("s9");
+    assert.deepEqual(controller.store.get().archived, []);
+    assert.equal(controller.store.get().sessions["s9"]?.archived, false);
+    stop();
+  });
+
+  it("deletes an archived thread", async () => {
+    const client = new FakeClient();
+    client.archivedSessions = [S9];
+    const { controller, stop } = await started(client, "");
+    await controller.loadArchived();
+    await controller.deleteArchived("s9");
+    assert.deepEqual(controller.store.get().archived, []);
+    assert.deepEqual(client.deletedSessions, ["s9"]);
+    stop();
+  });
+
+  it("keeps the archived thread when restoring fails", async () => {
+    const client = new FakeClient();
+    client.archivedSessions = [S9];
+    client.updateSession = async () => {
+      throw new Error("nope");
+    };
+    const { controller, stop } = await started(client, "");
+    await controller.loadArchived();
+    await controller.restoreArchived("s9");
+    assert.deepEqual(controller.store.get().archived, [S9]);
     stop();
   });
 });

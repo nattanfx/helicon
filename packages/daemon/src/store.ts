@@ -191,6 +191,10 @@ CREATE TABLE IF NOT EXISTS title_attempts (
   state TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS deleted_sessions (
+  session_id TEXT PRIMARY KEY,
+  deleted_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_shell_runs_session ON shell_runs(session_id, at);
 CREATE INDEX IF NOT EXISTS idx_usage_at ON usage(at);
@@ -669,6 +673,28 @@ export class HeliconStore {
       this.db.prepare(`UPDATE sessions SET project_id = ? WHERE id = ?`).run(input.projectId, input.id);
     }
     return this.updateSession(input.id, patch) ?? existing;
+  }
+
+  /**
+   * Removes a session and every local row keyed to it, and tombstones the id so the next
+   * discovery does not re-adopt the host session. The host session itself is left alone.
+   */
+  deleteSession(id: string): boolean {
+    if (!this.getSession(id)) {
+      return false;
+    }
+    for (const table of ["usage", "shell_runs", "attachments", "turns", "title_attempts"]) {
+      this.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(id);
+    }
+    this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+    this.db.prepare(`INSERT OR REPLACE INTO deleted_sessions (session_id, deleted_at) VALUES (?, ?)`).run(id, nowIso());
+    return true;
+  }
+
+  /** True once deleted; discovery skips these ids instead of re-adopting them. */
+  isDeleted(id: string): boolean {
+    const row = this.db.prepare(`SELECT session_id FROM deleted_sessions WHERE session_id = ?`).get(id) as Row | undefined;
+    return row !== undefined;
   }
 
   getSession(id: string): SessionRecord | null {

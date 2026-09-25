@@ -1272,6 +1272,19 @@ export class HeliconServer {
     if (sessionMatch) {
       const sessionId = decodeURIComponent(sessionMatch[1] as string);
       const action = sessionMatch[2];
+      if (method === "DELETE" && !action) {
+        const found = this.store.findSession(sessionId);
+        if (!found) {
+          throw new HttpError(404, "Unknown session.");
+        }
+        if (this.isBusy(sessionId)) {
+          throw new HttpError(409, "Stop the running turn and answer its requests before deleting this thread.");
+        }
+        this.store.deleteSession(sessionId);
+        this.sessionsChanged();
+        this.json(res, 200, { ok: true });
+        return true;
+      }
       if (method === "PATCH" && !action) {
         const body = await this.readBody(req);
         const found = this.store.findSession(sessionId);
@@ -2616,6 +2629,10 @@ export class HeliconServer {
       const session = (record && asRecord(record["session"])) ?? record;
       const sessionId = session ? str(session["sessionId"]) : null;
       if (!session || !sessionId) {
+        continue;
+      }
+      // Deleted in Helicon stays deleted, even when the host session still exists.
+      if (this.store.isDeleted(sessionId)) {
         continue;
       }
       const root = this.storePathFor(firstString(session, ["workspaceRoot"]) ?? cwd ?? "");

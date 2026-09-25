@@ -94,6 +94,8 @@ export interface HeliconClient {
    */
   assetUrl(path: string): string;
   updateSession(sessionId: string, patch: { title?: string; archived?: boolean; settled?: boolean }): Promise<SessionSummary | null>;
+  /** Removes the thread from Helicon; the host session is left alone. */
+  deleteSession(sessionId: string): Promise<void>;
   /** `attachments` voltam salvos, para a conversa aberta mostrá-los sem esperar recarregar. */
   sendTurn(
     sessionId: string,

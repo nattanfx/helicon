@@ -237,6 +237,10 @@ export class WebHeliconClient implements HeliconClient {
     return (await call<{ session: SessionSummary | null }>("PATCH", `/api/sessions/${enc(sessionId)}`, patch)).session;
   }
 
+  async deleteSession(sessionId: string): Promise<void> {
+    await call("DELETE", `/api/sessions/${enc(sessionId)}`);
+  }
+
   async sendTurn(
     sessionId: string,
     text: string,
