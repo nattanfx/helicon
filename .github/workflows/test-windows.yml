@@ -16,8 +16,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -47,7 +47,7 @@ jobs:
             'Muse account and CLI are shared. Use only a disposable project for validation.'
           ) | Set-Content -LiteralPath "$bundleDir/BUILD.txt" -Encoding utf8
           Copy-Item -LiteralPath 'docs/TESTE-WINDOWS.md' -Destination "$bundleDir/TESTE-WINDOWS.md"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: Helicon-Teste-Windows-${{ github.run_number }}
           path: |
