@@ -1,4 +1,4 @@
-import { ArrowDown, ChevronRight, CircleAlert, GitFork, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
+import { Activity, ArrowDown, ChevronRight, CircleAlert, GitFork, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useApp, useController, useNow } from "../../app/context.js";
@@ -233,8 +233,10 @@ const TurnBlock = memo(
       ? turnErrorCopy(info.error.kind, info.error.message, info.error.retryable, { turnId: turn.turnId })
       : null;
     const closed = useApp((s) => (turn.turnId ? s.prefs.dismissedTurnErrors.includes(`${props.sessionId}:${turn.turnId}`) : false));
+    // O servidor pode ver vivo um turno que o fold já deu como falho (retrato obsoleto): sem caixinha até ele parar.
+    const liveActiveTurnId = useApp((s) => s.sessions[props.sessionId]?.live?.activeTurnId ?? null);
     // Um turno que ainda trabalha nunca mostra a caixinha: a falha que chegou antes da atividade é retrato obsoleto.
-    const failed = info?.terminal === "failed" && !turn.running && !info.dismissed && !closed;
+    const failed = info?.terminal === "failed" && !turn.running && turn.turnId !== liveActiveTurnId && !info.dismissed && !closed;
     const cancelled = info?.terminal === "cancelled";
     const hasWork = turn.entries.length > 0;
     // Itens fora de qualquer mensagem são os próprios comandos `!` do usuário: mostrados como são, nunca dobrados num registro de trabalho.
@@ -758,6 +760,30 @@ function TurnError(props: {
   const stuck = stuckThread(props.message, { ownImages: hadImages });
   const copy = turnErrorCopy(props.kind, props.message, props.retryable, { turnId: props.turnId });
   const [confirmRestart, setConfirmRestart] = useState(false);
+  // Falha sem detalhe é dúvida, não certeza: repetição e restart só aparecem depois de verificar parado.
+  const uncertain = props.kind === null;
+  const [verifiedStopped, setVerifiedStopped] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const showActions = !uncertain || verifiedStopped;
+  const verify = () => {
+    if (checking) {
+      return;
+    }
+    setChecking(true);
+    void (async () => {
+      try {
+        const alive = await controller.verifyTurnAlive(props.sessionId, props.turnId);
+        if (alive) {
+          controller.dismissTurnError(props.sessionId, props.turnId, { transient: true });
+          controller.toast("info", "Ainda está trabalhando", "O servidor confirma que este turno continua rodando — não era uma falha.");
+        } else {
+          setVerifiedStopped(true);
+        }
+      } finally {
+        setChecking(false);
+      }
+    })();
+  };
   /**
    * Envia o pedido de novo com os mesmos arquivos: seus bytes vivem no servidor, então são lidos de volta
    * em vez de omitidos, o que discretamente perguntaria outra coisa ao modelo. Nada vai se não puderem ser
@@ -841,7 +867,7 @@ function TurnError(props: {
             <RotateCcw size={13} /> Compactar a conversa
           </Button>
         </Tip>
-      ) : props.prompt && copy.offerRetry ? (
+      ) : showActions && props.prompt && copy.offerRetry ? (
         <Tip label="Enviar o mesmo pedido de novo">
           <Button
             size="sm"
@@ -852,7 +878,14 @@ function TurnError(props: {
           </Button>
         </Tip>
       ) : null}
-      {!props.readOnly ? (
+      {uncertain && !verifiedStopped && !props.readOnly ? (
+        <Tip label="Perguntar ao servidor se este turno ainda está rodando">
+          <Button size="sm" variant="secondary" loading={checking} onClick={verify}>
+            <Activity size={13} /> Verificar estado
+          </Button>
+        </Tip>
+      ) : null}
+      {!props.readOnly && showActions ? (
         <Tip label="Reinicia os servidores Muse; turnos em execução são interrompidos">
           <Button size="sm" variant="ghost" onClick={() => setConfirmRestart(true)}>
             <RotateCw size={13} /> Reiniciar o Muse

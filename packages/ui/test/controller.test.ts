@@ -982,6 +982,60 @@ describe("HeliconController", () => {
     }
   });
 
+  it("treats a turn the server still runs as alive when verified", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      const alive = {
+        activeTurnId: "t1",
+        turnStartedAt: null,
+        pendingApprovals: 0,
+        pendingInputs: 0,
+        lastTerminal: null,
+        lastError: null,
+      };
+      client.listSessions = async () => [{ ...SESSION, live: alive }];
+      assert.equal(await controller.verifyTurnAlive("s1", "t1"), true);
+      assert.equal(await controller.verifyTurnAlive("s1", "t2"), false);
+      assert.equal(await controller.verifyTurnAlive("s1", null), false);
+    } finally {
+      stop();
+    }
+  });
+
+  it("dismisses a verified-alive failure transiently, without recording prefs", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { sessionId: "s1", turnId: "t1" }, at: 1 });
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/completed", params: { sessionId: "s1", turnId: "t1", terminal: "failed" }, at: 2 });
+      await settle();
+      await settle();
+    assert.equal(controller.store.get().threads["s1"]!.fold.turns["t1"]?.terminal, "failed");
+      controller.dismissTurnError("s1", "t1", { transient: true });
+      const state = controller.store.get();
+      assert.equal(state.threads["s1"]!.fold.turns["t1"]?.dismissed, true);
+      assert.deepEqual(state.prefs.dismissedTurnErrors, []);
+    } finally {
+      stop();
+    }
+  });
+
+  it("keeps recording a manual dismiss in prefs", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { sessionId: "s1", turnId: "t1" }, at: 1 });
+    client.handler?.({ type: "msp", sessionId: "s1", method: "turn/completed", params: { sessionId: "s1", turnId: "t1", terminal: "failed" }, at: 2 });
+      await settle();
+      await settle();
+      controller.dismissTurnError("s1", "t1");
+      assert.deepEqual(controller.store.get().prefs.dismissedTurnErrors, ["s1:t1"]);
+    } finally {
+      stop();
+    }
+  });
+
   it("retries with the typed text, without server-appended markers or mentions", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);

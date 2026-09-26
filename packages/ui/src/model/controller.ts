@@ -1410,25 +1410,46 @@ export class HeliconController {
   /** Limpa o aviso de uma mensagem falha, para quando o usuário já agiu sobre ele e ele só está ocupando espaço. */
   /**
    * Fecha o aviso de uma mensagem falha. Guardado nas prefs além do fold: o fold é reconstruído do histórico do Muse
-   * sempre que a conversa recarrega, e o aviso voltaria com ele.
+   * sempre que a conversa recarrega, e o aviso voltaria com ele. `transient` esconde só nesta sessão: uma recarga
+   * reavalia — o certo após verificar que o turno está vivo, pois uma morte posterior real deve voltar a aparecer.
    */
-  dismissTurnError(sessionId: string, turnId: string | null): void {
+  dismissTurnError(sessionId: string, turnId: string | null, options: { transient?: boolean } = {}): void {
     if (!turnId) {
       return;
     }
-    const key = `${sessionId}:${turnId}`;
-    const dismissed = this.state.prefs.dismissedTurnErrors;
-    if (!dismissed.includes(key)) {
-      this.setPrefs({ dismissedTurnErrors: [...dismissed, key].slice(-300) });
+    if (!options.transient) {
+      const key = `${sessionId}:${turnId}`;
+      const dismissed = this.state.prefs.dismissedTurnErrors;
+      if (!dismissed.includes(key)) {
+        this.setPrefs({ dismissedTurnErrors: [...dismissed, key].slice(-300) });
+      }
     }
     this.patchFold(sessionId, (f) => {
       const info = f.turns[turnId];
-      if (!info?.error) {
+      if (!info || (!options.transient && !info.error)) {
         return f;
+      }
+      if (options.transient) {
+        return { ...f, turns: { ...f.turns, [turnId]: { ...info, dismissed: true } } };
       }
       const { error: _error, ...rest } = info;
       return { ...f, turns: { ...f.turns, [turnId]: { ...rest, dismissed: true } } };
     });
+  }
+
+  /**
+   * Verdadeiro quando o turno está vivo agora: ativo no fold ou no retrato fresco do servidor. Uma falha sem
+   * detalhe sobre um turno vivo é retrato obsoleto, não morte — verificar antes de oferecer repetição ou restart.
+   */
+  async verifyTurnAlive(sessionId: string, turnId: string | null): Promise<boolean> {
+    if (!turnId) {
+      return false;
+    }
+    if (this.state.threads[sessionId]?.fold.activeTurnId === turnId) {
+      return true;
+    }
+    await this.refresh();
+    return this.state.sessions[sessionId]?.live?.activeTurnId === turnId;
   }
 
   /** Verdadeiro quando o prompt realmente foi; um chamador pode então dizer se devolve o texto ao usuário. */

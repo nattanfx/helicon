@@ -6,6 +6,15 @@ A caixinha vermelha "Esta mensagem falhou" aparece quando o programa entende que
 
 Se você apertou F5 (ou a tela recarregou sozinha) no meio de uma resposta, a caixinha pode aparecer mesmo com a resposta completa na tela. É um retrato antigo: o programa já está corrigindo esses casos sozinho, e a caixinha some quando a conclusão chega. Se a resposta está completa, pode ignorar.
 
+## Falha sem detalhe: verifique antes de agir
+
+Quando a falha vem sem explicação ("O host não enviou detalhe"), a caixinha mostra só o botão **Verificar estado** — de propósito, sem "Tentar de novo" nem "Reiniciar o Muse". Clique nele: o programa pergunta ao servidor se o turno ainda está rodando.
+
+- Se estiver rodando, a caixinha some com o aviso "Ainda está trabalhando" — não era falha.
+- Se estiver parado mesmo, aí aparecem **Tentar de novo** e **Reiniciar o Muse**.
+
+Enquanto o servidor vir o turno ativo, a caixinha nem chega a aparecer.
+
 ## "Tentar de novo" reenvia o pedido
 
 O botão **Tentar de novo** manda seu pedido original mais uma vez, como uma mensagem nova. Use quando **nada** foi feito. Se o trabalho já aparece na tela (passos concluídos, texto parcial), prefira pedir no chat para continuar de onde parou — reenviar manda o agente refazer tudo.
