@@ -526,6 +526,44 @@ describe("HeliconServer", () => {
     assert.equal(failed.json.error, "input too large");
   });
 
+  it("backfills usage from every host session without adopting them", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", {
+      sessions: [{ session: { sessionId: "s1" } }, { session: { sessionId: "s2" } }],
+      nextCursor: null,
+    });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => ({
+      events: [
+        { method: "session/tokenUsage", params: { viewCursor: `v:${params["sessionId"]}:1`, turnId: "t1", modelId: "m", promptTokens: 10, usage: { inputTokens: 10, outputTokens: 5 }, at: "2026-09-25T00:00:00.000Z" } },
+      ],
+      nextCursor: null,
+    }));
+    const { base } = await start(connection);
+    const started = await send(base, "/api/usage/backfill", {});
+    assert.equal(started.status, 202);
+    await waitFor(async () => (await get(base, "/api/usage/backfill")).running === false, "backfill done");
+    const status = await get(base, "/api/usage/backfill");
+    assert.equal(status.done, 2);
+    assert.equal(status.calls, 2);
+    assert.equal(status.failed, 0);
+    const report = await get(base, "/api/usage?days=30");
+    assert.equal(report.threads.length, 2);
+    assert.equal(
+      report.threads.reduce((total: number, thread: { promptTokens: number }) => total + thread.promptTokens, 0),
+      20,
+    );
+    // A segunda passada não duplica: a chave é o cursor da chamada.
+    await send(base, "/api/usage/backfill", {});
+    await waitFor(async () => { const s = await get(base, "/api/usage/backfill"); return s.running === false && s.finishedAt !== status.finishedAt; }, "second backfill done");
+    const again = await get(base, "/api/usage?days=30");
+    assert.equal(
+      again.threads.reduce((total: number, thread: { promptTokens: number }) => total + thread.promptTokens, 0),
+      20,
+    );
+    // E não adota as sessões na barra lateral.
+    assert.equal((await get(base, "/api/sessions")).sessions.length, 0);
+  });
+
   it("deletes threads and never re-discovers them", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });

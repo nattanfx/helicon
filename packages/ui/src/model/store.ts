@@ -12,6 +12,7 @@ import type {
   ShellRun,
   SkillEntry,
   TitleSettings,
+  UsageBackfillStatus,
   YoloSettings,
 } from "../types.js";
 import type { EchoAttachment, ThreadFold } from "./fold.js";
@@ -253,6 +254,8 @@ export interface AppState {
   picker: ComposerPicker | null;
   /** A janela de assinatura que o Muse informou por último; nulo até um host ver uma. */
   planUsage: PlanUsage | null;
+  /** Progresso da releitura de uso; nulo até a primeira. */
+  usageBackfill: UsageBackfillStatus | null;
   /** O visualizador de arquivos de cada conversa. */
   filePanels: Record<string, FilePanel>;
   /** Edições não salvas, por `fileKey(cwd, path)`. */
@@ -303,6 +306,7 @@ export function initialState(prefs: Prefs): AppState {
     bypassThreads: [],
     hostError: null,
     planUsage: null,
+    usageBackfill: null,
     filePanels: {},
     fileDrafts: {},
     fileVersions: {},

@@ -372,6 +372,18 @@ export interface UsageReport {
   threads: UsageThread[];
 }
 
+/** Progresso da releitura de uso em todas as sessões do host. */
+export interface UsageBackfillStatus {
+  running: boolean;
+  total: number;
+  done: number;
+  calls: number;
+  failed: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+}
+
 /** A view notification, live or paged from history. `at` is the emission time when known. */
 export interface ViewEvent {
   method: string;

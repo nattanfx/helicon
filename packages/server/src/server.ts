@@ -651,6 +651,8 @@ export class HeliconServer {
   private readonly skillCache = new Map<string, SkillListing>();
   /** The newest subscription window any host reported; `usage/changed` carries no session, so it lives here. */
   private planUsage: SubscriptionUsage | null = null;
+  /** Progresso da releitura de uso; uma por vez, sem adotar sessões na barra lateral. */
+  private usageBackfill: { running: boolean; total: number; done: number; calls: number; failed: number; startedAt: string | null; finishedAt: string | null; error: string | null } = { running: false, total: 0, done: 0, calls: 0, failed: 0, startedAt: null, finishedAt: null, error: null };
   /** Append-only failure log; memory-only when the server runs without a data dir. */
   private readonly failures: FailureLog;
   /** The reasoning effort each session is known to be running at, so a turn only re-sets it when it changes. */
@@ -1542,6 +1544,16 @@ export class HeliconServer {
       this.json(res, 200, this.usageReport(days));
       return true;
     }
+    if (path === "/api/usage/backfill") {
+      if (method === "GET") {
+        this.json(res, 200, this.usageBackfillStatus());
+        return true;
+      }
+      if (method === "POST") {
+        this.json(res, 202, this.startUsageBackfill());
+        return true;
+      }
+    }
     const attachmentMatch = path.match(/^\/api\/attachments\/([A-Za-z0-9-]{1,64})$/);
     if (method === "GET" && attachmentMatch) {
       const found = this.store.readAttachment(attachmentMatch[1] as string);
@@ -2302,6 +2314,74 @@ export class HeliconServer {
   }
 
   /** Tokens per day and model, plus a row per thread, for the usage page to price. */
+  /** Instantâneo do progresso da releitura de uso. */
+  private usageBackfillStatus(): Record<string, unknown> {
+    return { ...this.usageBackfill };
+  }
+
+  /** Começa a releitura se nenhuma roda; idempotente enquanto roda. */
+  private startUsageBackfill(): Record<string, unknown> {
+    if (!this.usageBackfill.running) {
+      this.usageBackfill = { running: true, total: 0, done: 0, calls: 0, failed: 0, startedAt: nowIso(), finishedAt: null, error: null };
+      void this.runUsageBackfill().catch((error: unknown) => {
+        this.usageBackfill.running = false;
+        this.usageBackfill.finishedAt = nowIso();
+        this.usageBackfill.error = error instanceof Error ? error.message : String(error);
+      });
+    }
+    return this.usageBackfillStatus();
+  }
+
+  /**
+   * Relê o histórico de cada sessão do host e registra as chamadas, sem adotar nada na barra lateral:
+   * excluídas e CLI-only voltam aos números sem voltar à lista. Só lê (view/page); nunca resume, então
+   * não envenena turnos em voo. Idempotente: a chave é o cursor da chamada.
+   */
+  private async runUsageBackfill(): Promise<void> {
+    const host = await this.hostFor("");
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    for (;;) {
+      const page = await host.manager.listSessionsPage({ limit: 100, cursor });
+      for (const item of page.sessions) {
+        const record = asRecord(item);
+        const session = (record && asRecord(record["session"])) ?? record;
+        const sessionId = session ? str(session["sessionId"]) : null;
+        if (sessionId) {
+          ids.push(sessionId);
+        }
+      }
+      cursor = page.nextCursor;
+      if (!cursor) {
+        break;
+      }
+    }
+    this.usageBackfill.total = ids.length;
+    for (const sessionId of ids) {
+      try {
+        const { events } = await this.pageTranscript(host.manager, sessionId);
+        this.usageBackfill.calls += this.recordUsageFromEvents(sessionId, events);
+      } catch {
+        this.usageBackfill.failed += 1;
+      }
+      this.usageBackfill.done += 1;
+    }
+    this.usageBackfill.running = false;
+    this.usageBackfill.finishedAt = nowIso();
+  }
+
+  /** Registra o uso dos eventos tokenUsage; devolve quantas chamadas viu (novas ou repetidas). */
+  private recordUsageFromEvents(sessionId: string, events: { method: string; params: Record<string, unknown> }[]): number {
+    let calls = 0;
+    for (const event of events) {
+      if (event.method === "session/tokenUsage") {
+        this.recordUsage(sessionId, event.params);
+        calls += 1;
+      }
+    }
+    return calls;
+  }
+
   private usageReport(days: number): Record<string, unknown> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const rows = this.store.listUsage(since);
@@ -2553,11 +2633,7 @@ export class HeliconServer {
     live.pendingApprovals = new Set(approvals.map((a) => str(a["approvalId"])).filter((id): id is string => id !== null));
     live.pendingInputs = new Set(userInputs.map((u) => str(u["userInputId"])).filter((id): id is string => id !== null));
     // Opening a thread backfills the usage page with the calls it made before this server ever ran.
-    for (const event of events) {
-      if (event.method === "session/tokenUsage") {
-        this.recordUsage(sessionId, event.params);
-      }
-    }
+    this.recordUsageFromEvents(sessionId, events);
     // The history's last goal change is the goal as of now, unless a live one arrived while this load ran.
     for (let index = events.length - 1; live.goalSeq === goalSeqAtStart && index >= 0; index -= 1) {
       const event = events[index];

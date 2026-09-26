@@ -331,6 +331,7 @@ export class HeliconController {
   private draftSaveHandle: unknown = null;
   private draftsPersistFailed = false;
   private staleHandle: unknown = null;
+  private backfillHandle: unknown = null;
   private disposed = false;
   /** When stream events were last applied per session, so a thread that went silent can be noticed. */
   private readonly appliedAt = new Map<string, number>();
@@ -559,7 +560,7 @@ export class HeliconController {
     for (const dispose of this.disposers.splice(0)) {
       dispose();
     }
-    for (const handle of [this.flushHandle, this.refreshHandle, this.saveHandle, this.draftSaveHandle, this.staleHandle]) {
+    for (const handle of [this.flushHandle, this.refreshHandle, this.saveHandle, this.draftSaveHandle, this.staleHandle, this.backfillHandle]) {
       if (handle !== null) {
         this.platform.cancel(handle);
       }
@@ -2332,6 +2333,35 @@ export class HeliconController {
   /** Uso de tokens em todas as conversas que o servidor conhece, para a página de uso. */
   usageReport(days: number): Promise<import("../types.js").UsageReport> {
     return this.client.usage(days);
+  }
+
+  /** Releitura do uso: começa e acompanha até terminar. */
+  async startUsageBackfill(): Promise<void> {
+    const status = await this.client.startUsageBackfill();
+    this.update((s) => ({ ...s, usageBackfill: status }));
+    this.pollUsageBackfill();
+  }
+
+  private pollUsageBackfill(): void {
+    if (this.backfillHandle !== null) {
+      this.platform.cancel(this.backfillHandle);
+    }
+    this.backfillHandle = this.platform.schedule(() => {
+      void this.refreshUsageBackfill();
+    }, 1000);
+  }
+
+  private async refreshUsageBackfill(): Promise<void> {
+    this.backfillHandle = null;
+    try {
+      const status = await this.client.usageBackfillStatus();
+      this.update((s) => ({ ...s, usageBackfill: status }));
+      if (status.running) {
+        this.pollUsageBackfill();
+      }
+    } catch {
+      // Sem o retrato, para de perguntar: o botão tenta de novo quando o usuário quiser.
+    }
   }
 
   /** Move um projeto na lateral, tirando a nova ordem da linha em que foi solto. */

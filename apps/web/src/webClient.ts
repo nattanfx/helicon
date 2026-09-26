@@ -21,6 +21,7 @@ import {
   type ModelOption,
   type OutputRange,
   type PlanUsage,
+  type UsageBackfillStatus,
   type ProjectView,
   type ReasoningEffort,
   type SandboxSettings,
@@ -206,6 +207,12 @@ export class WebHeliconClient implements HeliconClient {
 
   usage(days?: number): Promise<UsageReport> {
     return call<UsageReport>("GET", `/api/usage${days ? `?days=${days}` : ""}`);
+  }
+  startUsageBackfill(): Promise<UsageBackfillStatus> {
+    return call<UsageBackfillStatus>("POST", "/api/usage/backfill");
+  }
+  usageBackfillStatus(): Promise<UsageBackfillStatus> {
+    return call<UsageBackfillStatus>("GET", "/api/usage/backfill");
   }
 
   async runShellProxy(sessionId: string, command: string): Promise<ShellRun> {

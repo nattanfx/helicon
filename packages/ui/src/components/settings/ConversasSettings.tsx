@@ -4,6 +4,7 @@ import { type GroupBy } from "../../model/store.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { LEVELS, MODES } from "../composer/Composer.js";
 import { Card, Pick, Row, Subhead, Toggle } from "./rows.js";
+import { Button } from "../ui/primitives.js";
 
 const GROUPS: readonly { value: GroupBy; label: string }[] = [
   { value: "project", label: "Projeto" },
@@ -20,6 +21,8 @@ export function Conversas() {
       <ListaDeConversas />
       <Subhead>Títulos das conversas</Subhead>
       <TitulosDasConversas />
+      <Subhead>Uso das conversas</Subhead>
+      <UsoDasConversas />
     </>
   );
 }
@@ -84,6 +87,29 @@ export function ListaDeConversas() {
     <Card>
       <Row label="Agrupar por" description="Como a barra lateral organiza as conversas.">
         <Pick value={prefs.groupBy} options={GROUPS} onChange={(value) => controller.setGroupBy(value)} />
+      </Row>
+    </Card>
+  );
+}
+
+/** Releitura do uso a pedido: excluídas e CLI-only voltam aos números sem voltar à lista. */
+function UsoDasConversas() {
+  const controller = useController();
+  const backfill = useApp((s) => s.usageBackfill);
+  const running = backfill?.running === true;
+  const detail = !backfill
+    ? "Relê as conversas guardadas no disco — inclusive excluídas e as que foram só no CLI — e traz os números de volta para a página de Uso. Não reabre nem altera conversas."
+    : running
+      ? `Lendo ${backfill.done} de ${backfill.total} conversas… ${backfill.calls} chamadas encontradas.`
+      : backfill.error
+        ? `Parou com erro: ${backfill.error}`
+        : `Concluído: ${backfill.done} conversas, ${backfill.calls} chamadas encontradas${backfill.failed > 0 ? `, ${backfill.failed} falharam` : ""}. Abra a página de Uso para ver os números.`;
+  return (
+    <Card>
+      <Row label="Recuperar uso" description={detail}>
+        <Button size="sm" variant="secondary" loading={running} onClick={() => void controller.startUsageBackfill()}>
+          {backfill && !running ? "Recuperar de novo" : "Recuperar uso"}
+        </Button>
       </Row>
     </Card>
   );

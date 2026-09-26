@@ -4,7 +4,7 @@ import { HeliconError, type EventHandler, type HeliconClient } from "../src/clie
 import { HeliconController, staleThreadReason, type Platform } from "../src/model/controller.js";
 import { buildTurns } from "../src/model/fold.js";
 import { ZOOM_MAX, ZOOM_MIN } from "../src/model/store.js";
-import type { SessionSummary, SkillEntry, TranscriptLoad, UserInputRequest } from "../src/types.js";
+import type { SessionSummary, SkillEntry, TranscriptLoad, UsageBackfillStatus, UserInputRequest } from "../src/types.js";
 import { historyEvents } from "./fixtures/probe.js";
 
 const SESSION: SessionSummary = {
@@ -218,6 +218,14 @@ class FakeClient implements HeliconClient {
   }
   async usage() {
     return { since: "2026-09-01T00:00:00.000Z", days: 30, buckets: [], threads: [] };
+  }
+  backfillStatuses: UsageBackfillStatus[] = [];
+  backfillIdle: UsageBackfillStatus = { running: false, total: 0, done: 0, calls: 0, failed: 0, startedAt: null, finishedAt: null, error: null };
+  async startUsageBackfill() {
+    return this.backfillStatuses.shift() ?? this.backfillIdle;
+  }
+  async usageBackfillStatus() {
+    return this.backfillStatuses.shift() ?? this.backfillIdle;
   }
   async runShellProxy(sessionId: string, command: string) {
     this.actions.push(`shell-proxy:${command}`);
@@ -1099,6 +1107,56 @@ describe("HeliconController", () => {
       assert.deepEqual(controller.store.get().route, { kind: "usage" });
       controller.toggleUsage();
       assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+    } finally {
+      stop();
+    }
+  });
+
+  it("tracks a usage backfill until it finishes", async () => {
+    const client = new FakeClient();
+    const timers: (() => void)[] = [];
+    const base = platform("#/t/s1");
+    const fake: Platform = {
+      ...base,
+      schedule: (fn: () => void) => {
+        timers.push(fn);
+        return timers.length - 1;
+      },
+      cancel: (handle: unknown) => {
+        if (typeof handle === "number") {
+          timers[handle] = () => {};
+        }
+      },
+    };
+    const status = (running: boolean, done: number): UsageBackfillStatus => ({
+      running,
+      total: 2,
+      done,
+      calls: done,
+      failed: 0,
+      startedAt: "s",
+      finishedAt: running ? null : "f",
+      error: null,
+    });
+    client.backfillStatuses = [status(true, 0), status(true, 1), status(false, 2)];
+    const controller = new HeliconController(client, fake);
+    const stop = controller.start();
+    try {
+      await settle();
+      await settle();
+      timers.length = 0;
+      await controller.startUsageBackfill();
+      assert.equal(controller.store.get().usageBackfill?.running, true);
+      for (let i = 0; i < 10 && controller.store.get().usageBackfill?.running === true; i++) {
+        const pending = timers.splice(0);
+        for (const fn of pending) {
+          fn();
+        }
+        await settle();
+        await settle();
+      }
+      assert.equal(controller.store.get().usageBackfill?.running, false);
+      assert.equal(controller.store.get().usageBackfill?.done, 2);
     } finally {
       stop();
     }
