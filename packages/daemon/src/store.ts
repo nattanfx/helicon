@@ -282,6 +282,8 @@ export interface UsageCall {
 export interface UsageRow extends UsageCall {
   sessionTitle: string | null;
   projectCwd: string | null;
+  /** Verdadeiro quando a conversa foi excluída: a linha de uso fica, a conversa não. */
+  deleted: boolean;
 }
 
 function toAttachment(row: Row): AttachmentRecord {
@@ -524,10 +526,11 @@ export class HeliconStore {
   listUsage(since?: string): UsageRow[] {
     const rows = this.db
       .prepare(
-        `SELECT u.*, s.title AS session_title, p.cwd AS project_cwd
+        `SELECT u.*, s.title AS session_title, p.cwd AS project_cwd, d.session_id IS NOT NULL AS deleted
          FROM usage u
          LEFT JOIN sessions s ON s.id = u.session_id
          LEFT JOIN projects p ON p.id = s.project_id
+         LEFT JOIN deleted_sessions d ON d.session_id = u.session_id
          ${since ? "WHERE u.at >= ?" : ""}
          ORDER BY u.at`,
       )
@@ -548,6 +551,7 @@ export class HeliconStore {
       at: String(row["at"]),
       sessionTitle: row["session_title"] === null || row["session_title"] === undefined ? null : String(row["session_title"]),
       projectCwd: row["project_cwd"] === null || row["project_cwd"] === undefined ? null : String(row["project_cwd"]),
+      deleted: Number(row["deleted"] ?? 0) === 1,
     }));
   }
 
@@ -676,14 +680,15 @@ export class HeliconStore {
   }
 
   /**
-   * Removes a session and every local row keyed to it, and tombstones the id so the next
-   * discovery does not re-adopt the host session. The host session itself is left alone.
+   * Removes a session and its local rows, and tombstones the id so the next discovery does not
+   * re-adopt the host session. Usage rows stay: deleting a thread must not rewrite its spending
+   * history. The host session itself is left alone.
    */
   deleteSession(id: string): boolean {
     if (!this.getSession(id)) {
       return false;
     }
-    for (const table of ["usage", "shell_runs", "attachments", "turns", "title_attempts"]) {
+    for (const table of ["shell_runs", "attachments", "turns", "title_attempts"]) {
       this.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(id);
     }
     this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);

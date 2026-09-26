@@ -380,24 +380,35 @@ function Threads(props: { view: UsageView }) {
     <section className="rounded-xl bg-raised px-4 py-4 shadow-[0_0_0_1px_var(--border)]">
       <h2 className="mb-3 text-sm font-semibold text-fg">Conversas mais caras</h2>
       <ul className="flex flex-col">
-        {view.threads.map((thread) => (
-          <li key={thread.sessionId}>
-            <button
-              type="button"
-              onClick={() => controller.openThread(thread.sessionId)}
-              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-100 hover:bg-hover"
-            >
+        {view.threads.map((thread) => {
+          const body = (
+            <>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-fg">{thread.title ?? "Nova conversa"}</p>
+                <p className="truncate text-sm text-fg">{thread.deleted ? "Conversa excluída" : (thread.title ?? "Nova conversa")}</p>
                 <p className="truncate text-2xs text-subtle tabular-nums">
                   {thread.cwd ? `${basename(thread.cwd)} · ` : ""}
                   {thread.calls} chamadas · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {relativeTime(thread.lastAt)}
                 </p>
               </div>
               <span className="shrink-0 text-sm text-fg tabular-nums">{formatCost(thread.cost, view.currency)}</span>
-            </button>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={thread.sessionId}>
+              {thread.deleted ? (
+                <div className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left">{body}</div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => controller.openThread(thread.sessionId)}
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-100 hover:bg-hover"
+                >
+                  {body}
+                </button>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

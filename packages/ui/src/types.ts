@@ -352,6 +352,8 @@ export interface UsageThread {
   sessionId: string;
   title: string | null;
   cwd: string | null;
+  /** A conversa foi excluída: a linha mostra gasto passado, sem abrir nada. */
+  deleted: boolean;
   calls: number;
   promptTokens: number;
   outputTokens: number;

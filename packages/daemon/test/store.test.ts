@@ -96,7 +96,7 @@ describe("HeliconStore", () => {
     assert.equal(store.findSession("s1")?.cwd, "/work/p");
   });
 
-  it("deletes a session with its rows and tombstones the id", () => {
+  it("deletes a session with its rows except usage, and tombstones the id", () => {
     const store = new HeliconStore();
     after(() => store.close());
     const project = store.upsertProject("/work/p");
@@ -148,7 +148,10 @@ describe("HeliconStore", () => {
     assert.equal(store.isDeleted("s2"), false);
     assert.deepEqual(store.listShellRuns("s1"), []);
     assert.deepEqual(store.listAttachments("s1"), []);
-    assert.deepEqual(store.listUsage(), []);
+    // Usage stays: deleting a thread must not rewrite its spending history.
+    const remaining = store.listUsage();
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0]?.deleted, true);
     assert.equal(store.titleAttemptState("s1"), null);
     // The turn rows go too: re-recording the id starts from zero, not from the old turn.
     store.recordSession({ id: "s1", projectId: project.id });
@@ -247,6 +250,38 @@ describe("HeliconStore", () => {
     assert.deepEqual(store.getYoloSettings(), { enabled: true });
     assert.deepEqual(store.setYoloSettings({}), { enabled: true }, "an empty patch changes nothing");
     assert.deepEqual(store.setYoloSettings({ enabled: false }), { enabled: false });
+  });
+
+  it("keeps usage rows when a session is deleted, flagged as deleted", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    const project = store.upsertProject("/work/p");
+    store.recordSession({ id: "s1", projectId: project.id });
+    store.recordSession({ id: "s2", projectId: project.id });
+    const call = (key: string, sessionId: string) => ({
+      key,
+      sessionId,
+      turnId: "t1",
+      modelId: "m",
+      promptTokens: 10,
+      outputTokens: 5,
+      inputTokens: 10,
+      cachedTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      durationMs: null,
+      at: "2026-09-25T00:00:00.000Z",
+    });
+    store.recordUsage(call("k1", "s1"));
+    store.recordUsage(call("k2", "s2"));
+    store.deleteSession("s1");
+    const rows = store.listUsage();
+    assert.equal(rows.length, 2);
+    const gone = rows.find((r) => r.sessionId === "s1");
+    assert.equal(gone?.deleted, true);
+    assert.equal(gone?.sessionTitle, null);
+    assert.equal(rows.find((r) => r.sessionId === "s2")?.deleted, false);
   });
 
   it("records each session's sandbox posture at creation, never on touch", () => {

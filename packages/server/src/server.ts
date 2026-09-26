@@ -2338,6 +2338,7 @@ export class HeliconServer {
         sessionId: row.sessionId,
         title: row.sessionTitle,
         cwd: row.projectCwd,
+        deleted: row.deleted,
         calls: 0,
         promptTokens: 0,
         outputTokens: 0,
