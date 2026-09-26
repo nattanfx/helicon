@@ -2,6 +2,7 @@ import {
   Archive,
   ArrowLeft,
   BellRing,
+  Gauge,
   Info,
   Keyboard,
   MessageSquarePlus,
@@ -48,6 +49,16 @@ export function SettingsNav() {
             <ArrowLeft size={14} aria-hidden="true" />
           </span>
           <span className="min-w-0 flex-1 truncate text-left">Voltar ao app</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => controller.navigate({ kind: "usage" })}
+          className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-sm text-muted transition-colors duration-100 hover:bg-hover hover:text-fg"
+        >
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            <Gauge size={14} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-left">Uso</span>
         </button>
         {groups.map((group) => (
           <div key={group.id}>

@@ -115,7 +115,7 @@ export function PlanPill() {
         <button
           type="button"
           aria-label={`Uso do plano. ${label}`}
-          onClick={() => controller.navigate({ kind: "usage" })}
+          onClick={() => controller.toggleUsage()}
           className={cn(
             "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-2xs font-medium tabular-nums transition-colors duration-100 hover:bg-hover",
             TEXT[first.tone],

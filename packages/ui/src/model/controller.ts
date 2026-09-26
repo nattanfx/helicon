@@ -747,6 +747,24 @@ export class HeliconController {
     this.navigate(this.returnRoute ?? { kind: "home" });
   }
 
+  /** A roda dentada como interruptor: nas Configurações, volta; fora, abre. */
+  toggleSettings(): void {
+    if (this.state.route.kind === "settings") {
+      this.goBack();
+    } else {
+      this.navigate({ kind: "settings" });
+    }
+  }
+
+  /** O botão de uso como interruptor: na página de Uso, volta; fora, abre. */
+  toggleUsage(): void {
+    if (this.state.route.kind === "usage") {
+      this.goBack();
+    } else {
+      this.navigate({ kind: "usage" });
+    }
+  }
+
   openThread(sessionId: string): void {
     this.navigate({ kind: "thread", sessionId });
   }

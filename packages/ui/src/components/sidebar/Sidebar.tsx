@@ -1,6 +1,7 @@
 import {
   Archive,
   ArrowDownToLine,
+  ArrowLeft,
   Check,
   ChevronRight,
   Code,
@@ -832,6 +833,7 @@ function SidebarFooter() {
   const identity = useApp((s) => s.identity);
   const connection = useApp((s) => s.connection);
   const discovering = useApp((s) => s.discovering);
+  const inSettings = useApp((s) => s.route.kind === "settings");
   const hostError = useApp((s) => s.hostError);
   const status =
     connection === "lost"
@@ -857,9 +859,9 @@ function SidebarFooter() {
         </IconButton>
       </Tip>
       <PlanPill />
-      <Tip label="Configurações" side="top">
-        <IconButton label="Configurações" onClick={() => controller.navigate({ kind: "settings" })}>
-          <Settings size={14} />
+      <Tip label={inSettings ? "Voltar" : "Configurações"} side="top">
+        <IconButton label={inSettings ? "Voltar" : "Configurações"} onClick={() => controller.toggleSettings()}>
+          {inSettings ? <ArrowLeft size={14} /> : <Settings size={14} />}
         </IconButton>
       </Tip>
       {!identity ? <UpdatesMenu /> : null}

@@ -1077,6 +1077,33 @@ describe("HeliconController", () => {
     }
   });
 
+  it("toggles settings open and back to the thread", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+      controller.toggleSettings();
+      assert.deepEqual(controller.store.get().route, { kind: "settings" });
+      controller.toggleSettings();
+      assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+    } finally {
+      stop();
+    }
+  });
+
+  it("toggles usage open and back to the thread", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      controller.toggleUsage();
+      assert.deepEqual(controller.store.get().route, { kind: "usage" });
+      controller.toggleUsage();
+      assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+    } finally {
+      stop();
+    }
+  });
+
   it("retries with the typed text, without server-appended markers or mentions", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
