@@ -108,7 +108,10 @@ class FakeClient implements HeliconClient {
     });
     return this.sendResult();
   }
-  async interruptTurn() {}
+  interrupted: { sessionId: string; turnId?: string }[] = [];
+  async interruptTurn(sessionId: string, turnId?: string) {
+    this.interrupted.push({ sessionId, turnId });
+  }
   async unqueueTurn() {}
   cancelled: { sessionId: string; turnId: string }[] = [];
   cancelError: Error | null = null;
@@ -1031,6 +1034,44 @@ describe("HeliconController", () => {
       await settle();
       controller.dismissTurnError("s1", "t1");
       assert.deepEqual(controller.store.get().prefs.dismissedTurnErrors, ["s1:t1"]);
+    } finally {
+      stop();
+    }
+  });
+
+  it("stops the server-seen turn when the fold went idle on a spurious failure", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      const live = (patch: Record<string, unknown>) => ({
+        activeTurnId: null,
+        turnStartedAt: null,
+        pendingApprovals: 0,
+        pendingInputs: 0,
+        lastTerminal: null,
+        lastError: null,
+        ...patch,
+      });
+      client.handler?.({ type: "session-status", sessionId: "s1", live: live({ activeTurnId: "t1" }) as never });
+      await settle();
+      await settle();
+      assert.equal(controller.store.get().threads["s1"]!.fold.activeTurnId, null);
+      await controller.stop("s1");
+      assert.deepEqual(client.interrupted.at(-1), { sessionId: "s1", turnId: "t1" });
+    } finally {
+      stop();
+    }
+  });
+
+  it("prefers the fold turn when stopping while it is known", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      client.handler?.({ type: "msp", sessionId: "s1", method: "turn/started", params: { sessionId: "s1", turnId: "t9" }, at: 1 });
+      await settle();
+      await settle();
+      await controller.stop("s1");
+      assert.deepEqual(client.interrupted.at(-1), { sessionId: "s1", turnId: "t9" });
     } finally {
       stop();
     }

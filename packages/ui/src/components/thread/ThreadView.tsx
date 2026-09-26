@@ -26,7 +26,10 @@ export function ThreadView(props: { sessionId: string }) {
   if (!session) {
     return <MissingThread />;
   }
-  const running = thread ? thread.fold.activeTurnId !== null : Boolean(session.live?.activeTurnId);
+  // Uma falha espúria limpa o id local com o host ainda trabalhando: o retrato ao vivo mantém Parar/Enfileirar.
+  const running = thread
+    ? thread.fold.activeTurnId !== null || Boolean(session.live?.activeTurnId)
+    : Boolean(session.live?.activeTurnId);
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
       <ThreadHeader session={session} thread={thread} running={running} />

@@ -1386,7 +1386,10 @@ export class HeliconController {
     }
     this.setBusy(key, true);
     try {
-      await this.client.interruptTurn(sessionId, this.state.threads[sessionId]?.fold.activeTurnId ?? undefined);
+      // Uma falha espúria limpa o id local com o host ainda trabalhando: mirar o id ao vivo mantém o Parar funcionando.
+      const turnId =
+        this.state.threads[sessionId]?.fold.activeTurnId ?? this.state.sessions[sessionId]?.live?.activeTurnId ?? undefined;
+      await this.client.interruptTurn(sessionId, turnId);
     } catch (error) {
       this.toast("error", "Não foi possível parar a mensagem", userFacingError(error));
     } finally {

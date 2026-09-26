@@ -13,7 +13,7 @@ Quando a falha vem sem explicação ("O host não enviou detalhe"), a caixinha m
 - Se estiver rodando, a caixinha some com o aviso "Ainda está trabalhando" — não era falha.
 - Se estiver parado mesmo, aí aparecem **Tentar de novo** e **Reiniciar o Muse**.
 
-Enquanto o servidor vir o turno ativo, a caixinha nem chega a aparecer.
+Enquanto o servidor vir o turno ativo, a caixinha nem chega a aparecer. Pelo mesmo motivo, o botão **Parar** continua disponível e o envio mostra **Enfileirar** em vez de Enviar — sinais de que o turno segue rodando.
 
 ## "Tentar de novo" reenvia o pedido
 
