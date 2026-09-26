@@ -954,6 +954,34 @@ describe("HeliconController", () => {
     stop();
   });
 
+  it("queues behind a turn only the server still sees running", async () => {
+    const client = new FakeClient();
+    client.sendResult = async () => ({ turnId: "t2", disposition: "queued" });
+    const { controller, stop } = await started(client);
+    try {
+      // O fold está livre, mas o servidor vê um turno ativo: o retrato de uma falha espúria limpou o
+      // id local enquanto o host ainda trabalha. Mandar como livre falharia do mesmo jeito.
+      assert.equal(controller.store.get().threads["s1"]!.fold.activeTurnId, null);
+      const live = (patch: Record<string, unknown>) => ({
+        activeTurnId: null,
+        turnStartedAt: null,
+        pendingApprovals: 0,
+        pendingInputs: 0,
+        lastTerminal: null,
+        lastError: null,
+        ...patch,
+      });
+      client.handler?.({ type: "session-status", sessionId: "s1", live: live({ activeTurnId: "t1" }) as never });
+      await settle();
+      await settle();
+      await controller.send("next thing");
+      assert.equal(client.sent.at(-1)?.ifBusy, "queue");
+      assert.equal(controller.store.get().threads["s1"]!.fold.echoes[0]?.disposition, "queued");
+    } finally {
+      stop();
+    }
+  });
+
   it("retries with the typed text, without server-appended markers or mentions", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);

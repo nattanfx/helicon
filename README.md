@@ -25,7 +25,7 @@ A última **release pública** deste fork é **[v0.12.4-pt4](https://github.com/
 - A atualização é **manual**. O aplicativo **não** se atualiza sozinho.
 - O código em `prod` está **à frente** da pt4 e declara a edição `0.12.5-pt5`. Instalar a pt4 não instala esse código; a tag `v0.12.5-pt5` existe no commit `757317c` e o instalador está num rascunho de release **não publicado**. Notas: [docs/NOTAS-0.12.5-pt5.md](docs/NOTAS-0.12.5-pt5.md).
 
-Passos, canal Teste versus instalação normal, e o que este fork não entrega: [docs/INSTALACAO.md](docs/INSTALACAO.md). Identidade na interface: [docs/VERSAO-PT-BR.md](docs/VERSAO-PT-BR.md).
+Passos, canal Teste versus instalação normal, e o que este fork não entrega: [docs/INSTALACAO.md](docs/INSTALACAO.md). Identidade na interface: [docs/VERSAO-PT-BR.md](docs/VERSAO-PT-BR.md). Quando mensagens falham: [docs/FALHAS-MENSAGENS.md](docs/FALHAS-MENSAGENS.md).
 
 O instalador inclui Node.js. É preciso ter o Muse CLI e `muse login` feitos uma vez (`irm https://dev.meta.ai/install.ps1 | iex` no PowerShell, ou o Muse no WSL2). O Helicon usa esse login e não guarda credenciais próprias.
 

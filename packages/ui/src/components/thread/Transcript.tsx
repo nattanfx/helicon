@@ -233,7 +233,8 @@ const TurnBlock = memo(
       ? turnErrorCopy(info.error.kind, info.error.message, info.error.retryable, { turnId: turn.turnId })
       : null;
     const closed = useApp((s) => (turn.turnId ? s.prefs.dismissedTurnErrors.includes(`${props.sessionId}:${turn.turnId}`) : false));
-    const failed = info?.terminal === "failed" && !info.dismissed && !closed;
+    // Um turno que ainda trabalha nunca mostra a caixinha: a falha que chegou antes da atividade é retrato obsoleto.
+    const failed = info?.terminal === "failed" && !turn.running && !info.dismissed && !closed;
     const cancelled = info?.terminal === "cancelled";
     const hasWork = turn.entries.length > 0;
     // Itens fora de qualquer mensagem são os próprios comandos `!` do usuário: mostrados como são, nunca dobrados num registro de trabalho.

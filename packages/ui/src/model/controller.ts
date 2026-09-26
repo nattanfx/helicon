@@ -1315,7 +1315,10 @@ export class HeliconController {
     }
     this.inflightSends.add(key);
     // Um chamador que sabe que uma mensagem está começando em outro lugar pode dizer isso, antes de seu `turn/started` nos alcançar.
-    const running = thread.fold.activeTurnId !== null || options.queue === true;
+    // E o servidor pode ver um turno ativo que o fold não vê: uma falha espúria limpa o id local enquanto
+    // o host ainda trabalha. Sem esse id, a próxima mensagem iria como livre para uma sessão ocupada.
+    const liveActiveTurnId = this.state.sessions[sessionId]?.live?.activeTurnId ?? null;
+    const running = thread.fold.activeTurnId !== null || liveActiveTurnId !== null || options.queue === true;
     const echo: LocalEcho = {
       localId: nextLocalId(),
       // O eco mostra o que a transcrição mostrará, para combinar com o item de prompt quando ele chegar.
