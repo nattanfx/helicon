@@ -2882,7 +2882,7 @@ export class HeliconController {
       this.toast(
         "error",
         "Não foi possível ramificar a conversa",
-        errorKind(error) === "forkBoundaryInvalid" ? "O Muse não encontrou um ponto nesta conversa para ramificá-la."
+        errorKind(error) === "forkBoundaryInvalid" ? "O Muse recusou a ramificação. A causa pode ser um ponto de corte inválido ou uma falha ao gravar a nova conversa. A conversa original continua como estava."
           : errorKind(error) === "forkCutUnconfirmed" ? "O Muse não confirmou o corte. Pode ter criado uma sessão sem ele; confira a lista antes de tentar de novo. A conversa original não mudou."
             : userFacingError(error),
       );

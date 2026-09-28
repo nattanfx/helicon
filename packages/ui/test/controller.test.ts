@@ -2244,6 +2244,11 @@ describe("HeliconController", () => {
     assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
     assert.equal(controller.store.get().sessions["s2"], undefined);
     assert.equal(controller.store.get().toasts.at(-1)?.title, "Não foi possível ramificar a conversa");
+    assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /ponto de corte inválido/);
+    client.forkError = new HeliconError("invalid fork boundary: WriteFailed", 409, "forkBoundaryInvalid");
+    assert.equal(await controller.fork("s1"), false);
+    assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /falha ao gravar a nova conversa/);
+    assert.doesNotMatch(controller.store.get().toasts.at(-1)?.detail ?? "", /não encontrou um ponto/);
     client.forkError = new HeliconError("cut ignored", 409, "forkCutUnconfirmed");
     assert.equal(await controller.fork("s1", "t1"), false);
     assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /não confirmou o corte/);
