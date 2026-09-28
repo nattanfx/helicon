@@ -7,6 +7,23 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { HeliconServer } from "../src/server.js";
 
+/** Windows briefly locks fresh temp dirs (scanner/indexer); retry so teardown never fails the run. */
+async function removeDir(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      if ((code === "EBUSY" || code === "ENOTEMPTY" || code === "EPERM") && attempt < 15) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 it("refuses unauthenticated network binds before opening the store", () => {
   for (const host of ["0.0.0.0", "::", "192.168.1.2"]) {
     for (const token of [undefined, "", "   "]) {
@@ -55,11 +72,15 @@ it("keeps network access working with a token and explicitly allowed browser ori
 
 it("bootstraps desktop once and authenticates pages, assets, API and events with its cookie", async (t) => {
   const staticDir = await mkdtemp(join(tmpdir(), "helicon-access-"));
-  t.after(() => rm(staticDir, { recursive: true, force: true }));
   await writeFile(join(staticDir, "index.html"), "desktop-page");
   await writeFile(join(staticDir, "app.js"), "desktop-asset");
   const server = new HeliconServer({ port: 0, dataDir: ":memory:", desktopAuth: true, staticDir });
-  t.after(() => server.close());
+  let next: HeliconServer | null = null;
+  t.after(async () => {
+    await next?.close();
+    await server.close();
+    await removeDir(staticDir);
+  });
   const { port } = await server.listen();
   const base = `http://127.0.0.1:${port}`;
   const launch = server.desktopLaunchUrl(base);
@@ -104,8 +125,7 @@ it("bootstraps desktop once and authenticates pages, assets, API and events with
     assert.equal(events.status, 200);
     assert.ok(events.headers.get("content-type")?.includes("text/event-stream"));
   } finally { controller.abort(); }
-  const next = new HeliconServer({ port: 0, dataDir: ":memory:", desktopAuth: true });
-  t.after(() => next.close());
+  next = new HeliconServer({ port: 0, dataDir: ":memory:", desktopAuth: true });
   const nextAddress = await next.listen();
   assert.equal((await fetch(`http://127.0.0.1:${nextAddress.port}/api/health`, { headers })).status, 401);
 });
