@@ -262,6 +262,7 @@ export class WebHeliconClient implements HeliconClient {
       reasoningEffort: options?.reasoningEffort,
       displayText: options?.displayText,
       attachments: options?.attachments,
+      skill: options?.skill,
     });
     return {
       turnId: result.turnId ?? null,

@@ -59,6 +59,8 @@ export interface TurnOptions {
   displayText?: string;
   /** Arquivos que o usuário anexou: imagens chegam ao modelo, o resto cai na pasta do projeto como menção. */
   attachments?: OutgoingAttachment[];
+  /** Oferta de invocação nativa: o servidor tenta a parte skill e cai para o texto em recusa do host. */
+  skill?: { selector: string; arguments?: string };
 }
 
 export interface ApprovalDecisionInput {

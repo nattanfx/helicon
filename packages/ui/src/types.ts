@@ -304,6 +304,8 @@ export interface SkillEntry {
   activation: string;
   /** What the skill expects after its name, when it says. */
   argumentHint?: string | null;
+  /** The skill/list selector for native invocation; absent when the listing came from the CLI. */
+  selector?: string | null;
 }
 
 /** The skills for one workspace; `error` says why the list is empty when loading failed. */

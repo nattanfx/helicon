@@ -200,6 +200,23 @@ describe("web client", () => {
     assert.deepEqual(JSON.parse(String(posted?.init?.body)), { sessionId: "s1", turnId: "live-1" });
   });
 
+  it("posts a native skill offer along the textual turn", async () => {
+    const world = browser();
+    const { WebHeliconClient } = await freshClient();
+    const client = new WebHeliconClient();
+
+    await client.sendTurn("s1", "Use skill plan", { displayText: "/plan", skill: { selector: "plan", arguments: "x" } });
+    const posted = world.calls.at(-1);
+    assert.equal(posted?.url, "/api/turns");
+    assert.equal(posted?.init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(posted?.init?.body)), {
+      sessionId: "s1",
+      text: "Use skill plan",
+      displayText: "/plan",
+      skill: { selector: "plan", arguments: "x" },
+    });
+  });
+
   it("sends an optional inclusive turn boundary when forking", async () => {
     const world = browser();
     const { WebHeliconClient } = await freshClient();

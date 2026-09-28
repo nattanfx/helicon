@@ -7,6 +7,7 @@ import {
   isSubagentAction,
   isWorkflowChildAction,
   parseSubscriptionUsage,
+  skillInput,
   textInput,
   turnInput,
   type CommandConnection,
@@ -108,6 +109,27 @@ describe("SessionManager", () => {
     assert.deepEqual(lastCall(conn).params?.["input"], [{ type: "image", base64Data: "AAAD", mediaType: "image/png" }]);
 
     assert.deepEqual(turnInput("hello"), [{ type: "text", text: "hello" }]);
+  });
+
+  it("sends one native skill part without text, and refuses text or steer beside it", async () => {
+    const conn = new FakeConnection();
+    const manager = new SessionManager(conn);
+    conn.reply("turn/start", { status: "accepted", turnId: "t1", disposition: "started" });
+    await manager.sendTurn("s1", "", { skill: { selector: "plan" } });
+    assert.deepEqual(lastCall(conn).params?.["input"], [{ type: "skill", selector: "plan" }]);
+    await manager.sendTurn("s1", "", {
+      skill: { selector: "acme:deploy", arguments: "prod" },
+      images: [{ base64Data: "AAAB", mediaType: "image/png" }],
+    });
+    assert.deepEqual(lastCall(conn).params?.["input"], [
+      { type: "skill", selector: "acme:deploy", arguments: "prod" },
+      { type: "image", base64Data: "AAAB", mediaType: "image/png" },
+    ]);
+    assert.deepEqual(skillInput("plan"), [{ type: "skill", selector: "plan" }]);
+    const before = conn.calls.length;
+    await assert.rejects(manager.sendTurn("s1", "text beside skill", { skill: { selector: "plan" } }), /no text/);
+    await assert.rejects(manager.sendTurn("s1", "", { skill: { selector: "plan" }, ifBusy: "steer" }), /steer/);
+    assert.equal(conn.calls.length, before);
   });
 
   it("starts a session with mode and model, and rejects missing ids", async () => {

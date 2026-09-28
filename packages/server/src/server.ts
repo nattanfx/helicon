@@ -22,6 +22,7 @@ import {
   type MuseRuntime,
   type NativeMuse,
   type RuntimePreference,
+  type TurnAck,
   planMuseCli,
   planServe,
   probeEnvironment,
@@ -368,6 +369,23 @@ export function safeFileName(raw: string | null): string {
 
 export { deriveTitle };
 
+/** A native skill offer from the UI: the selector names the skill, arguments carry the typed remainder. */
+function parseSkillRequest(value: unknown): { selector: string; arguments?: string } | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const record = asRecord(value);
+  const selector = record ? str(record["selector"]) : null;
+  if (!selector) {
+    throw new HttpError(400, "skill.selector is required.");
+  }
+  const args = record ? record["arguments"] : undefined;
+  if (args !== undefined && typeof args !== "string") {
+    throw new HttpError(400, "skill.arguments must be a string.");
+  }
+  return { selector, ...(typeof args === "string" && args.length > 0 ? { arguments: args } : {}) };
+}
+
 function errorInfo(error: unknown): { status: number; message: string; kind: string | null } {
   if (error instanceof HttpError) {
     return { status: error.status, message: error.message, kind: error.kind };
@@ -525,6 +543,8 @@ export interface SkillView {
   activation: string;
   /** What the skill expects after its name, when it says. */
   argumentHint?: string | null;
+  /** The skill/list selector for native invocation; null when the listing came from the CLI. */
+  selector: string | null;
 }
 
 /**
@@ -551,6 +571,7 @@ export function mergeSessionSkills(rows: readonly SessionSkill[], cli: readonly 
       scope: match?.scope ?? row.source,
       activation: match?.activation ?? "on",
       argumentHint: row.argumentHint,
+      selector: row.selector,
     };
   });
 }
@@ -591,6 +612,7 @@ export function parseSkillList(stdout: string): { skills: SkillView[]; paths: Ma
       shortDescription: str(r["short_description"]),
       scope: str(r["scope"]) ?? "unknown",
       activation: str(r["activation"]) ?? "on",
+      selector: null,
     });
     const path = str(r["path"]);
     if (path) {
@@ -1573,6 +1595,7 @@ export class HeliconServer {
       const sessionId = str(body["sessionId"]);
       const text = str(body["text"]) ?? "";
       const files = Array.isArray(body["attachments"]) ? body["attachments"] : [];
+      const skill = parseSkillRequest(body["skill"]);
       if (!sessionId || (!text && files.length === 0)) {
         throw new HttpError(400, "sessionId and either text or an attachment are required.");
       }
@@ -1590,7 +1613,28 @@ export class HeliconServer {
       }
       const prepared = await this.prepareAttachments(this.store.findSession(sessionId)?.cwd ?? "", files);
       this.wake(sessionId);
-      const ack = await manager.sendTurn(sessionId, prepared.prompt(text), {
+      // A skill part goes without text and without steer, and file mentions need a text part,
+      // so anything but images (or a steer) stays on the textual turn it already sends.
+      const nativeSkill = skill !== null && ifBusy !== "steer" && prepared.files.every((file) => file.kind === "image");
+      let ack: TurnAck | undefined;
+      if (nativeSkill && skill) {
+        try {
+          ack = await manager.sendTurn(sessionId, "", {
+            displayText: str(body["displayText"]) ?? undefined,
+            ifBusy: typeof ifBusy === "string" ? ifBusy : undefined,
+            reasoningEffort: typeof effort === "string" ? effort : undefined,
+            images: prepared.images,
+            skill,
+          });
+        } catch (error) {
+          // Only a host rejection proves the turn was never accepted; a lost reply must never double-send as text.
+          const kind = errorInfo(error).kind;
+          if (kind !== "skillNotFound" && kind !== "invalidParams") {
+            throw error;
+          }
+        }
+      }
+      ack ??= await manager.sendTurn(sessionId, prepared.prompt(text), {
         displayText: str(body["displayText"]) ?? undefined,
         ifBusy: typeof ifBusy === "string" ? ifBusy : undefined,
         reasoningEffort: typeof effort === "string" ? effort : undefined,

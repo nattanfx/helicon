@@ -46,6 +46,7 @@ class FakeClient implements HeliconClient {
     ifBusy?: string;
     displayText?: string;
     attachments?: { name: string; mediaType: string; base64: string }[];
+    skill?: { selector: string; arguments?: string };
   }[] = [];
   actions: string[] = [];
   orders: string[][] = [];
@@ -97,7 +98,7 @@ class FakeClient implements HeliconClient {
   async sendTurn(
     sessionId: string,
     text: string,
-    options?: { ifBusy?: string; displayText?: string; attachments?: { name: string; mediaType: string; base64: string }[] },
+    options?: { ifBusy?: string; displayText?: string; attachments?: { name: string; mediaType: string; base64: string }[]; skill?: { selector: string; arguments?: string } },
   ) {
     this.sent.push({
       sessionId,
@@ -105,6 +106,7 @@ class FakeClient implements HeliconClient {
       ifBusy: options?.ifBusy,
       displayText: options?.displayText,
       attachments: options?.attachments,
+      ...(options?.skill ? { skill: options.skill } : {}),
     });
     return this.sendResult();
   }
@@ -1684,6 +1686,22 @@ describe("HeliconController", () => {
     assert.equal(client.sent.at(-1)?.text, "/deploy now");
     assert.equal(await controller.send("/usr/bin/node crashes on start"), true, "a path is a prompt, not a command");
     assert.equal(client.sent.at(-1)?.text, "/usr/bin/node crashes on start");
+    stop();
+  });
+
+  it("offers native skill invocation when the listing carries a selector", async () => {
+    const client = new FakeClient();
+    client.skills = [
+      { id: "bundled:plan", name: "plan", displayName: "plan", description: "Plan it.", shortDescription: null, scope: "bundled", activation: "on", selector: "plan" },
+      { id: "user:secret", name: "secret", displayName: "secret", description: "By hand.", shortDescription: null, scope: "user", activation: "user-invocable-only" },
+    ];
+    const { controller, stop } = await started(client);
+    await controller.loadSkills("/work/app");
+    assert.equal(await controller.send("/plan tidy the API"), true);
+    assert.deepEqual(client.sent.at(-1)?.skill, { selector: "plan", arguments: "tidy the API" });
+    assert.match(client.sent.at(-1)?.text ?? "", /read_skill with name "bundled:plan" first/, "the textual turn still goes along as the fallback");
+    assert.equal(await controller.send("/secret go"), true);
+    assert.equal(client.sent.at(-1)?.skill, undefined, "a CLI-only skill stays textual");
     stop();
   });
 

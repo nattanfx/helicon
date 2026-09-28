@@ -247,6 +247,8 @@ interface TurnDelivery {
   displayText?: string;
   attachments?: OutgoingAttachment[];
   previews?: EchoAttachment[];
+  /** Oferta de invocação nativa de skill, quando a lista da conversa trouxe o selector. */
+  skill?: { selector: string; arguments?: string };
   /** Entrega nesta conversa em vez de onde o usuário está agora: uma repetição pertence à mensagem que falhou. */
   sessionId?: string;
 }
@@ -1354,6 +1356,7 @@ export class HeliconController {
         reasoningEffort: this.state.prefs.effort ?? undefined,
         displayText: options.displayText,
         attachments: options.attachments,
+        ...(options.skill ? { skill: options.skill } : {}),
       });
       const disposition: LocalEcho["disposition"] =
         ack.disposition === "queued" ? "queued" : ack.disposition === "steered" ? "steered" : "started";
@@ -2720,7 +2723,9 @@ export class HeliconController {
       }
     }
     const turn = skillTurn(skill, args, typed, body);
-    return this.deliver(turn.text, { ...options, displayText: turn.displayText });
+    const request = args.trim();
+    const native = skill.selector ? { selector: skill.selector, ...(request ? { arguments: request } : {}) } : undefined;
+    return this.deliver(turn.text, { ...options, displayText: turn.displayText, ...(native ? { skill: native } : {}) });
   }
 
   /**

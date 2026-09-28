@@ -177,6 +177,90 @@ describe("HeliconServer", () => {
     assert.equal(denied.status, 400);
   });
 
+  it("sends a native skill part, and falls back to text only on host rejection", async (t) => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1", modelId: "muse-spark-1.3" } });
+    connection.replies.set("turn/start", { status: "accepted", turnId: "t1", disposition: "started" });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj/" });
+    const fallbackText = 'Use skill plan: call read_skill with name "plan" first, then apply it to: tidy';
+
+    const native = await send(base, "/api/turns", {
+      sessionId: "s1",
+      text: fallbackText,
+      displayText: "/plan tidy",
+      skill: { selector: "plan", arguments: "tidy" },
+    });
+    assert.equal(native.status, 200);
+    assert.deepEqual(connection.calls.at(-1)?.params, {
+      sessionId: "s1",
+      input: [{ type: "skill", selector: "plan", arguments: "tidy" }],
+      displayText: "/plan tidy",
+    });
+
+    // A host rejection proves nothing started, so the same call retries the textual turn.
+    for (const kind of ["skillNotFound", "invalidParams"]) {
+      let attempts = 0;
+      connection.replies.set("turn/start", () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new MspTestError(`host says ${kind}`, kind);
+        }
+        return { status: "accepted", turnId: "t2", disposition: "started" };
+      });
+      const before = connection.calls.length;
+      const retried = await send(base, "/api/turns", {
+        sessionId: "s1",
+        text: fallbackText,
+        displayText: "/plan tidy",
+        skill: { selector: "plan", arguments: "tidy" },
+      });
+      assert.equal(retried.status, 200, kind);
+      assert.equal(connection.calls.length, before + 2, kind);
+      assert.deepEqual(connection.calls.at(-2)?.params?.["input"], [{ type: "skill", selector: "plan", arguments: "tidy" }], kind);
+      assert.deepEqual(connection.calls.at(-1)?.params?.["input"], [{ type: "text", text: fallbackText }], kind);
+    }
+
+    // A lost reply proves nothing: no second turn goes out.
+    connection.replies.set("turn/start", new Error("write EPIPE"));
+    const beforeLost = connection.calls.length;
+    const lost = await send(base, "/api/turns", { sessionId: "s1", text: fallbackText, skill: { selector: "plan" } });
+    assert.equal(lost.status, 500);
+    assert.equal(connection.calls.length, beforeLost + 1);
+
+    // Steer and file mentions need a text part, so they stay textual without ever trying native.
+    connection.replies.set("turn/start", { status: "accepted", turnId: "t3", disposition: "started" });
+    const beforeSteer = connection.calls.length;
+    const steered = await send(base, "/api/turns", { sessionId: "s1", text: fallbackText, ifBusy: "steer", skill: { selector: "plan" } });
+    assert.equal(steered.status, 200);
+    assert.equal(connection.calls.length, beforeSteer + 1);
+    assert.deepEqual(connection.calls.at(-1)?.params?.["input"], [{ type: "text", text: fallbackText }]);
+
+    const dir = await mkdtemp(join(tmpdir(), "helicon-skill-file-"));
+    t.after(async () => {
+      await rm(dir, { recursive: true, force: true });
+    });
+    connection.replies.set("session/start", { session: { sessionId: "s2" } });
+    await send(base, "/api/sessions", { cwd: dir });
+    const beforeFile = connection.calls.length;
+    const filed = await send(base, "/api/turns", {
+      sessionId: "s2",
+      text: fallbackText,
+      skill: { selector: "plan" },
+      attachments: [{ name: "notes.txt", mediaType: "text/plain", base64: Buffer.from("hi").toString("base64") }],
+    });
+    assert.equal(filed.status, 200);
+    assert.equal(connection.calls.length, beforeFile + 1);
+    const fileInput = connection.calls.at(-1)?.params?.["input"] as { type: string }[];
+    assert.equal(fileInput[0]?.type, "text");
+
+    // A malformed skill offer never reaches the host.
+    const beforeBad = connection.calls.length;
+    assert.equal((await send(base, "/api/turns", { sessionId: "s1", text: fallbackText, skill: {} })).status, 400);
+    assert.equal((await send(base, "/api/turns", { sessionId: "s1", text: fallbackText, skill: { selector: "plan", arguments: 5 } })).status, 400);
+    assert.equal(connection.calls.length, beforeBad);
+  });
+
   it("rejects bad modes, dispositions, efforts and missing fields", async () => {
     const connection = new FakeConnection();
     const { base } = await start(connection);
@@ -1819,9 +1903,9 @@ describe("slash commands, skills and shell", () => {
 
   it("joins session skills to CLI entries by id, name or plugin selector only", () => {
     const cli = [
-      { id: "bundled:doctor", name: "doctor", displayName: "doctor", description: "cli", shortDescription: "Short", scope: "bundled", activation: "on" },
-      { id: "deploy", name: "deploy", displayName: "deploy", description: "a user skill", shortDescription: null, scope: "user", activation: "on" },
-      { id: "plugin:acme:lint", name: "plugin:acme:lint", displayName: "lint", description: "", shortDescription: null, scope: "plugin", activation: "on" },
+      { id: "bundled:doctor", name: "doctor", displayName: "doctor", description: "cli", shortDescription: "Short", scope: "bundled", activation: "on", selector: null },
+      { id: "deploy", name: "deploy", displayName: "deploy", description: "a user skill", shortDescription: null, scope: "user", activation: "on", selector: null },
+      { id: "plugin:acme:lint", name: "plugin:acme:lint", displayName: "lint", description: "", shortDescription: null, scope: "plugin", activation: "on", selector: null },
     ];
     const merged = mergeSessionSkills(
       [
@@ -1832,6 +1916,7 @@ describe("slash commands, skills and shell", () => {
       cli,
     );
     assert.deepEqual(merged.map((s) => s.id), ["bundled:doctor", "acme:deploy", "plugin:acme:lint"]);
+    assert.deepEqual(merged.map((s) => s.selector), ["doctor", "acme:deploy", "acme:lint"], "session rows keep their native selector");
     assert.equal(merged[0]?.shortDescription, "Short");
     assert.equal(merged[0]?.description, "cli", "an empty session description falls back to the CLI's");
     assert.equal(merged[1]?.scope, "plugin", "a plugin skill never borrows a same-named user skill");

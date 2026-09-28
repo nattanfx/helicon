@@ -124,7 +124,7 @@ function toTurnAck(raw: unknown): TurnAck {
   };
 }
 
-/** An image the user attached to a prompt: the only non-text part MSP v1 takes (tdd SS3.2). */
+/** An image the user attached to a prompt: a non-text part MSP takes beside text and skill (tdd SS3.2). */
 export interface TurnImage {
   base64Data: string;
   mediaType: string;
@@ -137,6 +137,27 @@ export interface SendTurnOptions {
   ifBusy?: string;
   reasoningEffort?: string;
   images?: TurnImage[];
+  skill?: SkillInvocation;
+}
+
+/** A native skill invocation: the host resolves `selector` from `skill/list` and expands it (tdd SS3.22.3). */
+export interface SkillInvocation {
+  selector: string;
+  arguments?: string;
+}
+
+export interface SkillPart {
+  type: "skill";
+  selector: string;
+  arguments?: string;
+}
+
+/** One skill part plus attached images; a skill turn carries no text part. */
+export function skillInput(selector: string, args?: string, images: TurnImage[] = []): unknown[] {
+  return [
+    { type: "skill", selector, ...(args !== undefined && args.length > 0 ? { arguments: args } : {}) } as SkillPart,
+    ...turnInput("", images),
+  ];
 }
 
 /** Prompt parts in order: the text the user typed, then each image they attached. */
@@ -298,9 +319,20 @@ export class SessionManager {
     text: string,
     options: SendTurnOptions = {},
   ): Promise<TurnAck> {
+    if (options.skill !== undefined) {
+      if (options.skill.selector.trim().length === 0) {
+        throw new Error("A skill turn needs a selector.");
+      }
+      if (text.length > 0) {
+        throw new Error("A skill turn carries no text part.");
+      }
+      if (options.ifBusy === "steer") {
+        throw new Error("A skill turn cannot steer a running turn.");
+      }
+    }
     const params: Record<string, unknown> = {
       sessionId,
-      input: turnInput(text, options.images ?? []),
+      input: options.skill ? skillInput(options.skill.selector, options.skill.arguments, options.images ?? []) : turnInput(text, options.images ?? []),
     };
     if (options.displayText !== undefined) {
       params["displayText"] = options.displayText;
