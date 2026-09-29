@@ -1046,6 +1046,74 @@ describe("HeliconController", () => {
     }
   });
 
+  it("requests the thread's own model catalog for the replacement picker", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      const asked: (string | undefined)[] = [];
+      const bySession: Record<string, ModelOption[]> = {
+        s1: [{ modelId: "a", displayLabel: "A", description: null, isDefault: true, isActive: true, contextLimit: null, outputLimit: null, cost: null, contributor: false }],
+        s2: [{ modelId: "b", displayLabel: "B", description: null, isDefault: true, isActive: true, contextLimit: null, outputLimit: null, cost: null, contributor: false }],
+      };
+      client.listModels = async (sessionId?: string) => {
+        asked.push(sessionId);
+        return bySession[sessionId ?? ""] ?? [];
+      };
+      await controller.openCurrentModels("s1");
+      await controller.openCurrentModels("s2");
+      assert.deepEqual(asked, ["s1", "s2"]);
+      assert.deepEqual(controller.store.get().models.map((m) => m.modelId), ["b"]);
+    } finally {
+      stop();
+    }
+  });
+
+  it("keeps the previous catalog when the refresh fails before opening the picker", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      const current: ModelOption = {
+        modelId: "old", displayLabel: "Old", description: null,
+        isDefault: true, isActive: true, contextLimit: null, outputLimit: null,
+        cost: null, contributor: false,
+      };
+      client.listModels = async () => [current];
+      await controller.openCurrentModels("s1");
+      client.listModels = async () => { throw new Error("host away"); };
+      await controller.openCurrentModels("s1");
+      assert.deepEqual(controller.store.get().models, [current]);
+      assert.equal(controller.store.get().picker, "model");
+      assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Não foi possível atualizar os modelos/);
+    } finally {
+      stop();
+    }
+  });
+
+  it("reloads the warned session's own catalog when its route becomes unserved", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      const asked: (string | undefined)[] = [];
+      client.listModels = async (sessionId?: string) => {
+        asked.push(sessionId);
+        return [];
+      };
+      asked.length = 0;
+      const live = (patch: Record<string, unknown>) => ({
+        activeTurnId: null, turnStartedAt: null, pendingApprovals: 0, pendingInputs: 0,
+        lastTerminal: null, lastError: null, status: null, attention: [],
+        routeUnserved: null, ...patch,
+      });
+      const route = { modelId: "muse-spark-1.3", installedProviderId: "prov-b", providerId: "prov-a" };
+      client.handler?.({ type: "session-status", sessionId: "s1", live: live({ status: "idle", routeUnserved: route }) as never });
+      await settle();
+      await settle();
+      assert.deepEqual(asked, ["s1"]);
+    } finally {
+      stop();
+    }
+  });
+
   it("re-reads an open thread on view gap or health failure, and ignores unopened ones", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);

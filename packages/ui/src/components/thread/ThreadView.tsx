@@ -35,7 +35,7 @@ export function ThreadView(props: { sessionId: string }) {
       <ThreadHeader session={session} thread={thread} running={running} />
       <div className="flex min-h-0 flex-1">
         <div className="@container flex min-w-0 flex-1 flex-col">
-          {session.live?.routeUnserved ? <RouteUnservedNotice route={session.live.routeUnserved} /> : null}
+          {session.live?.routeUnserved ? <RouteUnservedNotice route={session.live.routeUnserved} sessionId={props.sessionId} /> : null}
           {thread ? <Transcript sessionId={props.sessionId} thread={thread} /> : <div className="min-h-0 flex-1" />}
           <Dock session={session} thread={thread} running={running} />
         </div>
@@ -46,7 +46,7 @@ export function ThreadView(props: { sessionId: string }) {
 }
 
 /** A rota do modelo não é atendida: explica e abre o seletor de modelos. Some quando o modelo muda. */
-function RouteUnservedNotice(props: { route: RouteUnservedView }) {
+function RouteUnservedNotice(props: { route: RouteUnservedView; sessionId: string }) {
   const controller = useController();
   return (
     <div role="alert" className="mx-3 mt-2 flex shrink-0 items-start gap-3 rounded-2xl bg-sunken px-4 py-3 shadow-[0_0_0_1px_var(--border)]">
@@ -58,7 +58,7 @@ function RouteUnservedNotice(props: { route: RouteUnservedView }) {
           Troque de modelo para continuar.
         </p>
       </div>
-      <Button size="sm" onClick={() => void controller.openCurrentModels()}>
+      <Button size="sm" onClick={() => void controller.openCurrentModels(props.sessionId)}>
         Trocar de modelo
       </Button>
     </div>

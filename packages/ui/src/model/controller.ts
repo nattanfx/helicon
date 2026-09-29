@@ -663,9 +663,9 @@ export class HeliconController {
     }
   }
 
-  private async loadModels(): Promise<void> {
+  private async loadModels(sessionId?: string): Promise<void> {
     try {
-      const models = await this.client.listModels();
+      const models = await this.client.listModels(sessionId);
       this.update((s) => ({ ...s, models }));
     } catch {
       /* o seletor recorre ao modelo da sessão */
@@ -1011,7 +1011,7 @@ export class HeliconController {
           return current ? { ...s, sessions: { ...s.sessions, [event.sessionId]: { ...current, live: event.live } } } : s;
         });
         this.announce(event.sessionId, displayTitle(known), before, event.live);
-        if (!before?.routeUnserved && event.live?.routeUnserved) void this.loadModels();
+        if (!before?.routeUnserved && event.live?.routeUnserved) void this.loadModels(event.sessionId);
         // A única notícia que temos sobre uma conversa que este app nunca abriu: ela está esperando alguém.
         if (this.bypassArmed(event.sessionId) && (event.live?.pendingApprovals ?? 0) > 0) {
           this.loadForBypass(event.sessionId);
@@ -2281,12 +2281,12 @@ export class HeliconController {
   }
 
   /** Refresh a changed provider's point-in-time catalog before offering a replacement model. */
-  async openCurrentModels(): Promise<void> {
+  async openCurrentModels(sessionId?: string | null): Promise<void> {
     try {
-      const models = await this.client.listModels();
+      const models = await this.client.listModels(sessionId ?? undefined);
       this.update((s) => ({ ...s, models }));
     } catch (error) {
-      this.update((s) => ({ ...s, models: [] }));
+      // A failed refresh keeps the previous catalog: stale options beat an empty picker.
       this.toast("info", "Não foi possível atualizar os modelos", userFacingError(error));
     }
     this.setPicker("model");
@@ -2700,7 +2700,7 @@ export class HeliconController {
       }
       case "model": {
         if (!args) {
-          this.setPicker("model");
+          await this.openCurrentModels(sessionId);
           return true;
         }
         const model = findModel(this.state.models, args, modelDisplayName);

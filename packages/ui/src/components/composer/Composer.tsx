@@ -585,7 +585,7 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
   const model = models.find((m) => m.modelId === current);
   const contributor = model?.contributor ?? /contributor/i.test(current ?? "");
   return (
-    <Menu open={open} onOpenChange={(next) => (next ? void controller.openCurrentModels() : controller.closePicker("model"))}>
+    <Menu open={open} onOpenChange={(next) => (next ? void controller.openCurrentModels(props.sessionId) : controller.closePicker("model"))}>
       <MenuTrigger asChild>
         <ToolbarTrigger
           aria-label={`Modelo: ${modelDisplayName(current)}`}
