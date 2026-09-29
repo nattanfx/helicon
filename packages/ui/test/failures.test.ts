@@ -24,6 +24,13 @@ describe("parseFailures", () => {
     assert.equal(parsed.recent[1]?.kind, "host-restarted");
   });
 
+  it("reads view gap and health rows", () => {
+    const parsed = parseFailures({ count: 2, recent: [entry({ kind: "view-gap" }), entry({ kind: "view-unhealthy" })] });
+    assert.equal(parsed.recent.length, 2);
+    assert.equal(FAILURE_KIND_LABEL["view-gap"], "falha no fluxo ao vivo");
+    assert.equal(FAILURE_KIND_LABEL["view-unhealthy"], "fluxo ao vivo indisponível");
+  });
+
   it("drops unknown rows instead of breaking the screen", () => {
     const parsed = parseFailures({ count: 1, recent: [entry(), null, { kind: "nope" }, "x"] });
     assert.equal(parsed.count, 1);

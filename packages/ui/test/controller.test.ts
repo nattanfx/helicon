@@ -1026,6 +1026,41 @@ describe("HeliconController", () => {
     }
   });
 
+  it("re-reads an open thread on view gap or health failure, and ignores unopened ones", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      let loads = 0;
+      const inner = client.transcript;
+      client.transcript = async () => {
+        loads += 1;
+        return inner();
+      };
+      const gap = (sessionId: string) =>
+        client.handler?.({ type: "msp", sessionId, method: "view/gap", params: { sessionId, after: "v1", next: "v4" }, at: 1 });
+      gap("s9");
+      await settle();
+      await settle();
+      assert.equal(loads, 0);
+      gap("s1");
+      await settle();
+      await settle();
+      assert.equal(loads, 1);
+      client.handler?.({
+        type: "msp",
+        sessionId: "s1",
+        method: "session/viewHealthChanged",
+        params: { sessionId: "s1", health: "Unavailable" },
+        at: 2,
+      });
+      await settle();
+      await settle();
+      assert.equal(loads, 2);
+    } finally {
+      stop();
+    }
+  });
+
   it("treats a turn the server still runs as alive when verified", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);

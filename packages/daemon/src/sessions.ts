@@ -283,12 +283,24 @@ export class SessionManager {
     return { sessionId: sessionIdOf(result), raw: result };
   }
 
-  async resumeSession(sessionId: string, excludeItems = false): Promise<unknown> {
-    return this.connection.command("session/resume", { sessionId, excludeItems });
+  async resumeSession(sessionId: string, excludeItems = false, cursor?: string | null): Promise<unknown> {
+    return this.connection.command("session/resume", {
+      sessionId,
+      excludeItems,
+      ...(cursor ? { cursor } : {}),
+    });
   }
 
   async readSession(sessionId: string, excludeItems = true): Promise<unknown> {
     return this.query("session/read", { sessionId, excludeItems });
+  }
+
+  /** Reattach the live view subscription after a cursor; the host replays (after, head] first. */
+  async subscribeView(sessionId: string, after?: string): Promise<unknown> {
+    return this.query("view/subscribe", {
+      sessionId,
+      ...(after ? { after } : {}),
+    });
   }
 
   /** One page of the durable view log. Backward pages walk from the head toward the start. */

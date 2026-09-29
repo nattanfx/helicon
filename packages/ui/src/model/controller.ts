@@ -974,6 +974,14 @@ export class HeliconController {
         if (event.method === "skill/changed") {
           this.refreshSkillsFor(event.sessionId);
         }
+        if (
+          (event.method === "view/gap" || event.method === "session/viewHealthChanged") &&
+          this.state.threads[event.sessionId]
+        ) {
+          // O fluxo perdeu eventos: reler reconstrói a conversa do zero, sem duplicar nem perder.
+          // Conversas fechadas abrem do zero de qualquer jeito.
+          void this.loadThread(event.sessionId);
+        }
         this.queueEvent(event.sessionId, { method: event.method, params: event.params, at: event.at });
         break;
       case "plan-usage":

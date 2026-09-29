@@ -1,7 +1,7 @@
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 
 /** Why a failure record exists. Turn rows come from the host; host rows come from the server. */
-export type FailureKind = "turn-failed" | "turn-view-failed" | "turn-view-recovered" | "host-exited" | "host-start-failed" | "host-restarted";
+export type FailureKind = "turn-failed" | "turn-view-failed" | "turn-view-recovered" | "host-exited" | "host-start-failed" | "host-restarted" | "view-gap" | "view-unhealthy";
 
 /**
  * One black-box row: enough to diagnose a failure after its conversation is archived or gone.

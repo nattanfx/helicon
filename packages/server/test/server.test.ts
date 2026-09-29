@@ -2439,6 +2439,67 @@ describe("model route and session status", () => {
   });
 });
 
+describe("view reattach", () => {
+  const resumeCalls = (connection: FakeConnection) => connection.calls.filter((c) => c.method === "session/resume");
+
+  it("resumes after the last observed view cursor", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" }, viewCursor: "vr-1" });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", viewCursor: "v1" });
+    await send(base, "/api/sessions/s1/resume", {});
+    await send(base, "/api/sessions/s1/resume", {});
+    const resumes = resumeCalls(connection);
+    assert.equal(resumes.length, 2);
+    assert.equal(resumes[0]?.params?.["cursor"], "v1");
+    assert.equal(resumes[1]?.params?.["cursor"], "vr-1");
+  });
+
+  it("resumes from scratch without an observed cursor", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    await send(base, "/api/sessions/s1/resume", {});
+    const resumes = resumeCalls(connection);
+    assert.equal(resumes.length, 1);
+    assert.ok(!("cursor" in (resumes[0]?.params ?? {})));
+  });
+
+  it("records view gaps for diagnosis and ignores malformed ones", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("view/gap", { sessionId: "s1" });
+    assert.equal(((await get(base, "/api/failures")) as { count: number }).count, 0);
+    connection.notify("view/gap", { sessionId: "s1", after: "v1", next: "v4" });
+    const log = (await get(base, "/api/failures")) as { recent: { kind: string; sessionId: string }[] };
+    assert.deepEqual(log.recent.map((row) => row.kind), ["view-gap"]);
+    assert.equal(log.recent[0]?.sessionId, "s1");
+  });
+
+  it("reattaches the view subscription when its health fails", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", viewCursor: "v1" });
+    connection.notify("session/viewHealthChanged", { sessionId: "s1" });
+    connection.notify("session/viewHealthChanged", { sessionId: "s1", health: "Unavailable", noneReason: "projectionUnavailable" });
+    await waitFor(
+      () => [...connection.calls, ...connection.requests].some((c) => c.method === "view/subscribe"),
+      "view/subscribe",
+    );
+    const sub = [...connection.calls, ...connection.requests].find((c) => c.method === "view/subscribe");
+    assert.deepEqual(sub?.params, { sessionId: "s1", after: "v1" });
+    const log = (await get(base, "/api/failures")) as { recent: { kind: string }[] };
+    assert.deepEqual(log.recent.map((row) => row.kind), ["view-unhealthy"]);
+  });
+});
+
 describe("wire helpers", () => {
   it("reshapes notifications for the browser", () => {
     const delta = toWireEvent("item/delta", { sessionId: "s1", itemId: "i1", delta: "po", field: "text" }, 5);

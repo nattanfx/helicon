@@ -7,6 +7,8 @@ const KNOWN_KINDS: readonly string[] = [
   "host-exited",
   "host-start-failed",
   "host-restarted",
+  "view-gap",
+  "view-unhealthy",
 ];
 
 export const FAILURE_KIND_LABEL: Readonly<Record<FailureKind, string>> = {
@@ -16,6 +18,8 @@ export const FAILURE_KIND_LABEL: Readonly<Record<FailureKind, string>> = {
   "host-exited": "servidor Muse saiu",
   "host-start-failed": "servidor Muse não iniciou",
   "host-restarted": "servidores reiniciados",
+  "view-gap": "falha no fluxo ao vivo",
+  "view-unhealthy": "fluxo ao vivo indisponível",
 };
 
 /** Interpreta a resposta de `GET /api/failures`; linhas desconhecidas são ignoradas, nunca quebram a tela. */

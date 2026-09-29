@@ -653,4 +653,16 @@ describe("turno finalizando", () => {
     assert.equal(fold.order.includes("r1"), false);
     assert.equal(isTurnFinalizing(fold, "t1"), true);
   });
+
+  it("reapplying the same live stream changes nothing", () => {
+    const once = liveEvents.reduce(applyEvent, emptyFold());
+    const twice = liveEvents.reduce(applyEvent, once);
+    assert.deepEqual(twice, once);
+  });
+
+  it("ignores gap and health frames without touching the fold", () => {
+    const gap: ViewEvent = { method: "view/gap", params: { sessionId: "s1", after: "v1", next: "v4" }, at: 1 };
+    const health: ViewEvent = { method: "session/viewHealthChanged", params: { sessionId: "s1", health: "Unavailable" }, at: 2 };
+    assert.deepEqual(applyEvents(emptyFold(), [gap, health]), emptyFold());
+  });
 });

@@ -428,14 +428,15 @@ function echoSettledInLoad(fold: ThreadFold, echo: LocalEcho): boolean {
   });
 }
 
-function appendDelta(draft: Draft, params: Record<string, unknown>): void {
+function appendDelta(draft: Draft, params: Record<string, unknown>): boolean {
   const d = draft.fold;
   const id = str(params["itemId"]);
   const delta = typeof params["delta"] === "string" ? params["delta"] : "";
   if (!id || !delta) {
-    return;
+    return false;
   }
   const field = str(params["field"]) ?? "text";
+  const cursor = str(params["viewCursor"]);
   let item = d.items[id];
   if (!item) {
     item = {
@@ -447,9 +448,15 @@ function appendDelta(draft: Draft, params: Record<string, unknown>): void {
     draft.pushOrder(id);
   } else if (item.status !== "inProgress") {
     // The authoritative final already landed; a late delta would duplicate text.
-    return;
+    return false;
+  } else if (cursor && item.lastDeltaCursor === cursor) {
+    // A replayed delta: the subscription re-sent what this fold already applied.
+    return false;
   }
   const next: MspItem = { ...item };
+  if (cursor) {
+    next.lastDeltaCursor = cursor;
+  }
   // Delta aceito sobre falha vazia prova que o turno está vivo: o host segue emitindo, então o fim
   // com falha era retrato cortado. Deltas ignorados (item já pronto) param no guarda acima.
   clearSpuriousFailure(d, { ...next, turnId: str(params["turnId"]) ?? next.turnId ?? null });
@@ -472,6 +479,7 @@ function appendDelta(draft: Draft, params: Record<string, unknown>): void {
     next[field] = (typeof previous === "string" ? previous : "") + delta;
   }
   d.items[id] = next;
+  return true;
 }
 
 /** A pause longer than this between text chunks means a new model call, so its speed is measured afresh. */
@@ -509,8 +517,9 @@ function applyOne(draft: Draft, event: ViewEvent): void {
       break;
     }
     case "item/delta":
-      appendDelta(draft, params);
-      trackStream(draft, params, event.at);
+      if (appendDelta(draft, params)) {
+        trackStream(draft, params, event.at);
+      }
       break;
     case "turn/started": {
       const turnId = str(params["turnId"]);

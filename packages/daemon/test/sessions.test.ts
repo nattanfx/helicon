@@ -236,6 +236,27 @@ describe("SessionManager", () => {
     });
   });
 
+  it("resumes after an observed cursor and subscribes the view at it", async () => {
+    const conn = new FakeConnection();
+    conn.reply("session/resume", { session: { sessionId: "s1" }, viewCursor: "v9" });
+    const manager = new SessionManager(conn);
+    await manager.resumeSession("s1", false, "v3");
+    assert.deepEqual(lastCall(conn), {
+      method: "session/resume",
+      params: { sessionId: "s1", excludeItems: false, cursor: "v3" },
+    });
+    await manager.subscribeView("s1", "v3");
+    assert.deepEqual(lastCall(conn), {
+      method: "view/subscribe",
+      params: { sessionId: "s1", after: "v3" },
+    });
+    await manager.subscribeView("s1");
+    assert.deepEqual(lastCall(conn), {
+      method: "view/subscribe",
+      params: { sessionId: "s1" },
+    });
+  });
+
   it("sends read-only queries without a minted commandId when the connection supports it", async () => {
     const conn = new FakeConnection();
     const requests: { method: string; params?: Record<string, unknown> }[] = [];

@@ -703,6 +703,8 @@ export class HeliconServer {
   private readonly notifyStats = new Map<string, SessionNotifyStats>();
   /** Last refresh instant per discover scope, so a streaming host only re-serves recent rows. */
   private readonly lastDiscoverAt = new Map<string, string>();
+  /** Last view cursor seen per session, so resumes and reattaches continue gaplessly after it. */
+  private readonly viewCursors = new Map<string, string>();
   private protocolErrors = 0;
   private lastProtocolError: string | null = null;
   private forwardFailures = 0;
@@ -2653,7 +2655,12 @@ export class HeliconServer {
     let readOnlyReason: string | null = null;
     let msp: Record<string, unknown> | null = null;
     try {
-      msp = asRecord(asRecord(await manager.resumeSession(sessionId, true))?.["session"]);
+      const resumed = asRecord(await manager.resumeSession(sessionId, true, this.viewCursors.get(sessionId)));
+      msp = asRecord(resumed?.["session"]);
+      const head = str(resumed?.["viewCursor"]);
+      if (head) {
+        this.viewCursors.set(sessionId, head);
+      }
       this.sessionHosts.set(sessionId, host.key);
     } catch (error) {
       const info = errorInfo(error);
@@ -3252,6 +3259,10 @@ export class HeliconServer {
         return;
       }
       this.sessionHosts.set(event.sessionId, hostKey);
+      const viewCursor = str(params["viewCursor"]);
+      if (viewCursor) {
+        this.viewCursors.set(event.sessionId, viewCursor);
+      }
       this.noteNotification(event.sessionId, notification.method);
       this.track(event.sessionId, notification.method, params, hostKey);
       this.emit("helicon", event);
@@ -3283,6 +3294,27 @@ export class HeliconServer {
   /** Tudo que vale ler depois vai para stderr, onde termina o log do daemon. */
   private log(message: string): void {
     process.stderr.write(`[helicon] ${new Date().toISOString()} ${message}\n`);
+  }
+
+  /**
+   * The view stream died but the host lives: reattach the subscription after the last
+   * cursor, which the host replays (after, head] from. Failures stay quiet here — the UI
+   * re-reads on the forwarded event, and resume re-subscribes there.
+   */
+  private async reattachView(hostKey: string, sessionId: string): Promise<void> {
+    const managed = this.hosts.get(hostKey);
+    if (!managed) {
+      return;
+    }
+    try {
+      const result = asRecord(await managed.manager.subscribeView(sessionId, this.viewCursors.get(sessionId)));
+      const head = str(result?.["viewCursor"]);
+      if (head) {
+        this.viewCursors.set(sessionId, head);
+      }
+    } catch (error) {
+      this.log(`reattach(${sessionId}) failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private track(sessionId: string, method: string, params: Record<string, unknown>, hostKey: string): void {
@@ -3417,6 +3449,37 @@ export class HeliconServer {
         if (modelId && installedProviderId) {
           live.routeUnserved = { modelId, installedProviderId, providerId: str(params["providerId"]) };
           changed = true;
+        }
+        break;
+      }
+      case "view/gap": {
+        const after = str(params["after"]);
+        const next = str(params["next"]);
+        if (after && next) {
+          this.failures.record({
+            kind: "view-gap",
+            sessionId,
+            turnId: null,
+            hostKey: this.sessionHosts.get(sessionId) ?? null,
+            errorKind: null,
+            message: `after ${after} next ${next}`,
+          });
+        }
+        break;
+      }
+      case "session/viewHealthChanged": {
+        const health = str(params["health"]);
+        if (health) {
+          const noneReason = str(params["noneReason"]);
+          this.failures.record({
+            kind: "view-unhealthy",
+            sessionId,
+            turnId: null,
+            hostKey: this.sessionHosts.get(sessionId) ?? null,
+            errorKind: null,
+            message: noneReason ? `${health}: ${noneReason}` : health,
+          });
+          void this.reattachView(hostKey, sessionId);
         }
         break;
       }

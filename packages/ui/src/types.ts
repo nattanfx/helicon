@@ -94,6 +94,8 @@ export interface MspItem {
   kind: string;
   status: string;
   revision: number;
+  /** Last delta cursor applied to this item; replays with the same cursor are skipped. */
+  lastDeltaCursor?: string;
   turnId?: string | null;
   recordedAt?: string;
   fallbackText?: string;
@@ -444,7 +446,7 @@ export interface PlanUsage {
 }
 
 /** Uma linha da caixa-preta do servidor (GET /api/failures): ids e detalhe técnico, nunca texto da conversa. */
-export type FailureKind = "turn-failed" | "turn-view-failed" | "turn-view-recovered" | "host-exited" | "host-start-failed" | "host-restarted";
+export type FailureKind = "turn-failed" | "turn-view-failed" | "turn-view-recovered" | "host-exited" | "host-start-failed" | "host-restarted" | "view-gap" | "view-unhealthy";
 
 export interface FailureEntry {
   at: string;
