@@ -1276,6 +1276,7 @@ export class HeliconController {
     typed: string,
     first: (sessionId: string) => Promise<boolean>,
     files: { attachments?: OutgoingAttachment[]; previews?: EchoAttachment[] } = {},
+    preview?: (sessionId: string) => Promise<boolean>,
   ): Promise<boolean> {
     if (this.state.busy["start"]) {
       return false;
@@ -1290,6 +1291,18 @@ export class HeliconController {
         approvalMode,
         modelId: defaultModelId ?? undefined,
       });
+      if (preview && !(await preview(session.sessionId).catch(() => false))) {
+        // A slash probe that found nothing: drop the stray session and stay where the user is.
+        // If cleanup fails, fall through and adopt: a visible empty thread beats an orphaned session.
+        const deleted = await this.client.deleteSession(session.sessionId).then(
+          () => true,
+          () => false,
+        );
+        if (deleted) {
+          return false;
+        }
+        first = async () => false;
+      }
       const base = emptyFold();
       const fold: ThreadFold = {
         ...base,
@@ -2647,8 +2660,21 @@ export class HeliconController {
     const resolved = resolveSlash(parsed, slashCommands(skills, { inThread: true }), skills);
     if (resolved.kind === "unknown") {
       if (!bound && cwd) {
-        return this.startThread(cwd, typed, (fresh) => this.runSlash(typed, parsed, { ...options, sessionId: fresh }),
-          { attachments: options.attachments, previews: options.previews });
+        let probed = false;
+        let rejected = false;
+        const preview = async (fresh: string): Promise<boolean> => {
+          probed = true;
+          await this.loadSkills(cwd, fresh);
+          const listing = this.skillCatalogs.get(`${cwd}\u0000${fresh}`);
+          const found = listing?.sessionId === fresh ? (listing?.skills ?? []) : [];
+          const isSkill = resolveSlash(parsed, slashCommands(found, { inThread: true }), found).kind === "skill";
+          if (!isSkill) rejected = true;
+          return isSkill;
+        };
+        const started = await this.startThread(cwd, typed, (fresh) => this.runSlash(typed, parsed, { ...options, sessionId: fresh }),
+          { attachments: options.attachments, previews: options.previews }, preview);
+        if (started && !rejected) return true;
+        if (!probed) return false;
       }
       this.toast("info", `Nenhum comando chamado /${resolved.name}`, "Escolha um da lista, ou envie o texto como prompt pelo menu.");
       return false;
@@ -2766,8 +2792,31 @@ export class HeliconController {
       if (!target) return false;
       const parsed = parseSlash(typed);
       if (!parsed) return false;
-      return this.startThread(target, typed, (fresh) => this.runSlash(typed, parsed, { ...options, sessionId: fresh }),
-        { attachments: options.attachments, previews: options.previews });
+      let freshSkills: SkillEntry[] = [];
+      const preview = async (fresh: string): Promise<boolean> => {
+        await this.loadSkills(target, fresh);
+        const listing = this.skillCatalogs.get(`${target}\u0000${fresh}`);
+        freshSkills = listing?.sessionId === fresh ? (listing?.skills ?? []) : [];
+        return true;
+      };
+      return this.startThread(target, typed, async (fresh) => {
+        const resolved = resolveSlash(parsed, slashCommands(freshSkills, { inThread: true }), freshSkills);
+        if (resolved.kind === "skill") {
+          return this.runSkill(resolved.skill, resolved.args, typed, target, { ...options, sessionId: fresh });
+        }
+        let body: string | null = null;
+        if (skill.activation === "user-invocable-only") {
+          try {
+            body = await this.client.skillBody(target, skill.id);
+          } catch (error) {
+            this.toast("error", `Não foi possível carregar /${skill.name}`, userFacingError(error));
+            return false;
+          }
+        }
+        const turn = skillTurn(skill, args, typed, body);
+        return this.deliver(turn.text, { ...options, sessionId: fresh, displayText: turn.displayText });
+      },
+        { attachments: options.attachments, previews: options.previews }, preview);
     }
     let body: string | null = null;
     if (skill.activation === "user-invocable-only") {

@@ -80,8 +80,14 @@ class FakeClient implements HeliconClient {
   async listSessions(options?: { archived?: boolean }) {
     return options?.archived ? this.archivedSessions : [SESSION];
   }
+  deleteError: Error | null = null;
   async deleteSession(sessionId: string) {
     this.deletedSessions.push(sessionId);
+    if (this.deleteError) {
+      const error = this.deleteError;
+      this.deleteError = null;
+      throw error;
+    }
   }
   async discover() {}
   startCalls: { cwd: string; approvalMode?: string; modelId?: string }[] = [];
@@ -1954,6 +1960,50 @@ describe("HeliconController", () => {
       assert.equal(await controller.retryTurn("s2", "/plan hello"), true);
       assert.deepEqual(client.sent.at(-1)?.skill, { selector: "plan", arguments: "hello" });
       assert.ok(client.skillSessions.includes("s2"));
+    } finally { stop(); }
+  });
+
+  it("leaves no empty conversation behind for an unknown command", async () => {
+    const client = new FakeClient();
+    client.listSkills = async () => ({ skills: [], error: null });
+    const { controller, stop } = await started(client);
+    try {
+      controller.navigate({ kind: "new", cwd: "/work/app" });
+      assert.equal(await controller.send("/nope nope"), false);
+      assert.deepEqual(controller.store.get().route, { kind: "new", cwd: "/work/app" });
+      assert.deepEqual(client.deletedSessions, ["s1"]);
+      assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Nenhum comando/);
+    } finally { stop(); }
+  });
+
+  it("sends a vanished CLI skill as text instead of stranding it", async () => {
+    const client = new FakeClient();
+    client.listSkills = async (_cwd, sessionId) => ({
+      skills: sessionId
+        ? []
+        : [{ id: "bundled:plan", name: "plan", displayName: "plan", description: "Plan it.", shortDescription: null, scope: "bundled", activation: "on" }],
+      error: null,
+    });
+    const { controller, stop } = await started(client);
+    try {
+      controller.navigate({ kind: "new", cwd: "/work/app" });
+      assert.equal(await controller.send("/plan hello"), true);
+      assert.equal(client.sent.at(-1)?.skill, undefined);
+      assert.match(client.sent.at(-1)?.text ?? "", /hello/);
+      assert.deepEqual(client.deletedSessions, []);
+    } finally { stop(); }
+  });
+
+  it("adopts the probed session when its cleanup fails", async () => {
+    const client = new FakeClient();
+    client.listSkills = async () => ({ skills: [], error: null });
+    client.deleteError = new Error("host away");
+    const { controller, stop } = await started(client);
+    try {
+      controller.navigate({ kind: "new", cwd: "/work/app" });
+      assert.equal(await controller.send("/nope nope"), false);
+      assert.deepEqual(controller.store.get().route, { kind: "thread", sessionId: "s1" });
+      assert.equal(controller.takeDraftHandoff("s1")?.text, "/nope nope");
     } finally { stop(); }
   });
 
