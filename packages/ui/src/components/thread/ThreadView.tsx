@@ -1,13 +1,13 @@
-import { Archive, CircleStop, Code, Copy, Ellipsis, Folder, FolderOpen, FolderTree, PanelBottomOpen, GitBranch, Lock, Minimize2, Pencil, ShieldOff, Square, SquarePen } from "lucide-react";
+import { Archive, CircleStop, Code, Copy, Ellipsis, Folder, FolderOpen, FolderTree, PanelBottomOpen, GitBranch, Lock, Minimize2, Pencil, ShieldAlert, ShieldOff, Square, SquarePen } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { CaptionSpacer, useOverlayDragProps } from "../../app/frame.js";
 import { isTurnFinalizing } from "../../model/fold.js";
-import { basename, displayTitle, formatDuration } from "../../model/format.js";
+import { basename, displayTitle, formatDuration, modelDisplayName, sessionLoadLabel } from "../../model/format.js";
 import { backgroundTasks } from "../../model/plan.js";
 import { goalView } from "../../model/goal.js";
 import type { ThreadState } from "../../model/store.js";
-import type { SessionSummary } from "../../types.js";
+import type { RouteUnservedView, SessionSummary } from "../../types.js";
 import { SidebarToggle, TrafficLightSpacer } from "../chrome.js";
 import { Composer, ComposerFooter } from "../composer/Composer.js";
 import { TelemetryPills } from "../composer/TelemetryPills.js";
@@ -35,11 +35,32 @@ export function ThreadView(props: { sessionId: string }) {
       <ThreadHeader session={session} thread={thread} running={running} />
       <div className="flex min-h-0 flex-1">
         <div className="@container flex min-w-0 flex-1 flex-col">
+          {session.live?.routeUnserved ? <RouteUnservedNotice route={session.live.routeUnserved} /> : null}
           {thread ? <Transcript sessionId={props.sessionId} thread={thread} /> : <div className="min-h-0 flex-1" />}
           <Dock session={session} thread={thread} running={running} />
         </div>
         {filesOpen ? <FilesPanel sessionId={props.sessionId} cwd={session.cwd} /> : null}
       </div>
+    </div>
+  );
+}
+
+/** A rota do modelo não é atendida: explica e abre o seletor de modelos. Some quando o modelo muda. */
+function RouteUnservedNotice(props: { route: RouteUnservedView }) {
+  const controller = useController();
+  return (
+    <div role="alert" className="mx-3 mt-2 flex shrink-0 items-start gap-3 rounded-2xl bg-sunken px-4 py-3 shadow-[0_0_0_1px_var(--border)]">
+      <ShieldAlert size={15} className="mt-0.5 shrink-0 text-warn" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-fg">Modelo indisponível</p>
+        <p className="mt-0.5 text-xs text-muted">
+          O modelo {modelDisplayName(props.route.modelId)} não é atendido pelo provedor atual ({props.route.installedProviderId}).
+          Troque de modelo para continuar.
+        </p>
+      </div>
+      <Button size="sm" onClick={() => controller.setPicker("model")}>
+        Trocar de modelo
+      </Button>
     </div>
   );
 }
@@ -56,6 +77,7 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
   const drag = useOverlayDragProps();
   const noDrag = useOverlayDragProps("off");
   const filesOpen = useApp((s) => s.prefs.filesOpen);
+  const loadLabel = sessionLoadLabel(session.live?.status);
   return (
     <header data-drag-region {...drag} className="@container flex h-12 shrink-0 items-center gap-1.5 overflow-hidden border-b border-line px-3">
       <TrafficLightSpacer />
@@ -116,6 +138,11 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
         <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs text-subtle">
           <Lock size={12} />
           <span className="@max-[420px]:hidden">Somente leitura</span>
+        </span>
+      ) : null}
+      {loadLabel ? (
+        <span className="shrink-0 px-1 text-xs text-subtle" role="status">
+          {loadLabel}
         </span>
       ) : null}
       {props.running ? (

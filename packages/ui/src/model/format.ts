@@ -898,6 +898,26 @@ export function modelDisplayName(modelId: string | null | undefined): string {
 }
 
 /**
+ * Rótulo do estado de carga da sessão. Conjunto aberto: estados futuros passam
+ * como texto genérico em vez de quebrar a tela.
+ */
+export function sessionLoadLabel(status: string | null | undefined): string | null {
+  if (!status) {
+    return null;
+  }
+  switch (status) {
+    case "idle":
+      return "Ociosa";
+    case "running":
+      return "Em execução";
+    case "notLoaded":
+      return "Descarregada";
+    default:
+      return `Estado: ${status}`;
+  }
+}
+
+/**
  * Rótulo único do nível Contributor do catálogo. Não inventa política da Meta nem preço:
  * só o que `ModelOption.contributor` significa no tipo.
  */

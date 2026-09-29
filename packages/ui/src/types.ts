@@ -23,6 +23,13 @@ export interface ProjectView {
   activityAt: string;
 }
 
+/** A model route the provider cannot serve; cleared when the model changes. */
+export interface RouteUnservedView {
+  modelId: string;
+  installedProviderId: string;
+  providerId: string | null;
+}
+
 /** Server-tracked live state for a session; null until the server has seen it run. */
 export interface LiveView {
   activeTurnId: string | null;
@@ -33,6 +40,10 @@ export interface LiveView {
   lastError: string | null;
   /** The session's goal as the server last saw it, for threads the UI has not opened. */
   goal?: Goal | null;
+  /** Last load state the host reported; an open set, shown generically when unknown. */
+  status?: string | null;
+  attention?: string[];
+  routeUnserved?: RouteUnservedView | null;
 }
 
 export interface SessionSummary {

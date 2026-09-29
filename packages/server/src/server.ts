@@ -136,6 +136,13 @@ export interface GoalBlock {
   nextWork?: string;
 }
 
+/** A model route the provider cannot serve; disclosure-only, repaired by switching models. */
+export interface RouteUnserved {
+  modelId: string;
+  installedProviderId: string;
+  providerId: string | null;
+}
+
 interface LiveState {
   activeTurnId: string | null;
   turnStartedAt: string | null;
@@ -146,6 +153,10 @@ interface LiveState {
   goal: GoalBlock | null;
   /** Bumped on every live goal change, so a slow transcript load never writes an older goal over a newer one. */
   goalSeq: number;
+  /** Last load state the host reported; an open set, stored as-is. */
+  status: string | null;
+  attention: string[];
+  routeUnserved: RouteUnserved | null;
 }
 
 export interface LiveView {
@@ -156,6 +167,9 @@ export interface LiveView {
   lastTerminal: string | null;
   lastError: string | null;
   goal: GoalBlock | null;
+  status: string | null;
+  attention: string[];
+  routeUnserved: RouteUnserved | null;
 }
 
 /** A `session/goalChanged` goal: null clears it; undefined means the block is not a goal (no objective). */
@@ -1358,6 +1372,11 @@ export class HeliconServer {
           if (modelId) {
             this.store.updateSession(sessionId, { modelId });
           }
+          const live = this.live.get(sessionId);
+          if (live?.routeUnserved) {
+            live.routeUnserved = null;
+            this.emitStatus(sessionId);
+          }
           this.json(res, 200, { ok: true });
           return true;
         }
@@ -1867,6 +1886,9 @@ export class HeliconServer {
         lastError: null,
         goal: null,
         goalSeq: 0,
+        status: null,
+        attention: [],
+        routeUnserved: null,
       };
       this.live.set(sessionId, state);
     }
@@ -1886,6 +1908,9 @@ export class HeliconServer {
       lastTerminal: state.lastTerminal,
       lastError: state.lastError,
       goal: state.goal,
+      status: state.status,
+      attention: state.attention,
+      routeUnserved: state.routeUnserved,
     };
   }
 
@@ -2838,6 +2863,20 @@ export class HeliconServer {
       live.turnStartedAt = live.turnStartedAt ?? nowIso();
       this.sessionHosts.set(sessionId, opts.hostKey);
     }
+    // The Session row carries the same load facts as statusChanged: seed them here so the
+    // indicator has something to show before the first event. An omitted attention is a
+    // non-assertion, so only a present list overwrites.
+    const rowStatus = str(session["status"]);
+    const rowAttention = session["attention"];
+    if (rowStatus || Array.isArray(rowAttention)) {
+      const live = this.liveFor(sessionId);
+      if (rowStatus) {
+        live.status = rowStatus;
+      }
+      if (Array.isArray(rowAttention)) {
+        live.attention = rowAttention.filter((flag): flag is string => typeof flag === "string");
+      }
+    }
     // A settled thread that moved on in another Muse client (running now, or updated since) comes back.
     let current = stored;
     if (stored.settledOverride === "settled" && (running || (stored.settledAt !== null && stored.activityAt > stored.settledAt))) {
@@ -3341,11 +3380,13 @@ export class HeliconServer {
         break;
       }
       case "session/closed": {
-        changed = live.activeTurnId !== null || live.pendingApprovals.size > 0 || live.pendingInputs.size > 0;
+        changed = live.activeTurnId !== null || live.pendingApprovals.size > 0 || live.pendingInputs.size > 0 || live.status !== "notLoaded";
         live.activeTurnId = null;
         live.turnStartedAt = null;
         live.pendingApprovals.clear();
         live.pendingInputs.clear();
+        live.status = "notLoaded";
+        live.attention = [];
         this.sessionHosts.delete(sessionId);
         break;
       }
@@ -3353,6 +3394,29 @@ export class HeliconServer {
         const modelId = str(params["modelId"]);
         if (modelId) {
           this.store.updateSession(sessionId, { modelId });
+        }
+        if (live.routeUnserved) {
+          live.routeUnserved = null;
+          changed = true;
+        }
+        break;
+      }
+      case "session/statusChanged": {
+        const status = str(params["status"]);
+        if (status) {
+          live.status = status;
+        }
+        const attention = params["attention"];
+        live.attention = Array.isArray(attention) ? attention.filter((flag): flag is string => typeof flag === "string") : [];
+        changed = true;
+        break;
+      }
+      case "session/modelRouteUnserved": {
+        const modelId = str(params["modelId"]);
+        const installedProviderId = str(params["installedProviderId"]);
+        if (modelId && installedProviderId) {
+          live.routeUnserved = { modelId, installedProviderId, providerId: str(params["providerId"]) };
+          changed = true;
         }
         break;
       }

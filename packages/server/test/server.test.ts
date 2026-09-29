@@ -2359,6 +2359,86 @@ describe("session list stream", () => {
   });
 });
 
+describe("model route and session status", () => {
+  const liveOf = async (base: string, sessionId: string) =>
+    (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === sessionId).live;
+
+  it("stores load status and attention from statusChanged, including unknown states", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "running", attention: ["approvalPending"], viewCursor: "v1" });
+    assert.equal((await liveOf(base, "s1")).status, "running");
+    assert.deepEqual((await liveOf(base, "s1")).attention, ["approvalPending"]);
+    // Unknown future states ride through as-is; absence of attention means none.
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "hibernating", viewCursor: "v2" });
+    assert.equal((await liveOf(base, "s1")).status, "hibernating");
+    assert.deepEqual((await liveOf(base, "s1")).attention, []);
+  });
+
+  it("records an unserved model route and clears it on model change", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    // Malformed disclosures change nothing.
+    connection.notify("session/modelRouteUnserved", { sessionId: "s1", viewCursor: "v0" });
+    assert.equal((await liveOf(base, "s1")).routeUnserved, null);
+    connection.notify("session/modelRouteUnserved", {
+      sessionId: "s1",
+      commandId: "c1",
+      installedProviderId: "prov-b",
+      modelId: "muse-spark-1.3",
+      providerId: "prov-a",
+      viewCursor: "v1",
+      sourceRange: RANGE,
+    });
+    assert.deepEqual((await liveOf(base, "s1")).routeUnserved, {
+      modelId: "muse-spark-1.3",
+      installedProviderId: "prov-b",
+      providerId: "prov-a",
+    });
+    connection.notify("session/modelChanged", { sessionId: "s1", modelId: "other-model" });
+    assert.equal((await liveOf(base, "s1")).routeUnserved, null);
+  });
+
+  it("clears the unserved route when the model is switched", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/modelRouteUnserved", {
+      sessionId: "s1",
+      commandId: "c1",
+      installedProviderId: "prov-b",
+      modelId: "muse-spark-1.3",
+      viewCursor: "v1",
+      sourceRange: RANGE,
+    });
+    assert.ok((await liveOf(base, "s1")).routeUnserved);
+    const switched = await send(base, "/api/sessions/s1/model", { model: { modelId: "new-model" } });
+    assert.equal(switched.status, 200);
+    assert.equal((await liveOf(base, "s1")).routeUnserved, null);
+  });
+
+  it("marks unloaded sessions notLoaded and seeds load state from adopted rows", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/closed", { sessionId: "s1", reason: "idle", viewCursor: null });
+    assert.equal((await liveOf(base, "s1")).status, "notLoaded");
+    connection.notify("session/listChanged", {
+      session: { sessionId: "s1", workspaceRoot: "/work/proj", status: "idle", attention: ["inputPending"] },
+    });
+    assert.equal((await liveOf(base, "s1")).status, "idle");
+    assert.deepEqual((await liveOf(base, "s1")).attention, ["inputPending"]);
+  });
+});
+
 describe("wire helpers", () => {
   it("reshapes notifications for the browser", () => {
     const delta = toWireEvent("item/delta", { sessionId: "s1", itemId: "i1", delta: "po", field: "text" }, 5);

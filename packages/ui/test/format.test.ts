@@ -23,6 +23,7 @@ import {
   contributorChoiceLabel,
   modelDisplayName,
   relativeTime,
+  sessionLoadLabel,
   shortenPath,
   stripAttachmentMentions,
   stripImageMarkers,
@@ -410,5 +411,14 @@ describe("aprovações e modelos", () => {
     assert.equal(CONTRIBUTOR_LABEL, "Contribuidor");
     assert.match(CONTRIBUTOR_NOTICE, /melhoria do produto/);
     assert.doesNotMatch(CONTRIBUTOR_NOTICE, /Meta|preço|USD/i);
+  });
+
+  it("rotula o estado de carga sem quebrar em estados futuros", () => {
+    assert.equal(sessionLoadLabel("idle"), "Ociosa");
+    assert.equal(sessionLoadLabel("running"), "Em execução");
+    assert.equal(sessionLoadLabel("notLoaded"), "Descarregada");
+    assert.equal(sessionLoadLabel("hibernating"), "Estado: hibernating");
+    assert.equal(sessionLoadLabel(null), null);
+    assert.equal(sessionLoadLabel(undefined), null);
   });
 });

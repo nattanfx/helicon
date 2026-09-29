@@ -995,6 +995,37 @@ describe("HeliconController", () => {
     }
   });
 
+  it("carries load status and unserved routes from session-status into the sidebar row", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      const live = (patch: Record<string, unknown>) => ({
+        activeTurnId: null,
+        turnStartedAt: null,
+        pendingApprovals: 0,
+        pendingInputs: 0,
+        lastTerminal: null,
+        lastError: null,
+        status: null,
+        attention: [],
+        routeUnserved: null,
+        ...patch,
+      });
+      const route = { modelId: "muse-spark-1.3", installedProviderId: "prov-b", providerId: "prov-a" };
+      client.handler?.({ type: "session-status", sessionId: "s1", live: live({ status: "idle", routeUnserved: route }) as never });
+      await settle();
+      const row = controller.store.get().sessions["s1"]!.live;
+      assert.equal(row?.status, "idle");
+      assert.deepEqual(row?.routeUnserved, route);
+      client.handler?.({ type: "session-status", sessionId: "s1", live: live({ status: "running" }) as never });
+      await settle();
+      assert.equal(controller.store.get().sessions["s1"]!.live?.routeUnserved, null);
+      assert.equal(controller.store.get().sessions["s1"]!.live?.status, "running");
+    } finally {
+      stop();
+    }
+  });
+
   it("treats a turn the server still runs as alive when verified", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
