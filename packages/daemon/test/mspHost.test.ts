@@ -29,12 +29,13 @@ function makeConnection(): FakeConnection {
 }
 
 function makeSpawn(connection: FakeConnection, opts?: { fingerprintWarning?: unknown }) {
-  const calls: { clientName: string; clientVersion: string }[] = [];
+  const calls: { clientName: string; clientVersion: string; capabilities: unknown }[] = [];
   const spawn = ((_spawnOpts: unknown) => ({
-    initialize: async (initOpts: { clientInfo: { name: string; version: string } }) => {
+    initialize: async (initOpts: { clientInfo: { name: string; version: string }; capabilities?: unknown }) => {
       calls.push({
         clientName: initOpts.clientInfo.name,
         clientVersion: initOpts.clientInfo.version,
+        capabilities: initOpts.capabilities,
       });
       return {
         initializeResult: { serverInfo: { name: "muse-test" } },
@@ -72,6 +73,20 @@ describe("HeliconMspHost", () => {
     assert.equal(calls[0]?.clientName, HELICON_CLIENT_NAME);
     assert.equal(calls[0]?.clientVersion, "0.1.0");
     assert.deepEqual(started.fingerprintWarning, { mismatch: true });
+  });
+
+  it("requests the session list stream capability", async () => {
+    const connection = makeConnection();
+    const { spawn, calls } = makeSpawn(connection);
+    const host = new HeliconMspHost(
+      { command: "muse", args: ["serve"], cwd: "/tmp" },
+      spawn,
+    );
+    await host.start("0.1.0");
+    const requested = (calls[0]?.capabilities as { requestedCapabilities?: string[] } | undefined)
+      ?.requestedCapabilities;
+    assert.ok(requested?.includes("userShell"));
+    assert.ok(requested?.includes("sessionListStream"));
   });
 
   it("refuses connection use before start and closes cleanly", async () => {

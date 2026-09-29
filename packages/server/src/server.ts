@@ -122,6 +122,7 @@ interface ManagedHost {
   handle: HostHandle;
   manager: SessionManager;
   serverVersion: string | null;
+  grantedCapabilities: string[];
   startedAt: string;
 }
 
@@ -686,6 +687,8 @@ export class HeliconServer {
    * sem nada a dizer. Limitado às sessões vistas por último.
    */
   private readonly notifyStats = new Map<string, SessionNotifyStats>();
+  /** Last refresh instant per discover scope, so a streaming host only re-serves recent rows. */
+  private readonly lastDiscoverAt = new Map<string, string>();
   private protocolErrors = 0;
   private lastProtocolError: string | null = null;
   private forwardFailures = 0;
@@ -2736,6 +2739,36 @@ export class HeliconServer {
 
   private async discover(cwd?: string): Promise<Record<string, unknown>[]> {
     const host = await this.hostFor(cwd ?? "");
+    const scope = cwd ?? "";
+    const incremental = host.grantedCapabilities.includes("sessionListStream") ? this.lastDiscoverAt.get(scope) : undefined;
+    const startedAt = nowIso();
+    let remote: unknown[];
+    try {
+      remote = await this.listRemote(host, cwd, incremental);
+    } catch (error) {
+      // A host that grants the stream speaks the 1.4.0 list params; anything else
+      // falls back to the full listing it always served.
+      if (!incremental || errorInfo(error).kind !== "invalidParams") {
+        throw error;
+      }
+      remote = await this.listRemote(host, cwd, undefined);
+    }
+    this.lastDiscoverAt.set(scope, startedAt);
+
+    const views: Record<string, unknown>[] = [];
+    const titles = { backfill: 0 };
+    for (const item of remote) {
+      const view = this.adoptRemoteRow(item, { cwd, hostKey: host.key, titles });
+      if (view) {
+        views.push(view);
+      }
+    }
+    this.sessionsChanged();
+    return views;
+  }
+
+  /** Every page of session/list for a refresh, narrowed to recent activity when incremental. */
+  private async listRemote(host: ManagedHost, cwd: string | undefined, updatedAfter: string | undefined): Promise<unknown[]> {
     const remote: unknown[] = [];
     let cursor: string | null = null;
     do {
@@ -2743,84 +2776,90 @@ export class HeliconServer {
         workspaceRoot: cwd ? this.hostPathFor(cwd) : undefined,
         limit: 100,
         cursor,
+        ...(updatedAfter ? { updatedAfter } : {}),
       });
       remote.push(...page.sessions);
       cursor = page.nextCursor;
     } while (cursor && remote.length < DISCOVER_LIMIT);
+    return remote;
+  }
 
-    const views: Record<string, unknown>[] = [];
-    let backfill = 0;
-    for (const item of remote) {
-      const record = asRecord(item);
-      const session = (record && asRecord(record["session"])) ?? record;
-      const sessionId = session ? str(session["sessionId"]) : null;
-      if (!session || !sessionId) {
-        continue;
-      }
-      // Deleted in Helicon stays deleted, even when the host session still exists.
-      if (this.store.isDeleted(sessionId)) {
-        continue;
-      }
-      const root = this.storePathFor(firstString(session, ["workspaceRoot"]) ?? cwd ?? "");
-      if (!root) {
-        continue;
-      }
-      const project = this.store.upsertProject(root);
-      const existing = this.store.getSession(sessionId);
-      // Muse names its own sessions, and that name is what the user sees in the CLI, so it wins here too.
-      // Only a title the user typed in Helicon outranks it. MSP `title` is just the first-prompt echo,
-      // so it is only a fallback, sanitized like any other derived title.
-      const keepOurs = existing?.titleSource === "user";
-      const mspName = keepOurs ? null : firstString(session, ["name"]);
-      const mspTitle = keepOurs ? null : firstString(session, ["title"]);
-      const echoTitle = mspName ? null : mspTitle ? deriveTitle(mspTitle) : null;
-      // The echo is a fallback for threads seen here first, never an update: it must not clobber
-      // a title a past upgrade wrote, or every discovery would revert it and spend another call.
-      const takeEcho = echoTitle !== null && (!existing || existing.titleSource === "placeholder" || existing.title === echoTitle);
-      const title = mspName ?? (takeEcho ? echoTitle : null);
-      const stored = this.store.recordSession({
-        id: sessionId,
-        projectId: project.id,
-        origin: existing?.origin ?? "tui",
-        title: title ?? undefined,
-        titleSource: title ? "auto" : undefined,
-        turnCount: num(session["turnCount"]),
-        modelId: str(session["modelId"]),
-        createdAt: normalizeIso(session["createdAt"]),
-        activityAt: normalizeIso(session["updatedAt"]),
-      });
-      const running = str(session["status"]) === "running" && Boolean(str(session["activeTurnId"]));
-      if (running) {
-        const live = this.liveFor(sessionId);
-        live.activeTurnId = str(session["activeTurnId"]);
-        live.turnStartedAt = live.turnStartedAt ?? nowIso();
-        this.sessionHosts.set(sessionId, host.key);
-      }
-      // A settled thread that moved on in another Muse client (running now, or updated since) comes back.
-      let current = stored;
-      if (stored.settledOverride === "settled" && (running || (stored.settledAt !== null && stored.activityAt > stored.settledAt))) {
-        this.wake(sessionId);
-        current = this.store.getSession(sessionId) ?? stored;
-      }
-      if (mspName) {
-        // A Muse-selected name is never upgraded, even if an echo here owed an attempt.
-        this.titleUpgradePending.delete(sessionId);
-      }
-      // History can receive a free first-prompt fallback; only opted-in new sessions may call the model.
-      const needsUpgrade =
-        !this.titleUpgradeActive.has(sessionId) &&
-        (stored.titleSource === "placeholder" ||
-          (stored.titleSource === "auto" && echoTitle !== null && stored.title === echoTitle));
-      if (needsUpgrade && backfill < TITLE_BACKFILL_LIMIT &&
-          (stored.titleSource === "placeholder" || this.store.titleAttemptState(sessionId) === "pending")) {
-        backfill += 1;
-        this.titleUpgradePending.add(sessionId);
-        this.queueTitle(sessionId);
-      }
-      views.push(this.summary(current, project.cwd));
+  /**
+   * One host list row reconciled with the local store: discovery and the list stream share
+   * this, so a streamed row can never diverge from a discovered one. Returns the sidebar view,
+   * or null when the row stays out of the list (deleted here, or no project for its root).
+   */
+  private adoptRemoteRow(
+    item: unknown,
+    opts: { cwd?: string; hostKey: string; titles: { backfill: number } },
+  ): Record<string, unknown> | null {
+    const record = asRecord(item);
+    const session = (record && asRecord(record["session"])) ?? record;
+    const sessionId = session ? str(session["sessionId"]) : null;
+    if (!session || !sessionId) {
+      return null;
     }
-    this.sessionsChanged();
-    return views;
+    // Deleted in Helicon stays deleted, even when the host session still exists.
+    if (this.store.isDeleted(sessionId)) {
+      return null;
+    }
+    const root = this.storePathFor(firstString(session, ["workspaceRoot"]) ?? opts.cwd ?? "");
+    if (!root) {
+      return null;
+    }
+    const project = this.store.upsertProject(root);
+    const existing = this.store.getSession(sessionId);
+    // Muse names its own sessions, and that name is what the user sees in the CLI, so it wins here too.
+    // Only a title the user typed in Helicon outranks it. MSP `title` is just the first-prompt echo,
+    // so it is only a fallback, sanitized like any other derived title.
+    const keepOurs = existing?.titleSource === "user";
+    const mspName = keepOurs ? null : firstString(session, ["name"]);
+    const mspTitle = keepOurs ? null : firstString(session, ["title"]);
+    const echoTitle = mspName ? null : mspTitle ? deriveTitle(mspTitle) : null;
+    // The echo is a fallback for threads seen here first, never an update: it must not clobber
+    // a title a past upgrade wrote, or every discovery would revert it and spend another call.
+    const takeEcho = echoTitle !== null && (!existing || existing.titleSource === "placeholder" || existing.title === echoTitle);
+    const title = mspName ?? (takeEcho ? echoTitle : null);
+    const stored = this.store.recordSession({
+      id: sessionId,
+      projectId: project.id,
+      origin: existing?.origin ?? "tui",
+      title: title ?? undefined,
+      titleSource: title ? "auto" : undefined,
+      turnCount: num(session["turnCount"]),
+      modelId: str(session["modelId"]),
+      createdAt: normalizeIso(session["createdAt"]),
+      activityAt: normalizeIso(session["updatedAt"]),
+    });
+    const running = str(session["status"]) === "running" && Boolean(str(session["activeTurnId"]));
+    if (running) {
+      const live = this.liveFor(sessionId);
+      live.activeTurnId = str(session["activeTurnId"]);
+      live.turnStartedAt = live.turnStartedAt ?? nowIso();
+      this.sessionHosts.set(sessionId, opts.hostKey);
+    }
+    // A settled thread that moved on in another Muse client (running now, or updated since) comes back.
+    let current = stored;
+    if (stored.settledOverride === "settled" && (running || (stored.settledAt !== null && stored.activityAt > stored.settledAt))) {
+      this.wake(sessionId);
+      current = this.store.getSession(sessionId) ?? stored;
+    }
+    if (mspName) {
+      // A Muse-selected name is never upgraded, even if an echo here owed an attempt.
+      this.titleUpgradePending.delete(sessionId);
+    }
+    // History can receive a free first-prompt fallback; only opted-in new sessions may call the model.
+    const needsUpgrade =
+      !this.titleUpgradeActive.has(sessionId) &&
+      (stored.titleSource === "placeholder" ||
+        (stored.titleSource === "auto" && echoTitle !== null && stored.title === echoTitle));
+    if (needsUpgrade && opts.titles.backfill < TITLE_BACKFILL_LIMIT &&
+        (stored.titleSource === "placeholder" || this.store.titleAttemptState(sessionId) === "pending")) {
+      opts.titles.backfill += 1;
+      this.titleUpgradePending.add(sessionId);
+      this.queueTitle(sessionId);
+    }
+    return this.summary(current, project.cwd);
   }
 
   private queueTitle(sessionId: string): void {
@@ -3031,12 +3070,14 @@ export class HeliconServer {
       this.log(`host ${key} cannot report protocol errors; dropped frames stay invisible`);
     }
     const serverInfo = asRecord(asRecord(started?.initializeResult)?.["serverInfo"]);
+    const granted = asRecord(started?.initializeResult)?.["grantedCapabilities"];
     const managed: ManagedHost = {
       key,
       target,
       handle,
       manager,
       serverVersion: serverInfo ? str(serverInfo["version"]) : null,
+      grantedCapabilities: Array.isArray(granted) ? granted.filter((entry): entry is string => typeof entry === "string") : [],
       startedAt: nowIso(),
     };
     handle.onExit?.((exit) => this.hostExited(managed, exit));
@@ -3173,7 +3214,7 @@ export class HeliconServer {
       }
       this.sessionHosts.set(event.sessionId, hostKey);
       this.noteNotification(event.sessionId, notification.method);
-      this.track(event.sessionId, notification.method, params);
+      this.track(event.sessionId, notification.method, params, hostKey);
       this.emit("helicon", event);
     } catch (error) {
       this.forwardFailures += 1;
@@ -3205,7 +3246,7 @@ export class HeliconServer {
     process.stderr.write(`[helicon] ${new Date().toISOString()} ${message}\n`);
   }
 
-  private track(sessionId: string, method: string, params: Record<string, unknown>): void {
+  private track(sessionId: string, method: string, params: Record<string, unknown>, hostKey: string): void {
     const live = this.liveFor(sessionId);
     let changed = false;
     switch (method) {
@@ -3286,6 +3327,17 @@ export class HeliconServer {
       case "userInput/settled": {
         const id = str(params["userInputId"]);
         changed = id ? live.pendingInputs.delete(id) : false;
+        break;
+      }
+      case "session/started":
+      case "session/listChanged": {
+        // Row birth and row replace share one reconcile with discovery. Only a host that
+        // granted the stream narrates its list; older hosts keep the Atualizar button path.
+        const managed = this.hosts.get(hostKey);
+        if (managed?.grantedCapabilities.includes("sessionListStream")) {
+          this.adoptRemoteRow(params, { hostKey, titles: { backfill: 0 } });
+          this.sessionsChanged();
+        }
         break;
       }
       case "session/closed": {

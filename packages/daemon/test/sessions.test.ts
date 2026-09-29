@@ -83,6 +83,17 @@ describe("SessionManager", () => {
     assert.equal(sessions.length, 1);
   });
 
+  it("passes updatedAfter for incremental refreshes", async () => {
+    const conn = new FakeConnection();
+    conn.reply("session/list", { sessions: [], nextCursor: null });
+    const manager = new SessionManager(conn);
+    await manager.listSessionsPage({ limit: 50, updatedAfter: "2026-09-28T20:00:00.000Z" });
+    assert.deepEqual(lastCall(conn), {
+      method: "session/list",
+      params: { limit: 50, updatedAfter: "2026-09-28T20:00:00.000Z" },
+    });
+  });
+
   it("falls back to an empty list on unexpected shapes", async () => {
     const conn = new FakeConnection();
     conn.reply("session/list", { unexpected: true });

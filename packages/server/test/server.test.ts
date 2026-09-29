@@ -75,13 +75,13 @@ interface FactoryProbe {
   exits: ((exit: HostExit) => void)[];
 }
 
-function fakeFactory(connection: FakeConnection, probe?: FactoryProbe): (target: ServeTarget) => HostHandle {
+function fakeFactory(connection: FakeConnection, probe?: FactoryProbe, init?: { grantedCapabilities?: string[] }): (target: ServeTarget) => HostHandle {
   return (target) => {
     probe?.targets.push(target);
     return {
       start: async () => {
         await new Promise((r) => setTimeout(r, 5));
-        return { initializeResult: { serverInfo: { name: "muse", version: "1.1.1" } } };
+        return { initializeResult: { serverInfo: { name: "muse", version: "1.1.1" }, ...init } };
       },
       connection: connection as never,
       close: async () => ({ code: 0, signal: null }),
@@ -2242,6 +2242,120 @@ describe("slash commands, skills and shell", () => {
     const diagnostics = (await get(base, "/api/health")).diagnostics;
     assert.equal(diagnostics.protocolErrors, 1);
     assert.equal(diagnostics.lastProtocolError, "refused frame");
+  });
+});
+
+describe("session list stream", () => {
+  it("adopts session/listChanged rows into the list without discovery", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["userShell", "sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const ids = async () => (await get(base, "/api/sessions")).sessions.map((s: { sessionId: string }) => s.sessionId).sort();
+    assert.deepEqual(await ids(), ["s1"]);
+    connection.notify("session/listChanged", {
+      session: { sessionId: "s2", workspaceRoot: "/work/proj", title: "Streamed row", turnCount: 3 },
+    });
+    assert.deepEqual(await ids(), ["s1", "s2"]);
+    // A repeat replaces the row instead of duplicating it.
+    connection.notify("session/listChanged", {
+      session: { sessionId: "s2", workspaceRoot: "/work/proj", title: "Streamed row", turnCount: 4 },
+    });
+    assert.deepEqual(await ids(), ["s1", "s2"]);
+    const row = (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === "s2");
+    assert.equal(row.turnCount, 4);
+  });
+
+  it("ignores session/listChanged without the stream capability", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/listChanged", {
+      session: { sessionId: "s2", workspaceRoot: "/work/proj", title: "Ghost row" },
+    });
+    const ids = (await get(base, "/api/sessions")).sessions.map((s: { sessionId: string }) => s.sessionId);
+    assert.deepEqual(ids, ["s1"]);
+  });
+
+  it("adopts session/started births and keeps user titles on streamed rows", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    await send(base, "/api/sessions/s1", { title: "My name" }, "PATCH");
+    connection.notify("session/started", {
+      session: { sessionId: "s9", workspaceRoot: "/work/proj", name: "muse-name" },
+    });
+    connection.notify("session/listChanged", {
+      session: { sessionId: "s1", workspaceRoot: "/work/proj", name: "other-name", turnCount: 2 },
+    });
+    const sessions = (await get(base, "/api/sessions")).sessions;
+    assert.deepEqual(
+      sessions.map((s: { sessionId: string }) => s.sessionId).sort(),
+      ["s1", "s9"],
+    );
+    assert.equal(sessions.find((s: { sessionId: string }) => s.sessionId === "s1")?.title, "My name");
+    assert.equal(sessions.find((s: { sessionId: string }) => s.sessionId === "s9")?.title, "muse-name");
+  });
+
+  it("keeps unloaded sessions listed after session/closed", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/closed", { sessionId: "s1", reason: "idle", viewCursor: null });
+    const ids = (await get(base, "/api/sessions")).sessions.map((s: { sessionId: string }) => s.sessionId);
+    assert.deepEqual(ids, ["s1"]);
+  });
+
+  it("leaves deleted sessions deleted when the stream repeats them", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const deleted = await send(base, "/api/sessions/s1", undefined, "DELETE");
+    assert.equal(deleted.status, 200);
+    connection.notify("session/listChanged", {
+      session: { sessionId: "s1", workspaceRoot: "/work/proj", title: "Back from the dead" },
+    });
+    const ids = (await get(base, "/api/sessions")).sessions.map((s: { sessionId: string }) => s.sessionId);
+    assert.deepEqual(ids, []);
+  });
+
+  it("refreshes incrementally and retries fully when the host refuses updatedAfter", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const seen: unknown[] = [];
+    let refused = false;
+    connection.replies.set("session/list", (params: Record<string, unknown>) => {
+      seen.push(params["updatedAfter"] ?? null);
+      if (params["updatedAfter"] && !refused) {
+        refused = true;
+        throw new MspTestError("Unknown param: updatedAfter", "invalidParams");
+      }
+      return { sessions: [], nextCursor: null };
+    });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.equal((await send(base, "/api/discover", {})).status, 200);
+    assert.equal((await send(base, "/api/discover", {})).status, 200);
+    assert.equal((await send(base, "/api/discover", {})).status, 200);
+    assert.equal(seen.length, 4);
+    assert.equal(seen[0], null);
+    assert.equal(typeof seen[1], "string");
+    assert.equal(seen[2], null);
+    assert.equal(typeof seen[3], "string");
   });
 });
 

@@ -242,6 +242,7 @@ export class SessionManager {
     workspaceRoot?: string;
     limit?: number;
     cursor?: string | null;
+    updatedAfter?: string;
   } = {}): Promise<SessionPage> {
     const params: Record<string, unknown> = { limit: options.limit ?? 50 };
     if (options.workspaceRoot !== undefined) {
@@ -249,6 +250,9 @@ export class SessionManager {
     }
     if (options.cursor) {
       params["cursor"] = options.cursor;
+    }
+    if (options.updatedAfter) {
+      params["updatedAfter"] = options.updatedAfter;
     }
     const result = await this.query("session/list", params);
     const record = asRecord(result);
