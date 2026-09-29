@@ -702,6 +702,7 @@ export class HeliconServer {
   private readonly notifyStats = new Map<string, SessionNotifyStats>();
   /** Last refresh instant per discover scope, so a streaming host only re-serves recent rows. */
   private readonly lastDiscoverAt = new Map<string, string>();
+  /** Live row writes (stream rows, model switches, renames) supersede any in-flight list snapshot. */
   private rowStreamSequence = 0;
   private readonly rowStreamSeen = new Map<string, number>();
   private statusSequence = 0;
@@ -1383,6 +1384,7 @@ export class HeliconServer {
           if (modelId) {
             this.store.updateSession(sessionId, { modelId });
           }
+          this.rowStreamSeen.set(sessionId, ++this.rowStreamSequence);
           const live = this.live.get(sessionId);
           this.routeSequence.set(sessionId, (this.routeSequence.get(sessionId) ?? 0) + 1);
           if (live?.routeUnserved) {
@@ -3572,6 +3574,7 @@ export class HeliconServer {
         break;
       }
       case "session/modelChanged": {
+        this.rowStreamSeen.set(sessionId, ++this.rowStreamSequence);
         this.routeSequence.set(sessionId, (this.routeSequence.get(sessionId) ?? 0) + 1);
         const modelId = str(params["modelId"]);
         if (modelId) {
@@ -3658,6 +3661,7 @@ export class HeliconServer {
         break;
       }
       case "session/nameChanged": {
+        this.rowStreamSeen.set(sessionId, ++this.rowStreamSequence);
         this.adoptMuseName(sessionId, str(params["name"]));
         break;
       }

@@ -2380,6 +2380,69 @@ describe("session list stream", () => {
     assert.equal(row.modelId, "novo");
   });
 
+  it("keeps a live model change when an older list response finishes later", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    let markEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+    let finishList: (value: unknown) => void = () => {};
+    const pending = new Promise<unknown>((resolve) => { finishList = resolve; });
+    connection.replies.set("session/list", () => { markEntered(); return pending; });
+    const discovery = send(base, "/api/discover", { cwd: "/work/proj" });
+    await entered;
+    connection.notify("session/modelChanged", { sessionId: "s1", modelId: "novo" });
+    finishList({ sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", name: "Antigo", modelId: "antigo" }], nextCursor: null });
+    assert.equal((await discovery).status, 200);
+    const row = (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === "s1");
+    assert.equal(row.modelId, "novo");
+  });
+
+  it("keeps a live rename when an older list response finishes later", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    let markEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+    let finishList: (value: unknown) => void = () => {};
+    const pending = new Promise<unknown>((resolve) => { finishList = resolve; });
+    connection.replies.set("session/list", () => { markEntered(); return pending; });
+    const discovery = send(base, "/api/discover", { cwd: "/work/proj" });
+    await entered;
+    connection.notify("session/nameChanged", { sessionId: "s1", name: "Nome novo" });
+    finishList({ sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", name: "Nome antigo", modelId: "antigo" }], nextCursor: null });
+    assert.equal((await discovery).status, 200);
+    const row = (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === "s1");
+    assert.equal(row.title, "Nome novo");
+  });
+
+  it("keeps a user model switch when an older list response finishes later", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    let markEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+    let finishList: (value: unknown) => void = () => {};
+    const pending = new Promise<unknown>((resolve) => { finishList = resolve; });
+    connection.replies.set("session/list", () => { markEntered(); return pending; });
+    const discovery = send(base, "/api/discover", { cwd: "/work/proj" });
+    await entered;
+    assert.equal((await send(base, "/api/sessions/s1/model", { model: { modelId: "mine" } })).status, 200);
+    finishList({ sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", name: "Antigo", modelId: "antigo" }], nextCursor: null });
+    assert.equal((await discovery).status, 200);
+    const row = (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === "s1");
+    assert.equal(row.modelId, "mine");
+  });
+
   it("consumes every incremental page before advancing the host-time marker", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
