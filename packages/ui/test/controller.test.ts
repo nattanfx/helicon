@@ -1931,6 +1931,32 @@ describe("HeliconController", () => {
     } finally { stop(); }
   });
 
+  it("retries a skill with the failed session's own catalog", async () => {
+    const client = new FakeClient();
+    client.listSessions = async () => [SESSION, { ...SESSION, sessionId: "s2" }];
+    client.listSkills = async (_cwd, sessionId) => {
+      client.skillSessions.push(sessionId);
+      return {
+        skills: sessionId === "s2"
+          ? [{ id: "bundled:plan", name: "plan", displayName: "plan", description: "Plan it.", shortDescription: null, scope: "bundled", activation: "on", selector: "plan" }]
+          : [],
+        error: null,
+      };
+    };
+    const { controller, stop } = await started(client);
+    try {
+      controller.navigate({ kind: "thread", sessionId: "s2" });
+      await settle();
+      await settle();
+      controller.navigate({ kind: "thread", sessionId: "s1" });
+      await settle();
+      await settle();
+      assert.equal(await controller.retryTurn("s2", "/plan hello"), true);
+      assert.deepEqual(client.sent.at(-1)?.skill, { selector: "plan", arguments: "hello" });
+      assert.ok(client.skillSessions.includes("s2"));
+    } finally { stop(); }
+  });
+
   it("waits for a workspace's skills when a skill is sent before they load", async () => {
     const client = new FakeClient();
     client.skills = [

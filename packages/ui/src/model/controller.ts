@@ -1517,8 +1517,8 @@ export class HeliconController {
     const parsed = parseSlash(clean);
     const cwd = this.state.sessions[sessionId]?.cwd ?? null;
     if (parsed && cwd) {
-      await this.loadSkills(cwd);
-      const skills = this.state.skills[cwd]?.skills ?? [];
+      await this.loadSkills(cwd, sessionId);
+      const skills = this.skillCatalogs.get(`${cwd}\u0000${sessionId}`)?.skills ?? [];
       if (resolveSlash(parsed, slashCommands(skills, { inThread: true }), skills).kind !== "unknown") {
         return this.runSlash(clean, parsed, delivery);
       }
