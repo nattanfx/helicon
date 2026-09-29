@@ -117,9 +117,15 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
     }
     return map;
   }, [thread.attachments]);
+  // Stored attachments carry a turnId, not the userMessage itemId. A steer can share the turn.
+  const ambiguousAttachmentTurns = useMemo(() => new Set(turns
+    .filter((turn) => turn.turnId && (attachmentsByTurn[turn.turnId]?.length ?? 0) > 0 &&
+      turn.entries.some((item) => item.kind === "userMessage"))
+    .map((turn) => turn.turnId as string)), [turns, attachmentsByTurn]);
   const forks = useMemo(
-    () => forkPoints(turns, thread.truncated, (id) => (attachmentsByTurn[id]?.length ?? 0) > 0),
-    [turns, thread.truncated, attachmentsByTurn],
+    () => forkPoints(turns, thread.truncated, (id) => (attachmentsByTurn[id]?.length ?? 0) > 0,
+      (id) => ambiguousAttachmentTurns.has(id)),
+    [turns, thread.truncated, attachmentsByTurn, ambiguousAttachmentTurns],
   );
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({ initial: "instant", resize: "smooth" });
 
@@ -168,6 +174,7 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
                   gates={gates}
                   answers={answers}
                   attachments={attachmentsByTurn}
+                  ambiguousAttachments={ambiguousAttachmentTurns}
                   sessionId={props.sessionId}
                   isLast={entry.index === turns.length - 1}
                   readOnly={thread.readOnly}
@@ -220,6 +227,7 @@ const TurnBlock = memo(
     gates: GateMap;
     answers: AnswerMap;
     attachments: Record<string, AttachmentView[]>;
+    ambiguousAttachments: ReadonlySet<string>;
     sessionId: string;
     isLast: boolean;
     readOnly: boolean;
@@ -241,11 +249,19 @@ const TurnBlock = memo(
     const hasWork = turn.entries.length > 0;
     // Itens fora de qualquer mensagem são os próprios comandos `!` do usuário: mostrados como são, nunca dobrados num registro de trabalho.
     const standalone = !turn.turnId && !turn.prompt;
+    const ambiguousFiles = Boolean(turn.turnId && props.ambiguousAttachments.has(turn.turnId));
+    const files = props.attachments[turn.turnId ?? ""] ?? [];
     return (
       <article className="flex flex-col gap-3" aria-label="Mensagem">
         {turn.prompt ? (
-          <PromptBubble item={turn.prompt} sentAt={sentTime(turn)} files={props.attachments[turn.turnId ?? ""] ?? []}
+          <PromptBubble item={turn.prompt} sentAt={sentTime(turn)} files={ambiguousFiles ? [] : files}
             fork={props.fork} sessionId={props.sessionId} />
+        ) : null}
+        {ambiguousFiles ? (
+          <div className="flex flex-col gap-1 text-xs text-subtle">
+            <span>Anexos enviados neste turno; a mensagem exata não está registrada.</span>
+            <SentAttachments files={files} />
+          </div>
         ) : null}
         {turn.running || standalone ? (
           <div className="flex flex-col gap-1.5">
@@ -284,12 +300,12 @@ const TurnBlock = memo(
           <TurnError
             kind={info?.error?.kind ?? null}
             message={info?.error?.message ?? EMPTY_TURN_ERROR}
-            retryable={info?.error?.retryable ?? true}
+            retryable={!ambiguousFiles && (info?.error?.retryable ?? true)}
             prompt={props.isLast && !props.readOnly ? (turn.prompt?.displayText ?? turn.prompt?.text ?? null) : null}
             sessionId={props.sessionId}
             turnId={turn.turnId}
             readOnly={props.readOnly}
-            files={props.attachments[turn.turnId ?? ""] ?? []}
+            files={ambiguousFiles ? [] : files}
           />
         ) : null}
         {cancelled ? (

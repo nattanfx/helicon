@@ -275,6 +275,8 @@ export interface SkillsState {
   error: string | null;
   /** Quando o último carregamento terminou, em tempo da plataforma. */
   loadedAt: number;
+  /** The host's skill catalog is scoped to this session; null means the CLI preview. */
+  sessionId?: string | null;
 }
 
 export function initialState(prefs: Prefs): AppState {

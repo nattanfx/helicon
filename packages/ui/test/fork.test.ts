@@ -41,4 +41,12 @@ describe("pontos de ramificação", () => {
     const appended = forkPoints([turn("one", "Primeiro"), turn("two", "Pedido\narquivo anexado", "completed", "Pedido")], false, (id) => id === "two");
     assert.equal(appended[1]?.editText, "Pedido");
   });
+
+  it("não copia anexos de origem incerta quando um steer compartilha o turno", () => {
+    const points = forkPoints([turn("one", "Anterior"), turn("two", "Pedido inicial")], false,
+      (id) => id === "two", (id) => id === "two");
+    assert.equal(points[1]?.lastTurnId, "two");
+    assert.equal(points[1]?.beforeTurnId, null);
+    assert.match(points[1]?.editUnavailable ?? "", /mensagem exata|mais de uma mensagem/);
+  });
 });

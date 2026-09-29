@@ -369,7 +369,7 @@ function Activity(props: { usage: SessionUsage }) {
         <Pair label="Tempo trabalhando" value={duration(usage.workedMs)} />
         <Pair label="Tempo de modelo" value={duration(usage.modelMs)} />
         {usage.firstTokenMs !== null ? <Pair label="Primeiro token" value={duration(usage.firstTokenMs)} /> : null}
-        {usage.lines.files > 0 ? <Pair label="Arquivos alterados" value={`${usage.lines.files}`} /> : null}
+        {usage.lines.files > 0 ? <Pair label="Edições em arquivos" value={`${usage.lines.files}`} /> : null}
       </dl>
       {usage.compactions.length > 0 ? (
         <ul className="mt-2 flex flex-col gap-1 text-xs">

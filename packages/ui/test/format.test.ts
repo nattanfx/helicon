@@ -209,6 +209,14 @@ describe("descrições de ferramenta", () => {
     assert.deepEqual(hostPatchViews(JSON.stringify({ files: [{ path: "a.ts", patch: "@@\n-a\n+b" }, { path: "b.ts", chunks: [] }] })), []);
   });
 
+  it("distingue cabeçalhos de conteúdo iniciado por ++ e -- no diff textual", () => {
+    const patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n---old\n+++new";
+    const [view] = hostPatchViews(JSON.stringify({ files: [{ path: "a.txt", patch }] }));
+    assert.ok(view);
+    assert.deepEqual(diffStats(view), { added: 1, removed: 1 });
+    assert.deepEqual(diffLines(view).slice(-2).map((line) => [line.kind, line.text]), [["del", "--old"], ["add", "++new"]]);
+  });
+
   it("renderiza files/hunks/lines do Muse como diff sem ocultar arquivos desconhecidos", () => {
     const firstFile = {
       path: "a.txt",

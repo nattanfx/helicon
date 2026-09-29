@@ -15,6 +15,7 @@ export function forkPoints(
   turns: readonly TurnView[],
   truncated: boolean,
   hasAttachments: (turnId: string) => boolean = () => false,
+  ambiguousAttachments: (turnId: string) => boolean = () => false,
 ): (ForkPoint | null)[] {
   let previous: TurnView | null = null;
   return turns.map((turn) => {
@@ -36,6 +37,8 @@ export function forkPoints(
         : "A primeira mensagem não tem turno anterior para usar como corte.";
     } else if (before.info?.terminal !== "completed") {
       editUnavailable = "O turno anterior não é uma fronteira concluída.";
+    } else if (ambiguousAttachments(turn.turnId)) {
+      editUnavailable = "Este turno tem anexos em mais de uma mensagem; não é possível identificar quais pertencem ao pedido editado.";
     } else if (turn.prompt.displayText !== undefined && turn.prompt.displayText !== text && !storedFiles) {
       editUnavailable = "Este pedido foi transformado antes do envio e não pode ser copiado com segurança.";
     } else if (!editable.trim() && !storedFiles) {

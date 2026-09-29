@@ -238,13 +238,16 @@ export function Composer(props: ComposerProps) {
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const skills = useApp((s) => (props.cwd ? s.skills[props.cwd] : undefined));
+  const skills = useApp((s) => {
+    const current = props.cwd ? s.skills[props.cwd] : undefined;
+    return (current?.sessionId ?? null) === (props.sessionId ?? null) ? current : undefined;
+  });
   const slashing = !props.readOnly && text.startsWith("/");
   useEffect(() => {
     if (slashing && props.cwd) {
       void controller.loadSkills(props.cwd);
     }
-  }, [slashing, props.cwd, controller]);
+  }, [slashing, props.cwd, props.sessionId, controller]);
   const commands = useMemo(
     () => slashCommands(skills?.skills ?? [], { inThread: Boolean(props.sessionId) }),
     [skills?.skills, props.sessionId],
@@ -582,7 +585,7 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
   const model = models.find((m) => m.modelId === current);
   const contributor = model?.contributor ?? /contributor/i.test(current ?? "");
   return (
-    <Menu open={open} onOpenChange={(next) => (next ? controller.setPicker("model") : controller.closePicker("model"))}>
+    <Menu open={open} onOpenChange={(next) => (next ? void controller.openCurrentModels() : controller.closePicker("model"))}>
       <MenuTrigger asChild>
         <ToolbarTrigger
           aria-label={`Modelo: ${modelDisplayName(current)}`}

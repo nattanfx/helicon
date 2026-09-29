@@ -128,6 +128,43 @@ describe("thread fold against a real muse transcript", () => {
     assert.equal(fold.items["m1"]?.text, "Hello world");
   });
 
+  it("deduplicates a replayed sequence of distinct delta cursors", () => {
+    let fold = applyEvent(emptyFold(), { method: "item/started", params: { item: { itemId: "m1", kind: "agentMessage", status: "inProgress", revision: 1, turnId: "t1" } } });
+    const a: ViewEvent = { method: "item/delta", params: { itemId: "m1", delta: "A", viewCursor: "v1" } };
+    const b: ViewEvent = { method: "item/delta", params: { itemId: "m1", delta: "B", viewCursor: "v2" } };
+    fold = applyEvents(fold, [a, b, a, b]);
+    assert.equal(fold.items["m1"]?.text, "AB");
+    fold = applyEvent(fold, { method: "item/completed", params: { item: { itemId: "m1", kind: "agentMessage", status: "completed", revision: 2, turnId: "t1", text: "AB" } } });
+    assert.equal(fold.items["m1"]?.seenDeltaCursors, undefined);
+  });
+
+  it("keeps an open reply absent from a lagging reload but lets a final replace it", () => {
+    const active = applyEvents(emptyFold(), [
+      { method: "turn/started", params: { turnId: "t1" } },
+      { method: "item/started", params: { item: { itemId: "m1", kind: "agentMessage", status: "inProgress", revision: 1, turnId: "t1" } } },
+      { method: "item/delta", params: { itemId: "m1", turnId: "t1", delta: "AB", viewCursor: "v1" } },
+    ]);
+    const load = (events: ViewEvent[]) => ({
+      session: null,
+      msp: { status: "running", activeTurnId: "t1", modelId: null, approvalMode: null, workspaceRoot: null, turnCount: 1 },
+      events,
+      truncated: false,
+      pending: { approvals: [], userInputs: [] },
+      readOnly: false,
+      readOnlyReason: null,
+    });
+    const partial = foldFromLoad(load([{ method: "turn/started", params: { turnId: "t1" } }]), active);
+    assert.equal(partial.items["m1"]?.text, "AB");
+    assert.equal(partial.activeTurnId, "t1");
+    const finished = foldFromLoad(load([
+      { method: "turn/started", params: { turnId: "t1" } },
+      { method: "item/completed", params: { item: { itemId: "m1", kind: "agentMessage", status: "completed", revision: 2, turnId: "t1", text: "ABC" } } },
+      { method: "turn/completed", params: { turnId: "t1", terminal: "completed" } },
+    ]), active);
+    assert.equal(finished.items["m1"]?.text, "ABC");
+    assert.equal(finished.activeTurnId, null);
+  });
+
   it("streams reasoning summaries and tool output by field path", () => {
     let fold = applyEvent(emptyFold(), {
       method: "item/started",

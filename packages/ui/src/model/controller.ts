@@ -324,6 +324,7 @@ export class HeliconController {
   private readonly loading = new Map<string, ViewEvent[]>();
   /** Carregamentos simultâneos da mesma conversa compartilham a leitura e o buffer. */
   private readonly inflightLoads = new Map<string, Promise<void>>();
+  private readonly gapReloads = new Set<string>();
   /** Chaves de entregas de prompt ainda esperando o servidor, para um rascunho enviado duas vezes virar uma. */
   private readonly inflightSends = new Set<string>();
   private readonly disposers: (() => void)[] = [];
@@ -885,7 +886,16 @@ export class HeliconController {
     if (inflight) {
       return inflight;
     }
-    const run = this.reloadThread(sessionId).finally(() => {
+    const run = (async () => {
+      // A gap may arrive while the first history request is in flight. That first
+      // snapshot may precede the gap, so take one fresh snapshot after it settles.
+      for (let pass = 0; pass < 3; pass += 1) {
+        this.gapReloads.delete(sessionId);
+        await this.reloadThread(sessionId);
+        if (!this.gapReloads.has(sessionId)) break;
+      }
+      this.gapReloads.delete(sessionId);
+    })().finally(() => {
       if (this.inflightLoads.get(sessionId) === run) {
         this.inflightLoads.delete(sessionId);
       }
@@ -980,7 +990,8 @@ export class HeliconController {
         ) {
           // O fluxo perdeu eventos: reler reconstrói a conversa do zero, sem duplicar nem perder.
           // Conversas fechadas abrem do zero de qualquer jeito.
-          void this.loadThread(event.sessionId);
+          if (this.inflightLoads.has(event.sessionId)) this.gapReloads.add(event.sessionId);
+          else void this.loadThread(event.sessionId);
         }
         this.queueEvent(event.sessionId, { method: event.method, params: event.params, at: event.at });
         break;
@@ -1000,6 +1011,7 @@ export class HeliconController {
           return current ? { ...s, sessions: { ...s.sessions, [event.sessionId]: { ...current, live: event.live } } } : s;
         });
         this.announce(event.sessionId, displayTitle(known), before, event.live);
+        if (!before?.routeUnserved && event.live?.routeUnserved) void this.loadModels();
         // A única notícia que temos sobre uma conversa que este app nunca abriu: ela está esperando alguém.
         if (this.bypassArmed(event.sessionId) && (event.live?.pendingApprovals ?? 0) > 0) {
           this.loadForBypass(event.sessionId);
@@ -2268,6 +2280,18 @@ export class HeliconController {
     return this.client.clearFailures();
   }
 
+  /** Refresh a changed provider's point-in-time catalog before offering a replacement model. */
+  async openCurrentModels(): Promise<void> {
+    try {
+      const models = await this.client.listModels();
+      this.update((s) => ({ ...s, models }));
+    } catch (error) {
+      this.update((s) => ({ ...s, models: [] }));
+      this.toast("info", "Não foi possível atualizar os modelos", userFacingError(error));
+    }
+    this.setPicker("model");
+  }
+
   /** Linhas recentes da caixa-preta do servidor, para o diagnóstico do Sobre. Sem estado: a tela carrega ao abrir. */
   listFailures(limit = 50): Promise<{ count: number; recent: FailureEntry[] }> {
     return this.client.listFailures(limit);
@@ -2451,30 +2475,35 @@ export class HeliconController {
   }
 
   private readonly skillLoads = new Map<string, Promise<void>>();
+  private readonly skillCatalogs = new Map<string, SkillsState>();
 
   /**
    * Carrega as skills de uma pasta para o menu de barra. Uma lista carregada é reusada por um minuto e um carregamento falho
    * tenta de novo após dez segundos; um carregamento já rodando é compartilhado, para um comando enviado no meio esperar por ele.
    */
-  loadSkills(cwd: string): Promise<void> {
-    const running = this.skillLoads.get(cwd);
+  loadSkills(cwd: string, sessionId: string | null = this.skillSession(cwd) ?? null): Promise<void> {
+    const key = `${cwd}\u0000${sessionId ?? ""}`;
+    const running = this.skillLoads.get(key);
     if (running) {
       return running;
     }
-    const current = this.state.skills[cwd];
+    const current = this.skillCatalogs.get(key);
     const age = this.platform.now() - (current?.loadedAt ?? 0);
     if (current && age < (current.status === "ready" ? SKILLS_FRESH_MS : SKILLS_RETRY_MS)) {
+      if ((this.skillSession(cwd) ?? null) === sessionId) this.setSkills(cwd, current);
       return Promise.resolve();
     }
-    const load = this.fetchSkills(cwd, current).finally(() => this.skillLoads.delete(cwd));
-    this.skillLoads.set(cwd, load);
+    const load = this.fetchSkills(cwd, current, sessionId).finally(() => this.skillLoads.delete(key));
+    this.skillLoads.set(key, load);
     return load;
   }
 
   /** O Muse disse que as skills de uma conversa mudaram: a lista de sua pasta está velha, e o composer aberto deve ver a nova. */
   private refreshSkillsFor(sessionId: string): void {
     const cwd = this.state.sessions[sessionId]?.cwd;
+    if (cwd) this.skillCatalogs.delete(`${cwd}\u0000${sessionId}`);
     const current = cwd ? this.state.skills[cwd] : undefined;
+    if ((current?.sessionId ?? null) !== sessionId) return;
     if (!cwd || !current) {
       return;
     }
@@ -2488,18 +2517,24 @@ export class HeliconController {
     return route.kind === "thread" && this.state.sessions[route.sessionId]?.cwd === cwd ? route.sessionId : undefined;
   }
 
-  private async fetchSkills(cwd: string, current: SkillsState | undefined): Promise<void> {
-    this.setSkills(cwd, { status: "loading", skills: current?.skills ?? [], error: null, loadedAt: current?.loadedAt ?? 0 });
+  private async fetchSkills(cwd: string, current: SkillsState | undefined, sessionId: string | null): Promise<void> {
+    const visible = () => (this.skillSession(cwd) ?? null) === sessionId;
+    if (visible()) this.setSkills(cwd, { status: "loading", skills: current?.skills ?? [], error: null, loadedAt: current?.loadedAt ?? 0, sessionId });
     try {
-      const catalog = await this.client.listSkills(cwd, this.skillSession(cwd));
-      this.setSkills(cwd, {
+      const catalog = await this.client.listSkills(cwd, sessionId ?? undefined);
+      const next: SkillsState = {
         status: catalog.error ? "error" : "ready",
         skills: catalog.skills,
         error: catalog.error,
         loadedAt: this.platform.now(),
-      });
+        sessionId,
+      };
+      this.skillCatalogs.set(`${cwd}\u0000${sessionId ?? ""}`, next);
+      if (visible()) this.setSkills(cwd, next);
     } catch (error) {
-      this.setSkills(cwd, { status: "error", skills: current?.skills ?? [], error: userFacingError(error), loadedAt: this.platform.now() });
+      const next: SkillsState = { status: "error", skills: current?.skills ?? [], error: userFacingError(error), loadedAt: this.platform.now(), sessionId };
+      this.skillCatalogs.set(`${cwd}\u0000${sessionId ?? ""}`, next);
+      if (visible()) this.setSkills(cwd, next);
     }
   }
 
@@ -2598,23 +2633,28 @@ export class HeliconController {
   private async runSlash(typed: string, parsed: ParsedSlash, options: TurnDelivery): Promise<boolean> {
     const route = this.state.route;
     // Uma repetição nomeia a conversa a que o comando pertence; um comando digitado age onde o usuário está.
-    const bound = options.sessionId ?? null;
+    const bound = options.sessionId ?? (route.kind === "thread" ? route.sessionId : null);
     const cwd = bound ? (this.state.sessions[bound]?.cwd ?? null) : this.composerCwd();
     // Uma skill digitada antes das skills da pasta chegarem espera por elas em vez de ler como desconhecida;
     // nativos além de `/skill` nunca esperam por uma lista lenta de skills.
     const builtin = slashCommands([], { inThread: true }).find((c) => c.name === parsed.name || c.aliases.includes(parsed.name));
     if (cwd && (!builtin || builtin.action === "skill")) {
-      await this.loadSkills(cwd);
+      await this.loadSkills(cwd, bound);
     }
-    const skills = cwd ? (this.state.skills[cwd]?.skills ?? []) : [];
+    const listing = cwd ? this.skillCatalogs.get(`${cwd}\u0000${bound ?? ""}`) : undefined;
+    const skills = (listing?.sessionId ?? null) === bound ? (listing?.skills ?? []) : [];
     // Resolve contra todo nativo, para um comando só-de-conversa digitado fora de uma conversa ganhar uma resposta útil.
     const resolved = resolveSlash(parsed, slashCommands(skills, { inThread: true }), skills);
     if (resolved.kind === "unknown") {
+      if (!bound && cwd) {
+        return this.startThread(cwd, typed, (fresh) => this.runSlash(typed, parsed, { ...options, sessionId: fresh }),
+          { attachments: options.attachments, previews: options.previews });
+      }
       this.toast("info", `Nenhum comando chamado /${resolved.name}`, "Escolha um da lista, ou envie o texto como prompt pelo menu.");
       return false;
     }
     if (resolved.kind === "skill") {
-      return this.runSkill(resolved.skill, resolved.args, typed, cwd, options);
+      return this.runSkill(resolved.skill, resolved.args, typed, cwd, { ...options, ...(bound ? { sessionId: bound } : {}) });
     }
     const { command, args } = resolved;
     const sessionId = bound ?? (route.kind === "thread" ? route.sessionId : null);
@@ -2721,6 +2761,14 @@ export class HeliconController {
     cwd: string | null,
     options: TurnDelivery,
   ): Promise<boolean> {
+    if (!options.sessionId && this.state.route.kind !== "thread") {
+      const target = cwd ?? this.newThreadTarget();
+      if (!target) return false;
+      const parsed = parseSlash(typed);
+      if (!parsed) return false;
+      return this.startThread(target, typed, (fresh) => this.runSlash(typed, parsed, { ...options, sessionId: fresh }),
+        { attachments: options.attachments, previews: options.previews });
+    }
     let body: string | null = null;
     if (skill.activation === "user-invocable-only") {
       try {

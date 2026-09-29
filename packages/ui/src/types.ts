@@ -94,8 +94,8 @@ export interface MspItem {
   kind: string;
   status: string;
   revision: number;
-  /** Last delta cursor applied to this item; replays with the same cursor are skipped. */
-  lastDeltaCursor?: string;
+  /** Cursors applied while this item is open; dropped when the final revision lands. */
+  seenDeltaCursors?: Set<string>;
   turnId?: string | null;
   recordedAt?: string;
   fallbackText?: string;

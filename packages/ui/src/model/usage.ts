@@ -364,8 +364,8 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
 
   let added = 0;
   let removed = 0;
-  const files = new Set<string>();
-  let hostFileEntries = 0;
+  // patchSummary reports file entries per edit, not unique paths across the conversation.
+  let fileEntries = 0;
   const tools = new Map<string, ToolUsage>();
   const subagents: SubagentUsage[] = [];
   const compactions: CompactionRecord[] = [];
@@ -379,12 +379,12 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
       if (choice?.source === "host") {
         added += choice.summary.added;
         removed += choice.summary.removed;
-        hostFileEntries += choice.summary.files;
+        fileEntries += choice.summary.files;
       } else if (choice?.source === "inferred") {
         const stats = diffStats(choice.diff);
         added += stats.added;
         removed += stats.removed;
-        files.add(choice.diff.path ?? item.itemId);
+        fileEntries += 1;
       }
       const name = item.tool ?? "ferramenta";
       const entry = tools.get(name) ?? { tool: name, calls: 0, tokens: 0 };
@@ -424,7 +424,7 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
     cost: priced > 0 ? cost : null,
     currency,
     costComplete: priced === calls.length,
-    lines: { added, removed, files: files.size + hostFileEntries },
+    lines: { added, removed, files: fileEntries },
     turns: turns.length,
     workedMs: turns.reduce((total, turn) => total + (turn.durationMs ?? 0), 0),
     firstTokenMs: firstTokens.length > 0 ? firstTokens.reduce((a, b) => a + b, 0) / firstTokens.length : null,

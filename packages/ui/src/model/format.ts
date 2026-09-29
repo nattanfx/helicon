@@ -772,16 +772,11 @@ export function readableHostPatch(content: string): string {
 
 export function diffStats(diff: DiffView): { added: number; removed: number } {
   if ("patch" in diff) {
-    let added = 0;
-    let removed = 0;
-    for (const line of diff.patch.split("\n")) {
-      if (line.startsWith("+") && !line.startsWith("+++")) {
-        added += 1;
-      } else if (line.startsWith("-") && !line.startsWith("---")) {
-        removed += 1;
-      }
-    }
-    return { added, removed };
+    const rows = textPatchLines(diff.patch);
+    return {
+      added: rows.filter((row) => row.kind === "add").length,
+      removed: rows.filter((row) => row.kind === "del").length,
+    };
   }
   let added = 0;
   let removed = 0;
@@ -802,22 +797,52 @@ export interface DiffLine {
   text: string;
 }
 
+/** Headers and changed content may both start with +++/---; hunk position decides which. */
+function textPatchLines(patch: string): DiffLine[] {
+  const rows: DiffLine[] = [];
+  let inHunk = false;
+  let remaining: { old: number; next: number } | null = null;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("diff --git") || /^\*\*\* (?:Begin Patch|End Patch|Update File:|Add File:|Delete File:)/.test(line)) {
+      inHunk = false;
+      remaining = null;
+      rows.push({ kind: "meta", text: line });
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      const range = /^@@ -(?:\d+)(?:,(\d+))? \+(?:\d+)(?:,(\d+))? @@/.exec(line);
+      remaining = range ? { old: range[1] === undefined ? 1 : Number(range[1]), next: range[2] === undefined ? 1 : Number(range[2]) } : null;
+      inHunk = true;
+      rows.push({ kind: "meta", text: line });
+      continue;
+    }
+    if (line.startsWith("\\ No newline at end of file")) {
+      rows.push({ kind: "meta", text: line });
+      continue;
+    }
+    if (!inHunk && /^(?:\+\+\+|---|\*\*\*)/.test(line)) {
+      rows.push({ kind: "meta", text: line });
+      continue;
+    }
+    const kind: DiffLine["kind"] = line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "ctx";
+    rows.push({ kind, text: kind === "ctx" ? (line.startsWith(" ") ? line.slice(1) : line) : line.slice(1) });
+    if (inHunk && remaining) {
+      if (kind !== "add") remaining.old -= 1;
+      if (kind !== "del") remaining.next -= 1;
+      if (remaining.old <= 0 && remaining.next <= 0) {
+        inHunk = false;
+        remaining = null;
+      }
+    }
+  }
+  return rows;
+}
+
 /** Achata um diff em linhas renderizáveis, marcando os vãos entre seus hunks. */
 export function diffLines(diff: DiffView): DiffLine[] {
   const lines: DiffLine[] = [];
   if ("patch" in diff) {
-    for (const line of diff.patch.split("\n")) {
-      if (/^(\+\+\+|---|\*\*\*|@@|diff )/.test(line)) {
-        lines.push({ kind: "meta", text: line });
-      } else if (line.startsWith("+")) {
-        lines.push({ kind: "add", text: line.slice(1) });
-      } else if (line.startsWith("-")) {
-        lines.push({ kind: "del", text: line.slice(1) });
-      } else {
-        lines.push({ kind: "ctx", text: line.startsWith(" ") ? line.slice(1) : line });
-      }
-    }
-    return lines;
+    return textPatchLines(diff.patch);
   }
   diff.hunks.forEach((hunk, index) => {
     if (hunk.header) {

@@ -2342,7 +2342,7 @@ describe("session list stream", () => {
         refused = true;
         throw new MspTestError("Unknown param: updatedAfter", "invalidParams");
       }
-      return { sessions: [], nextCursor: null };
+      return { sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", updatedAt: "2026-09-29T00:00:00.000Z" }], nextCursor: null };
     });
     const { base } = await start(connection, {
       hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
@@ -2353,9 +2353,54 @@ describe("session list stream", () => {
     assert.equal((await send(base, "/api/discover", {})).status, 200);
     assert.equal(seen.length, 4);
     assert.equal(seen[0], null);
-    assert.equal(typeof seen[1], "string");
+    assert.equal(seen[1], "2026-09-28T23:59:59.000Z");
     assert.equal(seen[2], null);
     assert.equal(typeof seen[3], "string");
+  });
+
+  it("keeps a streamed row when an older list response finishes later", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    let markEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+    let finishList: (value: unknown) => void = () => {};
+    const pending = new Promise<unknown>((resolve) => { finishList = resolve; });
+    connection.replies.set("session/list", () => { markEntered(); return pending; });
+    const discovery = send(base, "/api/discover", { cwd: "/work/proj" });
+    await entered;
+    connection.notify("session/listChanged", { session: { sessionId: "s1", workspaceRoot: "/work/proj", name: "Novo", modelId: "novo" } });
+    finishList({ sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", name: "Antigo", modelId: "antigo" }], nextCursor: null });
+    assert.equal((await discovery).status, 200);
+    const row = (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === "s1");
+    assert.equal(row.title, "Novo");
+    assert.equal(row.modelId, "novo");
+  });
+
+  it("consumes every incremental page before advancing the host-time marker", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    let phase = 0;
+    connection.replies.set("session/list", (params: Record<string, unknown>) => {
+      if (phase === 0) return { sessions: [{ sessionId: "s201", workspaceRoot: "/work/proj", name: "Antigo", updatedAt: "2026-09-28T00:00:00Z" }], nextCursor: null };
+      const index = params["cursor"] ? 100 : 0;
+      const rows = Array.from({ length: index ? 101 : 100 }, (_, offset) => ({
+        sessionId: `s${index + offset + 1}`, workspaceRoot: "/work/proj", name: "Novo", updatedAt: "2026-09-28T00:01:00Z",
+      }));
+      return { sessions: rows, nextCursor: index ? null : "page-2" };
+    });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.equal((await send(base, "/api/discover", { cwd: "/work/proj" })).status, 200);
+    phase = 1;
+    assert.equal((await send(base, "/api/discover", { cwd: "/work/proj" })).status, 200);
+    const row = (await get(base, "/api/sessions")).sessions.find((s: { sessionId: string }) => s.sessionId === "s201");
+    assert.equal(row.title, "Novo");
   });
 });
 
@@ -2375,6 +2420,62 @@ describe("model route and session status", () => {
     connection.notify("session/statusChanged", { sessionId: "s1", status: "hibernating", viewCursor: "v2" });
     assert.equal((await liveOf(base, "s1")).status, "hibernating");
     assert.deepEqual((await liveOf(base, "s1")).attention, []);
+  });
+
+  it("does not let a delayed list row replace newer live status or active turn", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, { hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }) });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    let release!: (value: unknown) => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    connection.replies.set("session/list", () => { entered(); return new Promise<unknown>((resolve) => { release = resolve; }); });
+    const discover = send(base, "/api/discover", { cwd: "/work/proj" });
+    await waiting;
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", attention: [] });
+    release({ sessions: [{ sessionId: "s1", workspaceRoot: "/work/proj", status: "running", activeTurnId: "old", attention: ["approvalPending"] }], nextCursor: null });
+    await discover;
+    const live = await liveOf(base, "s1");
+    assert.equal(live.status, "idle");
+    assert.equal(live.activeTurnId, null);
+    assert.deepEqual(live.attention, []);
+  });
+
+  it("restores an unserved model route from history beyond the transcript page limit", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1", status: "idle", activeTurnId: null } });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => {
+      const index = Number(String(params["cursor"] ?? "0"));
+      if (index === 4) return { events: [{ method: "session/modelRouteUnserved", params: { sessionId: "s1", modelId: "m1", installedProviderId: "p2", providerId: "p1" } }], nextCursor: null };
+      return { events: [{ method: "turn/started", params: { sessionId: "s1", turnId: `t${index}` } }], nextCursor: String(index + 1) };
+    });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const loaded = await send(base, "/api/sessions/s1/resume", {});
+    assert.equal(loaded.status, 200);
+    assert.equal(loaded.json.truncated, true);
+    assert.deepEqual((await liveOf(base, "s1")).routeUnserved, { modelId: "m1", installedProviderId: "p2", providerId: "p1" });
+    assert.equal(connection.requests.filter((call) => call.method === "view/page").length, 5);
+  });
+
+  it("does not restore an old route after a live model change during history paging", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1", status: "idle" } });
+    let entered!: () => void;
+    let release!: (value: unknown) => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    connection.replies.set("view/page", () => { entered(); return new Promise<unknown>((resolve) => { release = resolve; }); });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const loading = send(base, "/api/sessions/s1/resume", {});
+    await waiting;
+    connection.notify("session/modelChanged", { sessionId: "s1", modelId: "new-model" });
+    release({ events: [{ method: "session/modelRouteUnserved", params: { sessionId: "s1", modelId: "old-model", installedProviderId: "old-provider" } }], nextCursor: null });
+    await loading;
+    assert.equal((await liveOf(base, "s1")).routeUnserved, null);
   });
 
   it("records an unserved model route and clears it on model change", async () => {
@@ -2455,6 +2556,90 @@ describe("view reattach", () => {
     assert.equal(resumes.length, 2);
     assert.equal(resumes[0]?.params?.["cursor"], "v1");
     assert.equal(resumes[1]?.params?.["cursor"], "vr-1");
+  });
+
+  it("keeps a notification cursor seen while resume is pending", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    let release!: (value: unknown) => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    connection.replies.set("session/resume", () => { entered(); return new Promise<unknown>((resolve) => { release = resolve; }); });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const loading = send(base, "/api/sessions/s1/resume", {});
+    await waiting;
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", viewCursor: "v2" });
+    release({ session: { sessionId: "s1" }, viewCursor: "v1" });
+    await loading;
+    connection.replies.set("session/resume", { session: { sessionId: "s1" }, viewCursor: "v3" });
+    await send(base, "/api/sessions/s1/resume", {});
+    const calls = resumeCalls(connection);
+    assert.equal(calls[1]?.params?.["cursor"], "v2");
+  });
+
+  it("keeps a notification cursor seen while view/subscribe is pending", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    let entered!: () => void;
+    let release!: (value: unknown) => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    connection.replies.set("view/subscribe", () => { entered(); return new Promise<unknown>((resolve) => { release = resolve; }); });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", viewCursor: "v1" });
+    connection.notify("session/viewHealthChanged", { sessionId: "s1", health: "Unavailable" });
+    await waiting;
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "running", viewCursor: "v3" });
+    release({ viewCursor: "v2" });
+    await waitFor(() => connection.requests.some((call) => call.method === "view/subscribe"), "subscription");
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    await send(base, "/api/sessions/s1/resume", {});
+    const resume = resumeCalls(connection).at(-1);
+    assert.equal(resume?.params?.["cursor"], "v3");
+  });
+
+  it("records history.noneReason on resume without a health notification", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" }, history: { mode: "none", noneReason: "projectionUnavailable" } });
+    connection.replies.set("view/page", { events: [], nextCursor: null });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    await send(base, "/api/sessions/s1/resume", {});
+    const log = (await get(base, "/api/failures")) as { recent: { message: string }[] };
+    assert.ok(log.recent.some((row) => row.message.includes("history.noneReason: projectionUnavailable")));
+  });
+
+  it("reconciles a gap for a thread absent from the UI and reads history.noneReason", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/read", { session: { sessionId: "s1", status: "running", activeTurnId: "t2", attention: ["inputPending"] }, history: { mode: "none", noneReason: "projectionUnavailable" } });
+    connection.replies.set("view/page", { events: [], nextCursor: null });
+    connection.replies.set("approval/listPending", { approvals: [], userInputs: [{ userInputId: "u1" }] });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("view/gap", { sessionId: "s1", after: "v1", next: "v4" });
+    await waitFor(async () => (await get(base, "/api/sessions")).sessions[0]?.live?.activeTurnId === "t2", "gap reconciliation");
+    const live = (await get(base, "/api/sessions")).sessions[0].live;
+    assert.equal(live.status, "running");
+    assert.equal(live.pendingInputs, 1);
+    assert.deepEqual(live.attention, ["inputPending"]);
+    const log = (await get(base, "/api/failures")) as { recent: { kind: string; message: string }[] };
+    assert.ok(log.recent.some((row) => row.message.includes("history.noneReason: projectionUnavailable")));
+  });
+
+  it("recovers a missed turn ending from a durable page when a gap is reported", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/read", { session: { sessionId: "s1", status: "idle", activeTurnId: null } });
+    connection.replies.set("view/page", { events: [{ method: "turn/completed", params: { sessionId: "s1", turnId: "t1", terminal: "failed", error: { kind: "error", message: "lost turn" } } }], nextCursor: null });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("view/gap", { sessionId: "s1", after: "v1", next: "v4" });
+    await waitFor(async () => (await get(base, "/api/sessions")).sessions[0]?.live?.lastTerminal === "failed", "missed terminal");
+    const live = (await get(base, "/api/sessions")).sessions[0].live;
+    assert.equal(live.lastError, "lost turn");
   });
 
   it("resumes from scratch without an observed cursor", async () => {

@@ -197,7 +197,6 @@ type SseSink = (event: string, data: unknown) => void;
 
 const MAX_HISTORY_PAGES = 4;
 const HISTORY_PAGE_SIZE = 1000;
-const DISCOVER_LIMIT = 200;
 /** Echo-titled threads one discovery may hand to the titler. Each is a model call on the user's plan, so it is a
  * handful of recent threads rather than a whole history. */
 const TITLE_BACKFILL_LIMIT = 30;
@@ -703,6 +702,16 @@ export class HeliconServer {
   private readonly notifyStats = new Map<string, SessionNotifyStats>();
   /** Last refresh instant per discover scope, so a streaming host only re-serves recent rows. */
   private readonly lastDiscoverAt = new Map<string, string>();
+  private rowStreamSequence = 0;
+  private readonly rowStreamSeen = new Map<string, number>();
+  private statusSequence = 0;
+  private readonly statusSeen = new Map<string, number>();
+  private readonly routeSequence = new Map<string, number>();
+  private readonly notificationSequence = new Map<string, number>();
+  /** Only events that can change a live snapshot, so a busy delta stream does not starve reconciliation. */
+  private readonly liveSequence = new Map<string, number>();
+  private readonly gapReconciles = new Map<string, Promise<void>>();
+  private readonly historyNoneSeen = new Map<string, string>();
   /** Last view cursor seen per session, so resumes and reattaches continue gaplessly after it. */
   private readonly viewCursors = new Map<string, string>();
   private protocolErrors = 0;
@@ -1375,6 +1384,7 @@ export class HeliconServer {
             this.store.updateSession(sessionId, { modelId });
           }
           const live = this.live.get(sessionId);
+          this.routeSequence.set(sessionId, (this.routeSequence.get(sessionId) ?? 0) + 1);
           if (live?.routeUnserved) {
             live.routeUnserved = null;
             this.emitStatus(sessionId);
@@ -2582,7 +2592,7 @@ export class HeliconServer {
   private async pageTranscript(
     manager: SessionManager,
     sessionId: string,
-  ): Promise<{ events: { method: string; params: Record<string, unknown> }[]; truncated: boolean }> {
+  ): Promise<{ events: { method: string; params: Record<string, unknown> }[]; truncated: boolean; nextCursor: string | null }> {
     const pages: unknown[][] = [];
     let cursor: string | undefined;
     let truncated = false;
@@ -2598,7 +2608,55 @@ export class HeliconServer {
     return {
       events: pages.flat().map(stripEvent).filter((e): e is NonNullable<typeof e> => e !== null),
       truncated,
+      nextCursor: truncated ? cursor ?? null : null,
     };
+  }
+
+  private routeFromEvents(events: { method: string; params: Record<string, unknown> }[]): RouteUnserved | null | undefined {
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event?.method === "session/modelChanged") return null;
+      if (event?.method === "session/modelRouteUnserved") {
+        const modelId = str(event.params["modelId"]);
+        const installedProviderId = str(event.params["installedProviderId"]);
+        if (modelId && installedProviderId) {
+          return { modelId, installedProviderId, providerId: str(event.params["providerId"]) };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** The route disclosure may precede the four pages shown to the UI. Scan older pages only until its latest transition. */
+  private async routeFromHistory(
+    manager: SessionManager, sessionId: string,
+    recent: { method: string; params: Record<string, unknown> }[], nextCursor: string | null,
+  ): Promise<RouteUnserved | null> {
+    let route = this.routeFromEvents(recent);
+    let cursor = nextCursor;
+    const seen = new Set<string>();
+    while (route === undefined && cursor) {
+      if (seen.has(cursor)) throw new Error("view/page repeated a history cursor");
+      seen.add(cursor);
+      const page = await manager.pageView(sessionId, { cursor, direction: "backward", limit: HISTORY_PAGE_SIZE });
+      const events = page.events.map(stripEvent).filter((event): event is NonNullable<typeof event> => event !== null);
+      route = this.routeFromEvents(events);
+      cursor = page.nextCursor;
+      if (page.events.length === 0) break;
+    }
+    return route ?? null;
+  }
+
+  private noteHistoryHealth(sessionId: string, hostKey: string, payload: Record<string, unknown> | null): void {
+    const history = asRecord(payload?.["history"]);
+    if (history?.["mode"] !== "none") return;
+    const reason = str(history["noneReason"]) ?? "unknown";
+    if (this.historyNoneSeen.get(sessionId) === reason) return;
+    this.historyNoneSeen.set(sessionId, reason);
+    this.failures.record({
+      kind: "view-unhealthy", sessionId, turnId: null, hostKey,
+      errorKind: null, message: `history.noneReason: ${reason}`,
+    });
   }
 
   /** Record what view/page currently says about each turn, without logging conversation items. */
@@ -2648,6 +2706,9 @@ export class HeliconServer {
   private async loadTranscript(sessionId: string): Promise<Record<string, unknown>> {
     // A goal change can land while this load is in flight; history must not then write the older goal back.
     const goalSeqAtStart = this.liveFor(sessionId).goalSeq;
+    const routeSeqAtStart = this.routeSequence.get(sessionId) ?? 0;
+    const notificationSeqAtStart = this.notificationSequence.get(sessionId) ?? 0;
+    const liveSeqAtStart = this.liveSequence.get(sessionId) ?? 0;
     const found = this.store.findSession(sessionId);
     const host = await this.hostFor(found?.cwd ?? "");
     const manager = host.manager;
@@ -2656,9 +2717,10 @@ export class HeliconServer {
     let msp: Record<string, unknown> | null = null;
     try {
       const resumed = asRecord(await manager.resumeSession(sessionId, true, this.viewCursors.get(sessionId)));
+      this.noteHistoryHealth(sessionId, host.key, resumed);
       msp = asRecord(resumed?.["session"]);
       const head = str(resumed?.["viewCursor"]);
-      if (head) {
+      if (head && (this.notificationSequence.get(sessionId) ?? 0) === notificationSeqAtStart) {
         this.viewCursors.set(sessionId, head);
       }
       this.sessionHosts.set(sessionId, host.key);
@@ -2674,10 +2736,12 @@ export class HeliconServer {
 
     let events: { method: string; params: Record<string, unknown> }[] = [];
     let truncated = false;
+    let olderCursor: string | null = null;
     try {
       const paged = await this.pageTranscript(manager, sessionId);
       events = paged.events;
       truncated = paged.truncated;
+      olderCursor = paged.nextCursor;
       this.observeViewTerminals(sessionId, host.key, events);
     } catch (error) {
       const kind = errorInfo(error).kind;
@@ -2691,6 +2755,7 @@ export class HeliconServer {
     if (events.length === 0) {
       const read = await manager.readSession(sessionId, false).catch(() => null);
       const payload = asRecord(read);
+      this.noteHistoryHealth(sessionId, host.key, payload);
       if (!msp) {
         msp = asRecord(payload?.["session"]);
       }
@@ -2702,15 +2767,23 @@ export class HeliconServer {
     const userInputs = pending.userInputs.map((u) => stripSource(asRecord(u) ?? {}));
 
     const live = this.liveFor(sessionId);
-    if (msp) {
+    try {
+      const route = await this.routeFromHistory(manager, sessionId, events, olderCursor);
+      if ((this.routeSequence.get(sessionId) ?? 0) === routeSeqAtStart) live.routeUnserved = route;
+    } catch (error) {
+      this.log(`route history(${sessionId}) failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (msp && (this.liveSequence.get(sessionId) ?? 0) === liveSeqAtStart) {
       const active = str(msp["activeTurnId"]);
       if (active !== live.activeTurnId) {
         live.activeTurnId = active;
         live.turnStartedAt = active ? (live.turnStartedAt ?? nowIso()) : null;
       }
     }
-    live.pendingApprovals = new Set(approvals.map((a) => str(a["approvalId"])).filter((id): id is string => id !== null));
-    live.pendingInputs = new Set(userInputs.map((u) => str(u["userInputId"])).filter((id): id is string => id !== null));
+    if ((this.liveSequence.get(sessionId) ?? 0) === liveSeqAtStart) {
+      live.pendingApprovals = new Set(approvals.map((a) => str(a["approvalId"])).filter((id): id is string => id !== null));
+      live.pendingInputs = new Set(userInputs.map((u) => str(u["userInputId"])).filter((id): id is string => id !== null));
+    }
     // Opening a thread backfills the usage page with the calls it made before this server ever ran.
     this.recordUsageFromEvents(sessionId, events);
     // The history's last goal change is the goal as of now, unless a live one arrived while this load ran.
@@ -2773,7 +2846,8 @@ export class HeliconServer {
     const host = await this.hostFor(cwd ?? "");
     const scope = cwd ?? "";
     const incremental = host.grantedCapabilities.includes("sessionListStream") ? this.lastDiscoverAt.get(scope) : undefined;
-    const startedAt = nowIso();
+    const rowSequenceAtStart = this.rowStreamSequence;
+    const statusSequenceAtStart = this.statusSequence;
     let remote: unknown[];
     try {
       remote = await this.listRemote(host, cwd, incremental);
@@ -2785,15 +2859,29 @@ export class HeliconServer {
       }
       remote = await this.listRemote(host, cwd, undefined);
     }
-    this.lastDiscoverAt.set(scope, startedAt);
-
     const views: Record<string, unknown>[] = [];
     const titles = { backfill: 0 };
     for (const item of remote) {
-      const view = this.adoptRemoteRow(item, { cwd, hostKey: host.key, titles });
+      const row = asRecord(item);
+      const session = (row && asRecord(row["session"])) ?? row;
+      const id = session ? str(session["sessionId"]) : null;
+      if (id && (this.rowStreamSeen.get(id) ?? 0) > rowSequenceAtStart) continue;
+      const view = this.adoptRemoteRow(item, { cwd, hostKey: host.key, titles, statusSequenceAtStart });
       if (view) {
         views.push(view);
       }
+    }
+    // `updatedAfter` compares host log times; a local wall clock can be ahead of that host.
+    // Overlap one second because timestamps may be rounded to milliseconds at the boundary.
+    const latestHostActivity = remote.reduce<number | null>((latest, item) => {
+      const row = asRecord(item);
+      const session = (row && asRecord(row["session"])) ?? row;
+      const stamp = session ? Date.parse(str(session["updatedAt"]) ?? "") : NaN;
+      return Number.isFinite(stamp) ? Math.max(latest ?? -Infinity, stamp) : latest;
+    }, null);
+    if (latestHostActivity !== null) {
+      const candidate = new Date(latestHostActivity - 1000).toISOString();
+      if (!incremental || candidate > (this.lastDiscoverAt.get(scope) ?? "")) this.lastDiscoverAt.set(scope, candidate);
     }
     this.sessionsChanged();
     return views;
@@ -2803,6 +2891,7 @@ export class HeliconServer {
   private async listRemote(host: ManagedHost, cwd: string | undefined, updatedAfter: string | undefined): Promise<unknown[]> {
     const remote: unknown[] = [];
     let cursor: string | null = null;
+    const seen = new Set<string>();
     do {
       const page = await host.manager.listSessionsPage({
         workspaceRoot: cwd ? this.hostPathFor(cwd) : undefined,
@@ -2812,7 +2901,9 @@ export class HeliconServer {
       });
       remote.push(...page.sessions);
       cursor = page.nextCursor;
-    } while (cursor && remote.length < DISCOVER_LIMIT);
+      if (cursor && seen.has(cursor)) throw new Error("session/list repeated a page cursor");
+      if (cursor) seen.add(cursor);
+    } while (cursor);
     return remote;
   }
 
@@ -2823,7 +2914,7 @@ export class HeliconServer {
    */
   private adoptRemoteRow(
     item: unknown,
-    opts: { cwd?: string; hostKey: string; titles: { backfill: number } },
+    opts: { cwd?: string; hostKey: string; titles: { backfill: number }; statusSequenceAtStart?: number },
   ): Record<string, unknown> | null {
     const record = asRecord(item);
     const session = (record && asRecord(record["session"])) ?? record;
@@ -2864,7 +2955,8 @@ export class HeliconServer {
       activityAt: normalizeIso(session["updatedAt"]),
     });
     const running = str(session["status"]) === "running" && Boolean(str(session["activeTurnId"]));
-    if (running) {
+    const statusIsCurrent = opts.statusSequenceAtStart === undefined || (this.statusSeen.get(sessionId) ?? 0) <= opts.statusSequenceAtStart;
+    if (running && statusIsCurrent) {
       const live = this.liveFor(sessionId);
       live.activeTurnId = str(session["activeTurnId"]);
       live.turnStartedAt = live.turnStartedAt ?? nowIso();
@@ -2875,7 +2967,7 @@ export class HeliconServer {
     // non-assertion, so only a present list overwrites.
     const rowStatus = str(session["status"]);
     const rowAttention = session["attention"];
-    if (rowStatus || Array.isArray(rowAttention)) {
+    if ((rowStatus || Array.isArray(rowAttention)) && statusIsCurrent) {
       const live = this.liveFor(sessionId);
       if (rowStatus) {
         live.status = rowStatus;
@@ -2886,7 +2978,7 @@ export class HeliconServer {
     }
     // A settled thread that moved on in another Muse client (running now, or updated since) comes back.
     let current = stored;
-    if (stored.settledOverride === "settled" && (running || (stored.settledAt !== null && stored.activityAt > stored.settledAt))) {
+    if (stored.settledOverride === "settled" && ((running && statusIsCurrent) || (stored.settledAt !== null && stored.activityAt > stored.settledAt))) {
       this.wake(sessionId);
       current = this.store.getSession(sessionId) ?? stored;
     }
@@ -3259,6 +3351,10 @@ export class HeliconServer {
         return;
       }
       this.sessionHosts.set(event.sessionId, hostKey);
+      this.notificationSequence.set(event.sessionId, (this.notificationSequence.get(event.sessionId) ?? 0) + 1);
+      if (/^(?:turn\/(?:started|completed)|approval\/(?:requested|resolved)|userInput\/(?:requested|settled)|session\/(?:statusChanged|closed|listChanged|started)|view\/gap)$/.test(notification.method)) {
+        this.liveSequence.set(event.sessionId, (this.liveSequence.get(event.sessionId) ?? 0) + 1);
+      }
       const viewCursor = str(params["viewCursor"]);
       if (viewCursor) {
         this.viewCursors.set(event.sessionId, viewCursor);
@@ -3307,14 +3403,66 @@ export class HeliconServer {
       return;
     }
     try {
+      const sequenceAtStart = this.notificationSequence.get(sessionId) ?? 0;
       const result = asRecord(await managed.manager.subscribeView(sessionId, this.viewCursors.get(sessionId)));
       const head = str(result?.["viewCursor"]);
-      if (head) {
+      if (head && (this.notificationSequence.get(sessionId) ?? 0) === sequenceAtStart) {
         this.viewCursors.set(sessionId, head);
       }
     } catch (error) {
       this.log(`reattach(${sessionId}) failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /** A gap can concern a thread nobody has opened in the UI. Refresh its live flags without taking a lease. */
+  private reconcileGap(hostKey: string, sessionId: string): void {
+    if (this.gapReconciles.has(sessionId)) return;
+    const managed = this.hosts.get(hostKey);
+    if (!managed) return;
+    const run = (async () => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const sequence = this.liveSequence.get(sessionId) ?? 0;
+        const [raw, pending, page] = await Promise.all([
+          managed.manager.readSession(sessionId, true),
+          managed.manager.listPending(sessionId),
+          managed.manager.pageView(sessionId, { direction: "backward", limit: 100 }).catch(() => null),
+        ]);
+        const payload = asRecord(raw);
+        this.noteHistoryHealth(sessionId, hostKey, payload);
+        if ((this.liveSequence.get(sessionId) ?? 0) !== sequence) continue;
+        const session = asRecord(payload?.["session"]);
+        const live = this.liveFor(sessionId);
+        if (session) {
+          const active = str(session["activeTurnId"]);
+          live.activeTurnId = active;
+          live.turnStartedAt = active ? (live.turnStartedAt ?? nowIso()) : null;
+          live.status = str(session["status"]) ?? live.status;
+          const attention = session["attention"];
+          if (Array.isArray(attention)) live.attention = attention.filter((flag): flag is string => typeof flag === "string");
+        }
+        if (page) {
+          const events = page.events.map(stripEvent).filter((event): event is NonNullable<typeof event> => event !== null);
+          this.observeViewTerminals(sessionId, hostKey, events);
+          const latest = [...events].reverse().find((event) => event.method === "turn/completed");
+          if (latest && !live.activeTurnId) {
+            const terminal = str(latest.params["terminal"]);
+            if (terminal) {
+              live.lastTerminal = terminal;
+              live.lastError = terminal === "failed" ? str(asRecord(latest.params["error"])?.["message"]) : null;
+            }
+          }
+        }
+        live.pendingApprovals = new Set(pending.approvals.map((a) => str(asRecord(a)?.["approvalId"])).filter((id): id is string => id !== null));
+        live.pendingInputs = new Set(pending.userInputs.map((u) => str(asRecord(u)?.["userInputId"])).filter((id): id is string => id !== null));
+        this.emitStatus(sessionId);
+        return;
+      }
+    })().catch((error) => {
+      this.log(`gap reconcile(${sessionId}) failed: ${error instanceof Error ? error.message : String(error)}`);
+    }).finally(() => {
+      if (this.gapReconciles.get(sessionId) === run) this.gapReconciles.delete(sessionId);
+    });
+    this.gapReconciles.set(sessionId, run);
   }
 
   private track(sessionId: string, method: string, params: Record<string, unknown>, hostKey: string): void {
@@ -3406,6 +3554,7 @@ export class HeliconServer {
         // granted the stream narrates its list; older hosts keep the Atualizar button path.
         const managed = this.hosts.get(hostKey);
         if (managed?.grantedCapabilities.includes("sessionListStream")) {
+          this.rowStreamSeen.set(sessionId, ++this.rowStreamSequence);
           this.adoptRemoteRow(params, { hostKey, titles: { backfill: 0 } });
           this.sessionsChanged();
         }
@@ -3423,6 +3572,7 @@ export class HeliconServer {
         break;
       }
       case "session/modelChanged": {
+        this.routeSequence.set(sessionId, (this.routeSequence.get(sessionId) ?? 0) + 1);
         const modelId = str(params["modelId"]);
         if (modelId) {
           this.store.updateSession(sessionId, { modelId });
@@ -3434,6 +3584,7 @@ export class HeliconServer {
         break;
       }
       case "session/statusChanged": {
+        this.statusSeen.set(sessionId, ++this.statusSequence);
         const status = str(params["status"]);
         if (status) {
           live.status = status;
@@ -3447,6 +3598,7 @@ export class HeliconServer {
         const modelId = str(params["modelId"]);
         const installedProviderId = str(params["installedProviderId"]);
         if (modelId && installedProviderId) {
+          this.routeSequence.set(sessionId, (this.routeSequence.get(sessionId) ?? 0) + 1);
           live.routeUnserved = { modelId, installedProviderId, providerId: str(params["providerId"]) };
           changed = true;
         }
@@ -3464,6 +3616,7 @@ export class HeliconServer {
             errorKind: null,
             message: `after ${after} next ${next}`,
           });
+          this.reconcileGap(hostKey, sessionId);
         }
         break;
       }

@@ -333,6 +333,7 @@ function upsertItem(draft: Draft, incoming: MspItem): void {
     return;
   }
   const next: MspItem = { ...incoming };
+  if (!incomingDone && current.seenDeltaCursors) next.seenDeltaCursors = current.seenDeltaCursors;
   // A final that arrives empty keeps what already streamed in.
   if (!next.text && current.text) {
     next.text = current.text;
@@ -449,13 +450,13 @@ function appendDelta(draft: Draft, params: Record<string, unknown>): boolean {
   } else if (item.status !== "inProgress") {
     // The authoritative final already landed; a late delta would duplicate text.
     return false;
-  } else if (cursor && item.lastDeltaCursor === cursor) {
+  } else if (cursor && item.seenDeltaCursors?.has(cursor)) {
     // A replayed delta: the subscription re-sent what this fold already applied.
     return false;
   }
   const next: MspItem = { ...item };
   if (cursor) {
-    next.lastDeltaCursor = cursor;
+    next.seenDeltaCursors = new Set(item.seenDeltaCursors).add(cursor);
   }
   // Delta aceito sobre falha vazia prova que o turno está vivo: o host segue emitindo, então o fim
   // com falha era retrato cortado. Deltas ignorados (item já pronto) param no guarda acima.
@@ -779,7 +780,58 @@ function carriedEchoes(fold: ThreadFold, echoes: readonly LocalEcho[]): LocalEch
 /** Build a fold from a resume response; the server's pending set is authoritative. */
 export function foldFromLoad(load: TranscriptLoad, previous?: ThreadFold | null): ThreadFold {
   let fold = applyEvents(emptyFold(), load.events);
-  const reportedActive = load.msp ? load.msp.activeTurnId : fold.activeTurnId;
+  // view/page is fetched after resume, so a started turn in the page can be newer
+  // than an idle resume snapshot. A terminal in the page still clears it below.
+  const reportedActive = load.msp?.activeTurnId ?? fold.activeTurnId;
+  // The durable page can lag an open stream. Carry only unfinished items belonging to
+  // the still-active turn; a final in the page or a terminal turn always wins.
+  if (previous && reportedActive && !fold.turns[reportedActive]?.terminal) {
+    let items: Record<string, MspItem> | null = null;
+    let order: string[] | null = null;
+    for (const id of previous.order) {
+      const prior = previous.items[id];
+      if (!prior || prior.status !== "inProgress" || (prior.turnId ?? previous.activeTurnId) !== reportedActive) continue;
+      const loaded = fold.items[id];
+      if (loaded && loaded.status !== "inProgress") continue;
+      if (!loaded) {
+        items ??= { ...fold.items };
+        order ??= [...fold.order];
+        items[id] = prior;
+        order.push(id);
+      } else {
+        // A snapshot may contain older prefixes of the reply, reasoning or tool output.
+        const next: MspItem = { ...loaded };
+        let restored = false;
+        for (const field of ["text", "visibleOutput"] as const) {
+          const before = prior[field] ?? "";
+          const now = loaded[field] ?? "";
+          if (before.length > now.length && before.startsWith(now)) {
+            next[field] = before;
+            restored = true;
+          }
+        }
+        const summary = [...(loaded.summary ?? [])];
+        for (let index = 0; index < (prior.summary?.length ?? 0); index += 1) {
+          const before = prior.summary?.[index] ?? "";
+          const now = summary[index] ?? "";
+          if (before.length > now.length && before.startsWith(now)) {
+            summary[index] = before;
+            restored = true;
+          }
+        }
+        if (restored) next.summary = summary;
+        if (prior.seenDeltaCursors) {
+          next.seenDeltaCursors = new Set([...(loaded.seenDeltaCursors ?? []), ...prior.seenDeltaCursors]);
+          restored = true;
+        }
+        if (restored) {
+          items ??= { ...fold.items };
+          items[id] = next;
+        }
+      }
+    }
+    if (items) fold = { ...fold, items, order: order ?? fold.order };
+  }
   const approvals: Record<string, ApprovalRequest> = {};
   for (const approval of load.pending.approvals) {
     approvals[approval.approvalId] = approval;

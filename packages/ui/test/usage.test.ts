@@ -68,6 +68,20 @@ describe("contexto e uso da sessão", () => {
     assert.deepEqual(sessionUsage(fold, []).lines, { files: 2, added: 9, removed: 4 });
   });
 
+  it("conta entradas de arquivo por edição sem chamá-las de arquivos distintos", () => {
+    const events = [1, 2].map((n) => ({
+      method: "item/completed",
+      params: { item: {
+        itemId: `patch-${n}`, kind: "toolCall", status: "completed", revision: 1, turnId: `t${n}`,
+        tool: "edit", args: JSON.stringify({ path: "a.ts", old_string: "x", new_string: "y" }),
+        patchSummary: { files: 1, added: 1, removed: 1 },
+        patchRef: { id: `ref-${n}`, kind: "tool_patch", mediaType: "application/json" },
+      } },
+    }));
+    const fold = applyEvents(emptyFold(), events);
+    assert.deepEqual(sessionUsage(fold, []).lines, { files: 2, added: 2, removed: 2 });
+  });
+
   it("precifica chamadas pelo catálogo e marca as que não conseguiu precificar", () => {
     const fold = applyEvents(emptyFold(), [
       tokenUsage("v:1", {

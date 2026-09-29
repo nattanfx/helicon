@@ -4,7 +4,7 @@ import { HeliconError, type EventHandler, type HeliconClient } from "../src/clie
 import { HeliconController, staleThreadReason, type Platform } from "../src/model/controller.js";
 import { buildTurns } from "../src/model/fold.js";
 import { ZOOM_MAX, ZOOM_MIN } from "../src/model/store.js";
-import type { SessionSummary, SkillEntry, TranscriptLoad, UsageBackfillStatus, UserInputRequest } from "../src/types.js";
+import type { ModelOption, SessionSummary, SkillEntry, TranscriptLoad, UsageBackfillStatus, UserInputRequest } from "../src/types.js";
 import { historyEvents } from "./fixtures/probe.js";
 
 const SESSION: SessionSummary = {
@@ -142,7 +142,7 @@ class FakeClient implements HeliconClient {
   async answerUserInput() {}
   async cancelUserInput() {}
   async clarifyUserInput() {}
-  async listModels() {
+  async listModels(): Promise<ModelOption[]> {
     return [];
   }
   titleSettings = { enabled: true, modelId: null as string | null };
@@ -1026,6 +1026,26 @@ describe("HeliconController", () => {
     }
   });
 
+  it("refreshes the model catalog before opening the replacement picker", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      const current = {
+        modelId: "replacement", displayLabel: "Replacement", description: null,
+        isDefault: true, isActive: true, contextLimit: null, outputLimit: null,
+        cost: null, contributor: false,
+      };
+      let queried = 0;
+      client.listModels = async () => { queried += 1; return [current]; };
+      await controller.openCurrentModels();
+      assert.equal(queried, 1);
+      assert.deepEqual(controller.store.get().models, [current]);
+      assert.equal(controller.store.get().picker, "model");
+    } finally {
+      stop();
+    }
+  });
+
   it("re-reads an open thread on view gap or health failure, and ignores unopened ones", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
@@ -1056,6 +1076,28 @@ describe("HeliconController", () => {
       await settle();
       await settle();
       assert.equal(loads, 2);
+    } finally {
+      stop();
+    }
+  });
+
+  it("takes a fresh transcript after a gap interrupts a pending load", async () => {
+    const client = new FakeClient();
+    const { controller, stop } = await started(client);
+    try {
+      let release!: (value: TranscriptLoad) => void;
+      let count = 0;
+      client.transcript = async () => {
+        count += 1;
+        if (count === 1) return new Promise<TranscriptLoad>((resolve) => { release = resolve; });
+        return load({ events: [{ method: "turn/started", params: { turnId: "new-turn" }, at: 2 }] });
+      };
+      const loading = controller.loadThread("s1");
+      client.handler?.({ type: "msp", sessionId: "s1", method: "view/gap", params: { sessionId: "s1", after: "v1", next: "v4" }, at: 1 });
+      release(load());
+      await loading;
+      assert.equal(count, 2);
+      assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, "new-turn");
     } finally {
       stop();
     }
@@ -1769,6 +1811,56 @@ describe("HeliconController", () => {
     assert.equal(await controller.send("/secret go"), true);
     assert.equal(client.sent.at(-1)?.skill, undefined, "a CLI-only skill stays textual");
     stop();
+  });
+
+  it("resolves the first skill again after creating its session", async () => {
+    const client = new FakeClient();
+    const entry: SkillEntry = { id: "bundled:plan", name: "plan", displayName: "plan", description: "Plan it.", shortDescription: null, scope: "bundled", activation: "on" };
+    client.listSkills = async (_cwd, sessionId) => {
+      client.skillSessions.push(sessionId);
+      return { skills: [{ ...entry, selector: sessionId ? "plan" : null }], error: null };
+    };
+    const { controller, stop } = await started(client);
+    try {
+      controller.navigate({ kind: "new", cwd: "/work/app" });
+      assert.equal(await controller.send("/plan hello"), true);
+      assert.deepEqual(client.skillSessions, [undefined, "s1"]);
+      assert.deepEqual(client.sent.at(-1)?.skill, { selector: "plan", arguments: "hello" });
+    } finally { stop(); }
+  });
+
+  it("finds a host-only skill in a new session before the first send", async () => {
+    const client = new FakeClient();
+    client.listSkills = async (_cwd, sessionId) => ({
+      skills: sessionId ? [{ id: "plugin:review", name: "review", displayName: "review", description: "Review it.",
+        shortDescription: null, scope: "plugin", activation: "on", selector: "review" }] : [],
+      error: null,
+    });
+    const { controller, stop } = await started(client);
+    try {
+      controller.navigate({ kind: "new", cwd: "/work/app" });
+      assert.equal(await controller.send("/review this"), true);
+      assert.deepEqual(client.sent.at(-1)?.skill, { selector: "review", arguments: "this" });
+    } finally { stop(); }
+  });
+
+  it("reloads a skill catalog when switching sessions in the same folder", async () => {
+    const client = new FakeClient();
+    client.listSessions = async () => [SESSION, { ...SESSION, sessionId: "s2" }];
+    client.listSkills = async (_cwd, sessionId) => {
+      client.skillSessions.push(sessionId);
+      return { skills: [{ id: "bundled:plan", name: "plan", displayName: "plan", description: "Plan it.", shortDescription: null,
+        scope: "bundled", activation: "on", selector: sessionId === "s2" ? "plan-b" : "plan-a" }], error: null };
+    };
+    const { controller, stop } = await started(client);
+    try {
+      await controller.loadSkills("/work/app");
+      controller.navigate({ kind: "thread", sessionId: "s2" });
+      await controller.loadSkills("/work/app");
+      assert.deepEqual(client.skillSessions, ["s1", "s2"]);
+      assert.equal(await controller.send("/plan hello"), true);
+      assert.equal(client.sent.at(-1)?.skill?.selector, "plan-b");
+    } finally { stop(); }
   });
 
   it("waits for a workspace's skills when a skill is sent before they load", async () => {

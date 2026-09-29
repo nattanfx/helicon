@@ -58,7 +58,7 @@ function RouteUnservedNotice(props: { route: RouteUnservedView }) {
           Troque de modelo para continuar.
         </p>
       </div>
-      <Button size="sm" onClick={() => controller.setPicker("model")}>
+      <Button size="sm" onClick={() => void controller.openCurrentModels()}>
         Trocar de modelo
       </Button>
     </div>
