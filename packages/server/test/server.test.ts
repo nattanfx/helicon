@@ -2523,6 +2523,25 @@ describe("model route and session status", () => {
     assert.equal(connection.requests.filter((call) => call.method === "view/page").length, 5);
   });
 
+  it("stops the route scan after a bounded number of older pages", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1", status: "idle", activeTurnId: null } });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => {
+      const index = Number(String(params["cursor"] ?? "0"));
+      if (index >= 20) {
+        return { events: [{ method: "session/modelRouteUnserved", params: { sessionId: "s1", modelId: "old", installedProviderId: "p" } }], nextCursor: null };
+      }
+      return { events: [{ method: "turn/started", params: { sessionId: "s1", turnId: `t${index}` } }], nextCursor: String(index + 1) };
+    });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const loaded = await send(base, "/api/sessions/s1/resume", {});
+    assert.equal(loaded.status, 200);
+    assert.equal((await liveOf(base, "s1")).routeUnserved, null);
+    assert.equal(connection.requests.filter((call) => call.method === "view/page").length, 12);
+  });
+
   it("does not restore an old route after a live model change during history paging", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });

@@ -196,6 +196,8 @@ function goalOf(value: unknown): GoalBlock | null | undefined {
 type SseSink = (event: string, data: unknown) => void;
 
 const MAX_HISTORY_PAGES = 4;
+/** Older pages scanned for the latest route transition beyond the transcript window. */
+const ROUTE_HISTORY_SCAN_PAGES = 8;
 const HISTORY_PAGE_SIZE = 1000;
 /** Echo-titled threads one discovery may hand to the titler. Each is a model call on the user's plan, so it is a
  * handful of recent threads rather than a whole history. */
@@ -2637,14 +2639,19 @@ export class HeliconServer {
     let route = this.routeFromEvents(recent);
     let cursor = nextCursor;
     const seen = new Set<string>();
-    while (route === undefined && cursor) {
+    let scanned = 0;
+    while (route === undefined && cursor && scanned < ROUTE_HISTORY_SCAN_PAGES) {
       if (seen.has(cursor)) throw new Error("view/page repeated a history cursor");
       seen.add(cursor);
       const page = await manager.pageView(sessionId, { cursor, direction: "backward", limit: HISTORY_PAGE_SIZE });
       const events = page.events.map(stripEvent).filter((event): event is NonNullable<typeof event> => event !== null);
       route = this.routeFromEvents(events);
       cursor = page.nextCursor;
+      scanned += 1;
       if (page.events.length === 0) break;
+    }
+    if (route === undefined && cursor) {
+      this.log(`route history(${sessionId}) inconclusive after ${scanned} older pages; treating as no warning`);
     }
     return route ?? null;
   }
