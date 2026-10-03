@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMemo, useState, type ReactNode } from "react";
 import { shallowEqual, useApp, useController } from "../../app/context.js";
-import { formatDuration, formatTokens, modelDisplayName } from "../../model/format.js";
+import { formatDecimal, formatDuration, formatTokens, modelDisplayName, plural } from "../../model/format.js";
 import {
   contextBreakdown,
   contextUsageOf,
@@ -29,12 +29,12 @@ function share(part: number, whole: number | null): string {
     return "";
   }
   const value = (part / whole) * 100;
-  return value > 0 && value < 0.1 ? "<0.1%" : `${value.toFixed(1)}%`;
+  return value > 0 && value < 0.1 ? "<0,1%" : `${formatDecimal(value, 1)}%`;
 }
 
 function money(value: number, currency: string | null): string {
-  const prefix = !currency || currency === "USD" ? "$" : `${currency} `;
-  return `${prefix}${value > 0 && value < 0.01 ? value.toFixed(4) : value.toFixed(2)}`;
+  const prefix = !currency || currency === "USD" ? "US$ " : `${currency} `;
+  return `${prefix}${formatDecimal(value, value > 0 && value < 0.01 ? 4 : 2)}`;
 }
 
 function duration(ms: number): string {
@@ -334,7 +334,7 @@ function Tokens(props: { usage: SessionUsage }) {
           {usage.models.map((model) => (
             <li key={model.modelId} className="flex items-center gap-2 text-muted">
               <span className="min-w-0 flex-1 truncate">{modelDisplayName(model.modelId)}</span>
-              <span className="tabular-nums">{model.calls} chamadas</span>
+              <span className="tabular-nums">{plural(model.calls, "chamada", "chamadas")}</span>
               <span className="w-14 text-right tabular-nums">{formatTokens(model.promptTokens + model.outputTokens)}</span>
               <span className="w-14 text-right tabular-nums">{model.cost === null ? "" : money(model.cost, usage.currency)}</span>
             </li>

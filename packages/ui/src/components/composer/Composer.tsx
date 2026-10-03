@@ -774,7 +774,7 @@ export const MODES: { value: ApprovalMode; label: string; description: string; i
 /** O texto da confirmação do YOLO, nomeando o projeto que ele vai afetar e deixando claro que os outros não mudam. */
 export function yoloConfirmText(cwd: string | null): string {
   const where = cwd ? `o projeto ${basename(cwd)} (${cwd})` : "o projeto escolhido";
-  return `Como muse --yolo, só para ${where}: nada pede aprovação nas conversas dele, as novas conversas dele rodam sem confinamento da sandbox, e a pasta dele é confiável. Os outros projetos continuam protegidos. O servidor Muse deste projeto reinicia, interrompendo seus turnos, e as conversas já abertas mantêm a proteção de sandbox com que começaram. Isto fica ligado neste projeto até você desligar, mesmo depois de reiniciar o Helicon.`;
+  return `Como muse --yolo, só para ${where}: nada pede aprovação nas conversas dele, as novas conversas dele rodam sem confinamento da sandbox, e a pasta dele é confiável. Os outros projetos continuam protegidos. O servidor Muse deste projeto reinicia, interrompendo as mensagens em andamento, e as conversas já abertas mantêm a proteção de sandbox com que começaram. Isto fica ligado neste projeto até você desligar, mesmo depois de reiniciar o Helicon.`;
 }
 
 function AccessPicker(props: { sessionId: string | null; cwd: string | null; side: PickerSide }) {

@@ -26,6 +26,7 @@ import {
   describeTool,
   displayTitle,
   modelDisplayName,
+  plural,
   stripAttachmentMentions,
   stripImageMarkers,
 } from "./format.js";
@@ -924,9 +925,9 @@ export class HeliconController {
       cancelled = false;
     }
     if (cancelled) {
-      this.toast("success", "Turno abandonado", "O turno foi encerrado localmente e o Muse recebeu o pedido de cancelamento. Mensagens da fila podem continuar.");
+      this.toast("success", "Mensagem abandonada", "A mensagem foi encerrada localmente e o Muse recebeu o pedido de cancelamento. Mensagens da fila podem continuar.");
     } else {
-      this.toast("info", "Turno abandonado localmente", "O Muse não respondeu; mensagens novas podem enfileirar até ele voltar.");
+      this.toast("info", "Mensagem abandonada localmente", "O Muse não respondeu; mensagens novas podem enfileirar até ele voltar.");
     }
   }
 
@@ -2339,11 +2340,11 @@ export class HeliconController {
     this.setBusy("archive-older", false);
     const archived = candidates.length - failed;
     if (failed === 0) {
-      this.toast("info", archived === 1 ? "1 conversa arquivada" : `${archived} conversas arquivadas`);
+      this.toast("info", plural(archived, "conversa arquivada", "conversas arquivadas"));
     } else if (archived === 0) {
       this.toast("error", "Não foi possível arquivar as conversas");
     } else {
-      this.toast("error", `${archived} arquivadas, ${failed} falharam`);
+      this.toast("error", `${plural(archived, "conversa arquivada", "conversas arquivadas")}; ${plural(failed, "falhou", "falharam")}`);
     }
     return { archived, failed };
   }
@@ -2368,11 +2369,11 @@ export class HeliconController {
     this.setBusy("restore-many", false);
     const restored = targets.length - failed;
     if (failed === 0) {
-      this.toast("info", restored === 1 ? "1 conversa restaurada" : `${restored} conversas restauradas`);
+      this.toast("info", plural(restored, "conversa restaurada", "conversas restauradas"));
     } else if (restored === 0) {
       this.toast("error", "Não foi possível restaurar as conversas");
     } else {
-      this.toast("error", `${restored} restauradas, ${failed} falharam`);
+      this.toast("error", `${plural(restored, "conversa restaurada", "conversas restauradas")}; ${plural(failed, "falhou", "falharam")}`);
     }
     return { restored, failed };
   }
@@ -2398,11 +2399,11 @@ export class HeliconController {
     this.setBusy("delete-many", false);
     const deleted = targets.length - failed;
     if (failed === 0) {
-      this.toast("info", deleted === 1 ? "1 conversa excluída" : `${deleted} conversas excluídas`);
+      this.toast("info", plural(deleted, "conversa excluída", "conversas excluídas"));
     } else if (deleted === 0) {
       this.toast("error", "Não foi possível excluir as conversas");
     } else {
-      this.toast("error", `${deleted} excluídas, ${failed} falharam`);
+      this.toast("error", `${plural(deleted, "conversa excluída", "conversas excluídas")}; ${plural(failed, "falhou", "falharam")}`);
     }
     return { deleted, failed };
   }
@@ -2570,7 +2571,7 @@ export class HeliconController {
         yoloSettings: withProject(s.yoloSettings, cwd, null),
         sandboxSettings: withProject(s.sandboxSettings, cwd, null),
       }));
-      this.toast("info", `Removeu ${project.displayName} da lateral`, "Suas conversas do Muse estão intactas.", {
+      this.toast("info", `Projeto ${project.displayName} removido da barra lateral`, "Suas conversas do Muse estão intactas.", {
         label: "Desfazer",
         run: () => void this.addProject(cwd),
       });

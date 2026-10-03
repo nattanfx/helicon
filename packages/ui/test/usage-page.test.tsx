@@ -23,14 +23,14 @@ it("renders unknown dates separately from the period and never prices snapshot-o
   const html = render(report);
   const datedEnd = html.indexOf("Consumo sem data conhecida");
   const partialStart = html.indexOf("Consumo com detalhamento incompleto");
-  assert.match(html.slice(0, datedEnd), /\$1\.00/);
-  assert.doesNotMatch(html.slice(0, datedEnd), />\$2\.00<|>\$9\.00</);
-  assert.match(html.slice(datedEnd, partialStart), /\$2\.00/);
+  assert.match(html.slice(0, datedEnd), /US\$ 1,00/);
+  assert.doesNotMatch(html.slice(0, datedEnd), />US\$ 2,00<|>US\$ 9,00</);
+  assert.match(html.slice(datedEnd, partialStart), /US\$ 2,00/);
   assert.match(html.slice(datedEnd, partialStart), /data desconhecida/);
   assert.match(html.slice(datedEnd, partialStart), /Conversa excluída/);
   assert.doesNotMatch(html.slice(datedEnd, partialStart), /<button|Custo por dia/);
   assert.match(html.slice(partialStart), /9M tokens de entrada/);
-  assert.doesNotMatch(html.slice(partialStart), /\$9\.00/);
+  assert.doesNotMatch(html.slice(partialStart), /US\$ 9,00/);
 });
 
 it("names calls without a model in Portuguese and labels chart days as dia/mês", () => {

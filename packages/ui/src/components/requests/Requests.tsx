@@ -526,7 +526,7 @@ export function StalledNotice(props: { onRetry: () => void; onAbandon: () => voi
         <p className="mt-0.5 text-xs text-muted">
           Duas recargas automáticas não confirmaram o fim da resposta. O Muse pode ainda estar
           trabalhando. Recarregar o histórico tenta de novo e renova as tentativas automáticas;
-          abandonar o turno libera a conversa para a próxima mensagem.
+          abandonar esta mensagem libera a conversa para a próxima.
         </p>
       </div>
       <div className="flex shrink-0 gap-2">
@@ -534,7 +534,7 @@ export function StalledNotice(props: { onRetry: () => void; onAbandon: () => voi
           Recarregar histórico
         </Button>
         <Button size="sm" variant="ghost" onClick={props.onAbandon}>
-          Abandonar turno
+          Abandonar mensagem
         </Button>
       </div>
     </div>

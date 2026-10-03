@@ -2,7 +2,7 @@ import { Database, Gauge } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../../app/context.js";
-import { formatDuration, formatExactTokens, formatTokensPerSecond } from "../../model/format.js";
+import { formatDuration, formatExactTokens, formatTokensPerSecond, plural } from "../../model/format.js";
 import {
   sessionTelemetry,
   timePillLabel,
@@ -118,7 +118,7 @@ function TimingPanel(props: { telemetry: SessionTelemetry }) {
         </p>
         <p className="mt-0.5 text-xs text-muted">
           {t.partial
-            ? "Histórico parcial: tempo, turnos e etapas cobrem só as chamadas carregadas."
+            ? "Histórico parcial: tempo, mensagens e etapas cobrem só as chamadas carregadas."
             : t.timedCalls === t.steps
               ? "Todas as chamadas informaram quanto tempo levaram."
               : "Algumas chamadas não informaram quanto tempo levaram."}
@@ -127,7 +127,7 @@ function TimingPanel(props: { telemetry: SessionTelemetry }) {
       <dl className="flex flex-col gap-1 text-xs">
         <Row label="Etapas" value={`${t.steps}`} />
         <Row label="Média por chamada" value={t.tokensPerSecond === null ? "—" : formatTokensPerSecond(t.tokensPerSecond)} />
-        <Row label="Cronometradas" value={`${t.timedCalls} de ${t.steps} chamadas`} />
+        <Row label="Cronometradas" value={`${t.timedCalls} de ${plural(t.steps, "chamada", "chamadas")}`} />
       </dl>
       <ModelBreakdown models={t.models} />
     </div>
@@ -177,7 +177,7 @@ function ModelBreakdown(props: { models: TelemetryModelUsage[] }) {
       {props.models.map((model) => (
         <div key={model.modelId} className="flex items-baseline justify-between gap-3 text-xs">
           <span className="min-w-0 truncate text-fg">{model.name}</span>
-          <span className="shrink-0 text-muted tabular-nums">{model.calls === 1 ? "1 chamada" : `${model.calls} chamadas`}</span>
+          <span className="shrink-0 text-muted tabular-nums">{plural(model.calls, "chamada", "chamadas")}</span>
           <span className="w-20 shrink-0 text-right text-muted tabular-nums">{formatExactTokens(model.outputTokens)} saída</span>
         </div>
       ))}

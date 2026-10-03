@@ -19,7 +19,7 @@ export const SETTINGS_GROUPS: Readonly<Record<SettingsGroupId, string>> = {
 /** As seções da página de Configurações, na ordem em que aparecem. Título mora aqui, e só aqui. */
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "conversas", title: "Conversas", description: "Modelo, permissões, lista e títulos das conversas.", group: "conversas", icon: "MessageSquarePlus" },
-  { id: "chats-arquivados", title: "Chats arquivados", description: "Conversas guardadas, agrupadas por projeto.", group: "conversas", icon: "Archive" },
+  { id: "chats-arquivados", title: "Conversas arquivadas", description: "Conversas guardadas, agrupadas por projeto.", group: "conversas", icon: "Archive" },
   { id: "seguranca", title: "Segurança", description: "Modo YOLO, sandbox e aprovações respondidas por você.", group: "execucao", icon: "Shield" },
   { id: "aparencia", title: "Aparência", description: "Tema, cores do código, zoom e estatísticas da sessão.", group: "aplicativo", icon: "Palette" },
   { id: "notificacoes", title: "Notificações", description: "Balão e som quando uma conversa precisar de você.", group: "aplicativo", icon: "BellRing" },

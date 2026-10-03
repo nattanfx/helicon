@@ -284,25 +284,34 @@ export function turnErrorCopy(
       offerRetry: retryable,
     };
   }
-  // Falha sem detalhe do host: mostrar kind e turno em vez de nada, para a próxima
-  // ocorrência virar dado. Mensagem real segue sem linha técnica, como antes.
+  // Falha sem detalhe do host: mostrar kind e mensagem em vez de nada, para a próxima
+  // ocorrência virar dado. Com detalhe, a explicação abre em português e o texto do host
+  // (quase sempre em inglês) fica inteiro na linha técnica, sem se perder.
   const empty = raw === "" || raw === EMPTY_TURN_ERROR;
+  if (empty) {
+    return {
+      title: "Esta mensagem falhou",
+      explanation: text,
+      technical: emptyTurnDiagnostic(kind, options.turnId),
+      offerRetry: retryable,
+    };
+  }
   return {
     title: "Esta mensagem falhou",
-    explanation: text,
-    technical: empty ? emptyTurnDiagnostic(kind, options.turnId) : null,
+    explanation: "O Muse não conseguiu concluir esta mensagem. O detalhe enviado pelo host aparece abaixo, como veio.",
+    technical: text,
     offerRetry: retryable,
   };
 }
 
 /**
- * Linha técnica de uma falha vazia: o kind (quando o host mandou um objeto de erro) e o turno
+ * Linha técnica de uma falha vazia: o kind (quando o host mandou um objeto de erro) e a mensagem
  * identificam a ocorrência. Sem kind, "ausente" distingue "sem objeto de erro" de "objeto sem kind".
  */
 function emptyTurnDiagnostic(kind: string | null | undefined, turnId?: string | null): string {
   const parts = [`kind=${kind ?? "ausente"}`];
   if (turnId) {
-    parts.push(`turno=${turnId}`);
+    parts.push(`mensagem=${turnId}`);
   }
   return `O host não enviou detalhe · ${parts.join(" · ")}`;
 }

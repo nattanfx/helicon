@@ -57,7 +57,7 @@ describe("telemetria da sessão", () => {
     const t = sessionTelemetry(foldWith(calls([{ promptTokens: 1000, usage: { outputTokens: 100, cachedTokens: 900 } }])), true);
     assert.equal(t.partial, true);
     assert.equal(t.totalsComplete, false);
-    assert.equal(usagePillLabel(t), "1.1k+ tokens");
+    assert.equal(usagePillLabel(t), "1,1k+ tokens");
     assert.match(timePillLabel(t), /Parcial/);
   });
 
@@ -186,7 +186,7 @@ describe("rótulos das pílulas de telemetria", () => {
         ]),
       ]),
     );
-    assert.equal(timePillLabel(timed), "3 turnos · 8 etapas · 62 tok/s");
+    assert.equal(timePillLabel(timed), "3 mensagens · 8 etapas · 62 tok/s");
 
     const untimed = sessionTelemetry(
       foldWith([
@@ -199,12 +199,12 @@ describe("rótulos das pílulas de telemetria", () => {
         ]),
       ]),
     );
-    assert.equal(timePillLabel(untimed), "1 turno · 4 etapas");
+    assert.equal(timePillLabel(untimed), "1 mensagem · 4 etapas");
 
     const single = sessionTelemetry(
       foldWith([started("t1"), ...calls([{ turnId: "t1", usage: { outputTokens: 10 } }])]),
     );
-    assert.equal(timePillLabel(single), "1 turno · 1 etapa");
+    assert.equal(timePillLabel(single), "1 mensagem · 1 etapa");
   });
 
   it("rotula a pílula de uso com o total compacto e o cache, quando há dados de cache", () => {
@@ -214,7 +214,7 @@ describe("rótulos das pílulas de telemetria", () => {
     assert.equal(usagePillLabel(cached), "252k tokens · Cache 87%");
 
     const uncached = sessionTelemetry(foldWith(calls([{ usage: { outputTokens: 18_400 } }])));
-    assert.equal(usagePillLabel(uncached), "18.4k tokens");
+    assert.equal(usagePillLabel(uncached), "18,4k tokens");
 
     const one = sessionTelemetry(foldWith(calls([{ usage: { outputTokens: 1 } }])));
     assert.equal(usagePillLabel(one), "1 token");
@@ -224,7 +224,7 @@ describe("rótulos das pílulas de telemetria", () => {
 describe("formatadores de telemetria", () => {
   it("formata tokens por segundo com uma casa abaixo de 100 e inteiro acima", () => {
     assert.equal(formatTokensPerSecond(62), "62 tok/s");
-    assert.equal(formatTokensPerSecond(7.25), "7.3 tok/s");
+    assert.equal(formatTokensPerSecond(7.25), "7,3 tok/s");
     assert.equal(formatTokensPerSecond(125.4), "125 tok/s");
   });
 
@@ -236,7 +236,7 @@ describe("formatadores de telemetria", () => {
 
   it("mantém uma casa nos totais compactos até cem mil", () => {
     assert.equal(formatCompactTokens(364), "364");
-    assert.equal(formatCompactTokens(18_400), "18.4k");
+    assert.equal(formatCompactTokens(18_400), "18,4k");
     assert.equal(formatCompactTokens(252_000), "252k");
   });
 });

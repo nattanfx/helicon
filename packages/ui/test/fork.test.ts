@@ -19,7 +19,7 @@ describe("pontos de ramificação", () => {
   it("continua no corte inclusivo e edita a partir do turno anterior", () => {
     const points = forkPoints([turn("one", "Primeiro"), turn("two", "Segundo"), turn("three", "Terceiro")], false);
     assert.equal(points[0]?.lastTurnId, "one");
-    assert.match(points[0]?.editUnavailable ?? "", /primeira mensagem/i);
+    assert.match(points[0]?.editUnavailable ?? "", /antes da primeira/i);
     assert.deepEqual(points[1], { lastTurnId: "two", beforeTurnId: "one", editText: "Segundo", editUnavailable: null });
     assert.deepEqual(points[2], { lastTurnId: "three", beforeTurnId: "two", editText: "Terceiro", editUnavailable: null });
   });
@@ -29,7 +29,7 @@ describe("pontos de ramificação", () => {
     assert.match(clipped[0]?.editUnavailable ?? "", /histórico carregado/);
     const failed = forkPoints([turn("one", "Primeiro", "failed"), turn("two", "Segundo")], false);
     assert.equal(failed[0], null);
-    assert.match(failed[1]?.editUnavailable ?? "", /fronteira concluída/);
+    assert.match(failed[1]?.editUnavailable ?? "", /não terminou/);
     assert.equal(failed[1]?.lastTurnId, "two");
   });
 
@@ -47,6 +47,6 @@ describe("pontos de ramificação", () => {
       (id) => id === "two", (id) => id === "two");
     assert.equal(points[1]?.lastTurnId, "two");
     assert.equal(points[1]?.beforeTurnId, null);
-    assert.match(points[1]?.editUnavailable ?? "", /mensagem exata|mais de uma mensagem/);
+    assert.match(points[1]?.editUnavailable ?? "", /mais de um envio/);
   });
 });

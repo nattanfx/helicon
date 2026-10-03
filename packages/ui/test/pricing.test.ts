@@ -22,9 +22,11 @@ describe("pricing", () => {
   });
 
   it("shows a cheap turn without rounding it away", () => {
-    assert.equal(formatCost(0), "$0");
-    assert.equal(formatCost(0.00123), "$0.0012");
-    assert.equal(formatCost(0.4321), "$0.432");
-    assert.equal(formatCost(12.3456), "$12.35");
+    assert.equal(formatCost(0), "US$ 0");
+    assert.equal(formatCost(0.00123), "US$ 0,0012");
+    assert.equal(formatCost(0.4321), "US$ 0,432");
+    assert.equal(formatCost(12.3456), "US$ 12,35");
+    assert.equal(formatCost(1234.5), "US$ 1.234,50", "milhar com ponto e decimal com vírgula");
+    assert.equal(formatCost(2.5, "EUR"), "EUR 2,50");
   });
 });

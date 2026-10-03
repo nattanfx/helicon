@@ -2,7 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
-import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, relativeTime, usageThreadTitle } from "../../model/format.js";
+import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, plural, relativeTime, usageThreadTitle } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
 import { fillUsageDays, formatUsageDay, USAGE_RANGES } from "../../model/usage-range.js";
 import { recoveryGap } from "../../model/usage-recovery.js";
@@ -310,7 +310,7 @@ function Totals(props: { view: UsageView }) {
       <Card
         label="Custo na tarifa de API"
         value={formatCost(view.cost, view.currency)}
-        detail={view.unpriced > 0 ? `${view.unpriced} chamadas sem preço publicado` : `${view.calls} chamadas ao modelo`}
+        detail={view.unpriced > 0 ? plural(view.unpriced, "chamada sem preço publicado", "chamadas sem preço publicado") : plural(view.calls, "chamada ao modelo", "chamadas ao modelo")}
       />
       <Card label="Tokens de entrada" value={formatTokens(view.promptTokens)} detail={`${formatTokens(view.cachedTokens)} vindos do cache`} />
       <Card
@@ -394,7 +394,7 @@ function Models(props: { view: UsageView }) {
               />
             </div>
             <p className="text-2xs text-subtle tabular-nums">
-              {model.calls} chamadas · {formatTokens(model.promptTokens)} de entrada ({formatTokens(model.cachedTokens)} do cache) ·{" "}
+              {plural(model.calls, "chamada", "chamadas")} · {formatTokens(model.promptTokens)} de entrada ({formatTokens(model.cachedTokens)} do cache) ·{" "}
               {formatTokens(model.outputTokens)} de saída
               {model.price
                 ? ` · ${formatCost(model.price.input, view.currency)}/M de entrada, ${formatCost(model.price.output, view.currency)}/M de saída`
@@ -424,7 +424,7 @@ function Threads(props: { view: UsageView }) {
                 <p className="truncate text-sm text-fg">{usageThreadTitle(thread)}</p>
                 <p className="truncate text-2xs text-subtle tabular-nums">
                   {thread.cwd ? `${basename(thread.cwd)} · ` : ""}
-                  {thread.calls} chamadas · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {thread.lastAt ? relativeTime(thread.lastAt) : "data desconhecida"}
+                  {plural(thread.calls, "chamada", "chamadas")} · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {thread.lastAt ? relativeTime(thread.lastAt) : "data desconhecida"}
                 </p>
               </div>
               <span className="shrink-0 text-sm text-fg tabular-nums">{formatCost(thread.cost, view.currency)}</span>

@@ -3324,7 +3324,7 @@ describe("stale thread watchdog", () => {
     assert.equal(after?.fold.activeTurnId, null);
     assert.equal(after?.fold.turns["live-1"]?.terminal, "cancelled");
     assert.equal(after?.stalled, false);
-    assert.equal(controller.store.get().toasts.at(-1)?.title, "Turno abandonado");
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Mensagem abandonada");
     stop();
   });
 
@@ -3337,7 +3337,7 @@ describe("stale thread watchdog", () => {
     assert.equal(controller.store.get().threads["s1"]?.fold.activeTurnId, null);
     assert.equal(controller.store.get().threads["s1"]?.fold.turns["live-1"]?.terminal, "cancelled");
     assert.equal(controller.store.get().threads["s1"]?.stalled, false);
-    assert.equal(controller.store.get().toasts.at(-1)?.title, "Turno abandonado localmente");
+    assert.equal(controller.store.get().toasts.at(-1)?.title, "Mensagem abandonada localmente");
     stop();
   });
 
@@ -3515,7 +3515,7 @@ describe("stale thread watchdog", () => {
       assert.equal(sent, true);
       assert.equal(fold.activeTurnId, disposition === "started" ? "user-new" : null);
       assert.equal(fold.echoes.find((echo) => echo.turnId === "user-new")?.disposition, disposition);
-      assert.equal(controller.store.get().toasts.at(-1)?.title, "Turno abandonado localmente");
+      assert.equal(controller.store.get().toasts.at(-1)?.title, "Mensagem abandonada localmente");
     });
   }
 

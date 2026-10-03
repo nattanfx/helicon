@@ -53,7 +53,7 @@ export function Aparencia() {
       </Row>
       <Row
         label="Estatísticas da sessão"
-        description="Pílulas acima do composer: turnos, velocidade e tokens da conversa aberta. Desligado por padrão."
+        description="Pílulas acima do composer: mensagens, velocidade e tokens da conversa aberta. Desligado por padrão."
       >
         <Toggle
           checked={prefs.showTelemetry}

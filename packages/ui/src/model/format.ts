@@ -1,6 +1,30 @@
 import type { ApprovalRequest, MspItem, OutputRef, PatchSummary, SessionSummary } from "../types.js";
 import { GOAL_TOOLS } from "./goal.js";
 
+/** Locale fixo da interface: datas e números em português mesmo num Windows em inglês. */
+export const UI_LOCALE = "pt-BR";
+
+const decimalFormats = new Map<string, Intl.NumberFormat>();
+
+/**
+ * Um número com vírgula decimal e ponto de milhar (pt-BR): `formatDecimal(1.5, 1)` → `1,5`. Com `trim`,
+ * zeros finais somem como no antigo `toFixed(n).replace(/\.0$/, "")`: `formatDecimal(18, 1, true)` → `18`.
+ */
+export function formatDecimal(value: number, fractionDigits: number, trim = false): string {
+  const key = `${fractionDigits}:${trim}`;
+  let format = decimalFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat(UI_LOCALE, { minimumFractionDigits: trim ? 0 : fractionDigits, maximumFractionDigits: fractionDigits });
+    decimalFormats.set(key, format);
+  }
+  return format.format(value);
+}
+
+/** Contagem com a palavra concordando: `plural(1, "chamada", "chamadas")` → `1 chamada`, `plural(3, …)` → `3 chamadas`. */
+export function plural(count: number, one: string, many: string): string {
+  return `${formatDecimal(count, 0)} ${count === 1 ? one : many}`;
+}
+
 /** Tempo relativo compacto para barras laterais: agora, 4min, 3h, 2d, 3sem, depois uma data curta. */
 export function relativeTime(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) {
@@ -30,7 +54,7 @@ export function relativeTime(iso: string | null | undefined, now = Date.now()): 
   if (weeks < 5) {
     return `${weeks}sem`;
   }
-  return new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(then).toLocaleDateString(UI_LOCALE, { month: "short", day: "numeric" });
 }
 
 export function formatDuration(ms: number | null | undefined): string {
@@ -58,28 +82,28 @@ export function formatDuration(ms: number | null | undefined): string {
 export function formatClock(ms: number, now = Date.now()): string {
   const date = new Date(ms);
   const today = new Date(now);
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = date.toLocaleTimeString(UI_LOCALE, { hour: "2-digit", minute: "2-digit" });
   if (date.toDateString() === today.toDateString()) {
     return time;
   }
   const sameYear = date.getFullYear() === today.getFullYear();
-  const day = date.toLocaleDateString(undefined, sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
+  const day = date.toLocaleDateString(UI_LOCALE, sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
   return `${day}, ${time}`;
 }
 
 /** A data e hora completas, para dicas atrás de um horário curto. */
 export function formatFullDate(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+  return new Date(ms).toLocaleString(UI_LOCALE, { dateStyle: "medium", timeStyle: "medium" });
 }
 
 /** Velocidade de saída: `42 tok/s`, com uma casa decimal abaixo de dez. */
 export function formatSpeed(tokensPerSecond: number): string {
-  return `${tokensPerSecond < 10 ? tokensPerSecond.toFixed(1) : Math.round(tokensPerSecond)} tok/s`;
+  return `${tokensPerSecond < 10 ? formatDecimal(tokensPerSecond, 1) : formatDecimal(tokensPerSecond, 0)} tok/s`;
 }
 
 /** Velocidade média da sessão para as pílulas de telemetria: uma casa abaixo de 100, inteiro de lá pra cima. */
 export function formatTokensPerSecond(tokensPerSecond: number): string {
-  const value = tokensPerSecond < 100 ? tokensPerSecond.toFixed(1).replace(/\.0$/, "") : String(Math.round(tokensPerSecond));
+  const value = formatDecimal(tokensPerSecond, tokensPerSecond < 100 ? 1 : 0, true);
   return `${value} tok/s`;
 }
 
@@ -132,10 +156,10 @@ export function formatTokens(value: number | null | undefined): string {
   }
   if (value < 1_000_000) {
     const k = value / 1000;
-    return `${k < 10 ? k.toFixed(1).replace(/\.0$/, "") : Math.round(k)}k`;
+    return `${k < 10 ? formatDecimal(k, 1, true) : Math.round(k)}k`;
   }
   const m = value / 1_000_000;
-  return `${m < 10 ? m.toFixed(1).replace(/\.0$/, "") : Math.round(m)}M`;
+  return `${m < 10 ? formatDecimal(m, 1, true) : formatDecimal(Math.round(m), 0)}M`;
 }
 
 /** Uma contagem exata de tokens com separador de milhar, para o diálogo de uso. */
@@ -148,14 +172,14 @@ export function formatExactTokens(value: number | null | undefined): string {
 
 /**
  * Tokens compactos para as pílulas de telemetria: como formatTokens, mas com uma casa até as
- * dezenas de milhar, para uma sessão com 18.400 tokens ler `18.4k` em vez de `18k`.
+ * dezenas de milhar, para uma sessão com 18.400 tokens ler `18,4k` em vez de `18k`.
  */
 export function formatCompactTokens(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "0";
   }
   if (value >= 1000 && value < 100_000) {
-    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+    return `${formatDecimal(value / 1000, 1, true)}k`;
   }
   return formatTokens(value);
 }
@@ -959,7 +983,7 @@ export function describeApproval(request: ApprovalRequest): ApprovalDescription 
       };
     default:
       return {
-        title: `Permitir ${humanize(subject.kind).toLowerCase()}`,
+        title: `Realizar uma ação do tipo “${humanize(subject.kind).toLowerCase()}”`,
         detail: subject.command ?? subject.path ?? subject.target ?? request.rawArgs ?? null,
         mono: true,
       };

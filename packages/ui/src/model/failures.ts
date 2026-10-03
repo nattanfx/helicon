@@ -12,9 +12,9 @@ const KNOWN_KINDS: readonly string[] = [
 ];
 
 export const FAILURE_KIND_LABEL: Readonly<Record<FailureKind, string>> = {
-  "turn-failed": "turno falhou",
-  "turn-view-failed": "falha ao ler o turno",
-  "turn-view-recovered": "turno recuperado",
+  "turn-failed": "mensagem falhou",
+  "turn-view-failed": "falha ao ler a mensagem",
+  "turn-view-recovered": "mensagem recuperada",
   "host-exited": "servidor Muse saiu",
   "host-start-failed": "servidor Muse não iniciou",
   "host-restarted": "servidores reiniciados",
@@ -64,7 +64,7 @@ function parseFailureEntry(value: unknown): FailureEntry | null {
 /** Uma linha de falha em texto legível, para o diagnóstico do Sobre. */
 export function formatFailureEntry(entry: FailureEntry): string {
   const time = entry.at ? new Date(entry.at).toLocaleString("pt-BR", { hour12: false }) : "data desconhecida";
-  const ids = [entry.sessionId ? `sessão ${entry.sessionId.slice(0, 8)}` : null, entry.turnId ? `turno ${entry.turnId.slice(0, 8)}` : null]
+  const ids = [entry.sessionId ? `sessão ${entry.sessionId.slice(0, 8)}` : null, entry.turnId ? `mensagem ${entry.turnId.slice(0, 8)}` : null]
     .filter((part): part is string => part !== null)
     .join(" · ");
   const kind = entry.errorKind ? ` (${entry.errorKind})` : entry.kind === "turn-failed" ? " (kind=ausente)" : "";

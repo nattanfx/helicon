@@ -1,3 +1,5 @@
+import { formatDecimal } from "./format.js";
+
 /** Uma linha ou intervalo que um agente apontou, como `app.ts:4` ou `app.ts:4-9`. */
 export interface LineRange {
   start: number;
@@ -161,7 +163,7 @@ export function formatFileSize(bytes: number): string {
     return `${bytes} B`;
   }
   if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+    return `${formatDecimal(bytes / 1024, bytes < 10 * 1024 ? 1 : 0)} KB`;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${formatDecimal(bytes / (1024 * 1024), 1)} MB`;
 }

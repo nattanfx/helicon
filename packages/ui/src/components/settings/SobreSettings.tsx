@@ -20,20 +20,30 @@ import { Card, Fact, Row, Subhead, Toggle } from "./rows.js";
 const TRACE_KIND_LABEL: Record<NotifyTrace["kind"], string> = {
   approval: "aprovação",
   question: "pergunta",
-  finished: "fim de turno",
+  finished: "fim da mensagem",
   goal: "meta",
 };
+
+const PERMISSION_LABEL: Record<string, string> = {
+  granted: "concedida",
+  denied: "negada",
+  default: "ainda não decidida",
+};
+
+function onOff(value: boolean): string {
+  return value ? "ligado" : "desligado";
+}
 
 /** Uma tentativa de aviso em texto legível, para o diagnóstico temporário das notificações. */
 function formatNotifyTrace(trace: NotifyTrace): string {
   const hora = new Date(trace.at).toLocaleTimeString("pt-BR", { hour12: false });
-  const turno = trace.turnId ? ` ${trace.turnId}` : "";
+  const mensagem = trace.turnId ? ` ${trace.turnId}` : "";
   const permissao =
-    trace.permission === "não consultada" ? "permissão não consultada" : `permissão ${trace.permission} (${trace.permissionMs} ms)`;
+    trace.permission === "não consultada" ? "permissão não consultada" : `permissão ${PERMISSION_LABEL[trace.permission] ?? trace.permission} (${trace.permissionMs} ms)`;
   return (
-    `${hora} ${TRACE_KIND_LABEL[trace.kind]} ${trace.sessionId}${turno} · ${trace.backend} · ` +
-    `balão ${trace.enabled ? "on" : "off"} (1º plano ${trace.balloonForeground ? "on" : "off"}) · ` +
-    `som ${trace.sound ? "on" : "off"} (1º plano ${trace.soundForeground ? "on" : "off"}) · foco ${trace.focused ? "sim" : "não"} · ` +
+    `${hora} ${TRACE_KIND_LABEL[trace.kind]} ${trace.sessionId}${mensagem} · ${trace.backend} · ` +
+    `balão ${onOff(trace.enabled)} (1º plano ${onOff(trace.balloonForeground)}) · ` +
+    `som ${onOff(trace.sound)} (1º plano ${onOff(trace.soundForeground)}) · foco ${trace.focused ? "sim" : "não"} · ` +
     `${permissao} · balão: ${trace.balloon} · bipe: ${trace.beep}`
   );
 }
@@ -204,7 +214,7 @@ function Diagnostico() {
       <Card>
         <Row
           label="Falhas do servidor"
-          description="A caixa-preta do servidor: turnos que falharam e reinícios, com ids e detalhe técnico. Nunca traz texto das conversas."
+          description="A caixa-preta do servidor: mensagens que falharam e reinícios, com ids e detalhe técnico. Nunca traz texto das conversas."
         >
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" disabled={failures.status === "loading" || clearing} onClick={() => setReload((n) => n + 1)}>
@@ -225,7 +235,7 @@ function Diagnostico() {
           ) : (
             <>
               <p className="text-xs text-muted">
-                {failures.count === 1 ? "1 registro guardado" : `${failures.count} registros guardados`}; as mais recentes primeiro.
+                {failures.count === 1 ? "1 registro guardado" : `${failures.count} registros guardados`}; os mais recentes primeiro.
               </p>
               <ul className="mt-1 space-y-1">
                 {[...failures.recent].reverse().map((entry, index) => (

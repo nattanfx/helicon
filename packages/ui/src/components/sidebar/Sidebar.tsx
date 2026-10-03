@@ -34,7 +34,7 @@ import { memo, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent,
 import { shallowEqual, useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps, useTitlebarOverlay } from "../../app/frame.js";
 import { isTurnFinalizing } from "../../model/fold.js";
-import { basename, displayTitle, formatElapsed, relativeTime, renameInitial } from "../../model/format.js";
+import { basename, displayTitle, formatElapsed, plural, relativeTime, renameInitial } from "../../model/format.js";
 import { statusLabel } from "../../model/goal.js";
 import { PlanPill } from "../usage/PlanMeter.js";
 import { SettingsNav } from "./SettingsNav.js";
@@ -378,7 +378,7 @@ const ProjectSection = memo(function ProjectSection(props: {
           <span className="truncate text-sm font-medium text-fg">{project.displayName}</span>
           {project.pinned ? <Pin size={11} className="shrink-0 text-subtle" aria-label="Fixado" /> : null}
           {props.collapsed && props.group.attention > 0 ? (
-            <span className="mr-1 ml-auto size-1.5 shrink-0 rounded-full bg-warn" aria-label={`${props.group.attention} precisam de você`} />
+            <span className="mr-1 ml-auto size-1.5 shrink-0 rounded-full bg-warn" aria-label={`${plural(props.group.attention, "conversa precisa", "conversas precisam")} de você`} />
           ) : props.collapsed && props.group.running > 0 ? (
             <Spinner size={10} className="mr-1 ml-auto text-accent-text" label="Trabalhando" />
           ) : null}

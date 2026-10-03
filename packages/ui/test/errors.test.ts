@@ -134,12 +134,13 @@ describe("limite temporário (REV4)", () => {
     const unknown = turnErrorCopy("fileChanged", "429 Too many requests. Retry after 5 seconds.", true);
     assert.equal(unknown.title, "Esta mensagem falhou");
     assert.equal(unknown.offerRetry, true);
-    assert.equal(unknown.technical, null);
+    assert.match(unknown.explanation, /^O Muse não conseguiu concluir esta mensagem/);
+    assert.equal(unknown.technical, "429 Too many requests. Retry after 5 seconds.");
 
     const noCode = turnErrorCopy(null, "Something broke", true);
     assert.equal(noCode.title, "Esta mensagem falhou");
     assert.equal(noCode.offerRetry, true);
-    assert.equal(noCode.technical, null);
+    assert.equal(noCode.technical, "Something broke");
 
     const noCodeWaiting = turnErrorCopy(undefined, "Something broke", false);
     assert.equal(noCodeWaiting.title, "Esta mensagem falhou");
@@ -197,32 +198,34 @@ describe("falha de sessão", () => {
 });
 
 describe("falha sem detalhe do host", () => {
-  it("mostra kind e turno na linha técnica quando a mensagem veio vazia", () => {
+  it("mostra kind e mensagem na linha técnica quando a mensagem veio vazia", () => {
     const copy = turnErrorCopy("error", "", true, { turnId: "t1" });
     assert.equal(copy.title, "Esta mensagem falhou");
     assert.equal(copy.explanation, "A mensagem falhou.");
     assert.match(copy.technical ?? "", /kind=error/);
-    assert.match(copy.technical ?? "", /turno=t1/);
+    assert.match(copy.technical ?? "", /mensagem=t1/);
     assert.equal(copy.offerRetry, true);
   });
 
   it("trata o fallback local como mensagem vazia do host", () => {
     const copy = turnErrorCopy("modelError", "A mensagem falhou.", true, { turnId: "t2" });
     assert.match(copy.technical ?? "", /kind=modelError/);
-    assert.match(copy.technical ?? "", /turno=t2/);
+    assert.match(copy.technical ?? "", /mensagem=t2/);
   });
 
   it("marca falha sem objeto de erro como kind ausente", () => {
     const copy = turnErrorCopy(null, "A mensagem falhou.", true, { turnId: "t3" });
     assert.match(copy.technical ?? "", /kind=ausente/);
-    assert.match(copy.technical ?? "", /turno=t3/);
+    assert.match(copy.technical ?? "", /mensagem=t3/);
   });
 
-  it("omite o turno desconhecido e mantém falha com mensagem sem linha técnica", () => {
+  it("omite a mensagem desconhecida e põe o detalhe do host na linha técnica, com explicação em português", () => {
     const bare = turnErrorCopy("error", "", false);
     assert.match(bare.technical ?? "", /kind=error/);
-    assert.doesNotMatch(bare.technical ?? "", /turno=/);
+    assert.doesNotMatch(bare.technical ?? "", /mensagem=/);
     assert.equal(bare.offerRetry, false);
-    assert.equal(turnErrorCopy("error", "Provider down", true, { turnId: "t1" }).technical, null);
+    const detailed = turnErrorCopy("error", "Provider down", true, { turnId: "t1" });
+    assert.equal(detailed.technical, "Provider down");
+    assert.match(detailed.explanation, /não conseguiu concluir/);
   });
 });

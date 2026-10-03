@@ -49,12 +49,12 @@ export function forkPoints(
     let editUnavailable: string | null = null;
     if (!before) {
       editUnavailable = truncated
-        ? "O turno anterior não está no histórico carregado."
-        : "A primeira mensagem não tem turno anterior para usar como corte.";
+        ? "A mensagem anterior não está no histórico carregado."
+        : "Não há mensagem antes da primeira para usar como corte.";
     } else if (before.info?.terminal !== "completed") {
-      editUnavailable = "O turno anterior não é uma fronteira concluída.";
+      editUnavailable = "A mensagem anterior não terminou; não serve como ponto de corte.";
     } else if (ambiguousAttachments(turn.turnId)) {
-      editUnavailable = "Este turno tem anexos em mais de uma mensagem; não é possível identificar quais pertencem ao pedido editado.";
+      editUnavailable = "Esta mensagem recebeu anexos em mais de um envio; não é possível identificar quais pertencem ao pedido editado.";
     } else if (turn.prompt.displayText !== undefined && turn.prompt.displayText !== text && !storedFiles) {
       editUnavailable = "Este pedido foi transformado antes do envio e não pode ser copiado com segurança.";
     } else if (!editable.trim() && !storedFiles) {

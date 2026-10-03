@@ -1,6 +1,6 @@
 import type { ContextUsage, ModelOption, MspItem } from "../types.js";
 import { HIDDEN_KINDS, STREAM_GAP_MS, type CallUsage, type ThreadFold, type TurnInfo } from "./fold.js";
-import { diffStats, formatCompactTokens, formatTokensPerSecond, itemDiff, modelDisplayName } from "./format.js";
+import { diffStats, formatCompactTokens, formatTokensPerSecond, itemDiff, modelDisplayName, plural } from "./format.js";
 
 /**
  * Uso de contexto e de sessão para o painel de contexto do composer. O Muse informa o total de contexto,
@@ -527,11 +527,11 @@ export function sessionTelemetry(fold: ThreadFold, truncated = false): SessionTe
   };
 }
 
-/** O rótulo da pílula de tempo: `3 turnos · 8 etapas · 62 tok/s`, sem velocidade quando nada cronometrou. */
+/** O rótulo da pílula de tempo: `3 mensagens · 8 etapas · 62 tok/s`, sem velocidade quando nada cronometrou. */
 export function timePillLabel(t: SessionTelemetry): string {
   const speed = t.tokensPerSecond === null ? "" : ` · ${formatTokensPerSecond(t.tokensPerSecond)}`;
-  const turns = `${t.turns} ${t.turns === 1 ? "turno" : "turnos"}`;
-  const steps = `${t.steps} ${t.steps === 1 ? "etapa" : "etapas"}`;
+  const turns = plural(t.turns, "mensagem", "mensagens");
+  const steps = plural(t.steps, "etapa", "etapas");
   return `${t.partial ? "Parcial · " : ""}${turns} · ${steps}${speed}`;
 }
 

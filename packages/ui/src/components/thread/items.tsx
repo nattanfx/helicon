@@ -29,6 +29,7 @@ import {
   describeTool,
   diffLines,
   diffStats,
+  formatDecimal,
   formatDuration,
   formatTokens,
   groupFileChanges,
@@ -253,7 +254,7 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) {
     return `${Math.round(bytes / 1024)} KB`;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${formatDecimal(bytes / (1024 * 1024), 1)} MB`;
 }
 
 /** O ponteiro de saída guardada num item, quando sua visão foi cortada e o Muse guardou o resto. */

@@ -2,6 +2,7 @@ import { FileText, Paperclip, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AttachmentView, OutgoingAttachment } from "../../types.js";
 import type { EchoAttachment } from "../../model/fold.js";
+import { formatDecimal } from "../../model/format.js";
 import { cn } from "../ui/primitives.js";
 
 /** Um arquivo que o usuário anexou mas ainda não enviou: bytes prontos para transmissão, mais uma prévia local. */
@@ -139,7 +140,7 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) {
     return `${Math.round(bytes / 1024)} KB`;
   }
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${formatDecimal(bytes / 1024 / 1024, 1)} MB`;
 }
 
 /** O que o composer mostra para os arquivos esperando para ir com a próxima mensagem. */

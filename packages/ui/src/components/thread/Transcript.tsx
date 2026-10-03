@@ -13,6 +13,7 @@ import {
   formatSpeed,
   formatTokens,
   parseArgs,
+  plural,
   stripAttachmentMentions,
   stripImageMarkers,
   toolKind,
@@ -288,7 +289,7 @@ const TurnBlock = memo(
         ) : null}
         {ambiguousFiles ? (
           <div className="flex flex-col gap-1 text-xs text-subtle">
-            <span>Anexos enviados neste turno; a mensagem exata não está registrada.</span>
+            <span>Anexos enviados durante esta mensagem; não ficou registrado em qual envio exatamente.</span>
             <SentAttachments files={files} />
           </div>
         ) : null}
@@ -393,10 +394,6 @@ function Entry(props: { item: MspItem; gate?: Gate; answers: UserInputAnswer[] |
     default:
       return <GenericRow item={item} />;
   }
-}
-
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
 }
 
 function summarize(entries: MspItem[]): string {
@@ -701,8 +698,8 @@ function ForkTurnAction(props: { sessionId: string; point: ForkPoint; files: Att
         onOpenChange={(open) => { if (!open && !busy) setGesture(null); }}
         title={gesture === "edit" ? "Editar este pedido em uma ramificação?" : "Continuar daqui em uma ramificação?"}
         description={gesture === "edit"
-          ? "A nova conversa copia o histórico até o turno anterior. Este pedido e seus anexos irão para o rascunho, sem envio automático."
-          : "A nova conversa copia o histórico até este turno, inclusive. As mensagens posteriores ficam só na conversa original."}
+          ? "A nova conversa copia o histórico até a mensagem anterior. Este pedido e seus anexos irão para o rascunho, sem envio automático."
+          : "A nova conversa copia o histórico até esta mensagem, inclusive. As mensagens posteriores ficam só na conversa original."}
       >
         <p className="mt-3 text-sm text-muted">A conversa original continua como está.</p>
         <div className="mt-6 flex justify-end gap-2">
@@ -806,7 +803,7 @@ function TurnError(props: {
         const alive = await controller.verifyTurnAlive(props.sessionId, props.turnId);
         if (alive) {
           controller.dismissTurnError(props.sessionId, props.turnId, { transient: true });
-          controller.toast("info", "Ainda está trabalhando", "O servidor confirma que este turno continua rodando — não era uma falha.");
+          controller.toast("info", "Ainda está trabalhando", "O servidor confirma que esta mensagem continua rodando — não era uma falha.");
         } else {
           setVerifiedStopped(true);
         }
@@ -910,14 +907,14 @@ function TurnError(props: {
         </Tip>
       ) : null}
       {uncertain && !verifiedStopped && !props.readOnly ? (
-        <Tip label="Perguntar ao servidor se este turno ainda está rodando">
+        <Tip label="Perguntar ao servidor se esta mensagem ainda está rodando">
           <Button size="sm" variant="secondary" loading={checking} onClick={verify}>
             <Activity size={13} /> Verificar estado
           </Button>
         </Tip>
       ) : null}
       {!props.readOnly && showActions ? (
-        <Tip label="Reinicia os servidores Muse; turnos em execução são interrompidos">
+        <Tip label="Reinicia os servidores Muse; mensagens em execução são interrompidas">
           <Button size="sm" variant="ghost" onClick={() => setConfirmRestart(true)}>
             <RotateCw size={13} /> Reiniciar o Muse
           </Button>
@@ -932,7 +929,7 @@ function TurnError(props: {
         open={confirmRestart}
         onOpenChange={setConfirmRestart}
         title="Reiniciar o Muse?"
-        description="Os servidores Muse em execução reiniciam agora e os turnos em andamento são interrompidos — a conversa segue normal depois, é só enviar a mensagem de novo. Use quando mensagens falham repetidamente sem explicação."
+        description="Os servidores Muse em execução reiniciam agora e as mensagens em andamento são interrompidas — a conversa segue normal depois, é só enviar a mensagem de novo. Use quando mensagens falham repetidamente sem explicação."
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmRestart(false)}>

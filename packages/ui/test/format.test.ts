@@ -14,7 +14,12 @@ import {
   emptyAttachmentWarning,
   extractDiff,
   groupFileChanges,
+  formatClock,
+  formatCompactTokens,
+  formatDecimal,
   formatDuration,
+  formatFullDate,
+  formatSpeed,
   formatTokens,
   hostPatchViews,
   itemDiff,
@@ -25,6 +30,7 @@ import {
   CONTRIBUTOR_NOTICE,
   contributorChoiceLabel,
   modelDisplayName,
+  plural,
   relativeTime,
   sessionLoadLabel,
   shortenPath,
@@ -95,6 +101,24 @@ describe("formatação", () => {
     assert.equal(relativeTime("garbage", now), "");
   });
 
+  it("escreve números, datas e contagens em português, sem depender do idioma do sistema", () => {
+    assert.equal(formatDecimal(1.5, 1), "1,5");
+    assert.equal(formatDecimal(18, 1, true), "18");
+    assert.equal(formatDecimal(12345.678, 2), "12.345,68");
+    assert.equal(formatCompactTokens(18_400), "18,4k");
+    assert.equal(formatTokens(2_500_000), "2,5M");
+    assert.equal(formatSpeed(4.25), "4,3 tok/s");
+    assert.equal(plural(1, "chamada", "chamadas"), "1 chamada");
+    assert.equal(plural(0, "chamada", "chamadas"), "0 chamadas");
+    assert.equal(plural(1200, "chamada", "chamadas"), "1.200 chamadas");
+    const now = new Date(2026, 9, 3, 12, 0).getTime();
+    assert.equal(formatClock(new Date(2026, 9, 3, 9, 5).getTime(), now), "09:05");
+    assert.equal(formatClock(new Date(2026, 8, 10, 15, 42).getTime(), now), "10 de set., 15:42");
+    assert.equal(formatClock(new Date(2025, 8, 10, 15, 42).getTime(), now), "10 de set. de 2025, 15:42");
+    assert.match(formatFullDate(new Date(2026, 8, 10, 15, 42, 7).getTime()), /^10 de set\. de 2026,? 15:42:07$/);
+    assert.equal(relativeTime(new Date(2026, 7, 1, 12).toISOString(), now), "1 de ago.");
+  });
+
   it("formata durações e contagens de tokens", () => {
     assert.equal(formatDuration(42316), "42s");
     assert.equal(formatDuration(73471), "1min 13s");
@@ -102,7 +126,7 @@ describe("formatação", () => {
     assert.equal(formatDuration(3_900_000), "1h 5min");
     assert.equal(formatTokens(842), "842");
     assert.equal(formatTokens(21177), "21k");
-    assert.equal(formatTokens(1500), "1.5k");
+    assert.equal(formatTokens(1500), "1,5k");
     assert.equal(formatTokens(1_007_997), "1M");
   });
 
@@ -423,7 +447,7 @@ describe("aprovações e modelos", () => {
     });
     assert.equal(describeApproval({ ...base, subject: { kind: "fileAccess", access: "write", path: "/etc/hosts" } }).title, "Escrever em um arquivo");
     assert.equal(describeApproval({ ...base, subject: { kind: "network", host: "api.github.com", port: 443, protocol: "https" } }).detail, "https://api.github.com:443");
-    assert.equal(describeApproval({ ...base, subject: { kind: "somethingNew", target: "x" } }).title, "Permitir something new");
+    assert.equal(describeApproval({ ...base, subject: { kind: "somethingNew", target: "x" } }).title, "Realizar uma ação do tipo “something new”");
   });
 
   it("mostra Nova conversa só para placeholder, sem traduzir título manual", () => {

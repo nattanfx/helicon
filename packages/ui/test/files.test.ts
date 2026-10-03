@@ -42,8 +42,10 @@ describe("links de arquivo", () => {
     assert.equal(dirnameOf("c.md"), "");
     assert.equal(fileKey("/w", "a.md"), "/w\na.md");
     assert.equal(formatFileSize(512), "512 B");
-    assert.equal(formatFileSize(2048), "2.0 KB");
-    assert.equal(formatFileSize(3 * 1024 * 1024), "3.0 MB");
+    assert.equal(formatFileSize(2048), "2,0 KB");
+    assert.equal(formatFileSize(3 * 1024 * 1024), "3,0 MB");
+    assert.equal(formatFileSize(1.5 * 1024 * 1024), "1,5 MB");
+    assert.equal(formatFileSize(2.5 * 1024), "2,5 KB");
   });
 
   it("explains a missing file from a stable kind, not from guessing the English sentence", () => {

@@ -1,3 +1,5 @@
+import { formatDecimal } from "./format.js";
+
 /**
  * What a thread would have cost at API rates. Muse's own catalog carries a `cost` block, but today every
  * row comes back without one, so these published prices stand in. A catalog price always wins over this
@@ -48,17 +50,11 @@ export function costOf(
   return (fresh * price.input + cached * price.cached + tokens.outputTokens * price.output) / 1_000_000;
 }
 
-/** Money as the transcript shows it: enough decimals to see a cheap turn, never more than four. */
+/** Money as the transcript shows it, in pt-BR (`US$ 0,0123`): enough decimals to see a cheap turn, never more than four. */
 export function formatCost(amount: number, currency = USD): string {
-  const symbol = currency === USD ? "$" : `${currency} `;
+  const symbol = currency === USD ? "US$ " : `${currency} `;
   if (amount === 0) {
     return `${symbol}0`;
   }
-  if (amount < 0.01) {
-    return `${symbol}${amount.toFixed(4)}`;
-  }
-  if (amount < 1) {
-    return `${symbol}${amount.toFixed(3)}`;
-  }
-  return `${symbol}${amount.toFixed(2)}`;
+  return `${symbol}${formatDecimal(amount, amount < 0.01 ? 4 : amount < 1 ? 3 : 2)}`;
 }

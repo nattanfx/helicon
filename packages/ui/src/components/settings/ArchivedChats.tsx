@@ -2,15 +2,11 @@ import { Check, ChevronDown, Ellipsis, Folder, RefreshCw, Search, Trash2 } from 
 import { useMemo, useState } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { filterArchived, groupArchivedByProject, olderThan, visibleSelection, type ArchivedGroup } from "../../model/archived.js";
-import { displayTitle, formatClock, shortenPath } from "../../model/format.js";
+import { displayTitle, formatClock, plural, shortenPath } from "../../model/format.js";
 import type { SessionSummary } from "../../types.js";
 import { Menu, MenuContent, MenuItem, MenuOption, MenuRadioGroup, MenuTrigger, Modal, Tip } from "../ui/overlays.js";
 import { Button, IconButton, Spinner, cn } from "../ui/primitives.js";
 import { Card, Row, Subhead } from "./rows.js";
-
-function countLabel(count: number, one: string, many: string): string {
-  return count === 1 ? `1 ${one}` : `${count} ${many}`;
-}
 
 function ProjectFilter(props: { project: string | null; onChange: (cwd: string | null) => void }) {
   const projects = useApp((s) => s.projects);
@@ -53,7 +49,7 @@ function ArchivedRow(props: {
 }) {
   const controller = useController();
   const deleting = useApp((s) => Boolean(s.busy[`delete:${props.session.sessionId}`]));
-  const meta = `${formatClock(Date.parse(props.session.activityAt), props.now)} · ${countLabel(props.session.turnCount, "turno", "turnos")}`;
+  const meta = `${formatClock(Date.parse(props.session.activityAt), props.now)} · ${plural(props.session.turnCount, "mensagem", "mensagens")}`;
   return (
     <div className="flex items-center gap-3 border-t border-line px-4 py-2.5 first:border-t-0">
       <button
@@ -140,7 +136,7 @@ function ArchiveOlder() {
         description={
           confirming === null
             ? ""
-            : `${countLabel(confirming.length, "conversa ativa sai", "conversas ativas saem")} da barra lateral e ${confirming.length === 1 ? "vem" : "vêm"} para esta lista.`
+            : `${plural(confirming.length, "conversa ativa sai", "conversas ativas saem")} da barra lateral e ${confirming.length === 1 ? "vem" : "vêm"} para esta lista.`
         }
       >
         <div className="mt-6 flex justify-end gap-2">
@@ -211,7 +207,7 @@ export function ArchivedChats() {
             </Button>
           </div>
         ) : archived.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-muted">Nenhum chat arquivado.</p>
+          <p className="px-4 py-4 text-sm text-muted">Nenhuma conversa arquivada.</p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 px-4 py-3">
@@ -230,13 +226,13 @@ export function ArchivedChats() {
                 <Trash2 size={13} /> Excluir tudo
               </Button>
               <p className="w-full text-xs text-muted sm:w-auto sm:flex-1 sm:text-right">
-                {countLabel(filtered.length, "conversa", "conversas")}
+                {plural(filtered.length, "conversa", "conversas")}
               </p>
             </div>
             {selected.length > 0 ? (
               <div className="flex flex-wrap items-center gap-2 border-t border-line bg-sunken px-4 py-2">
                 <p className="min-w-0 flex-1 text-xs font-medium text-fg">
-                  {countLabel(selected.length, "selecionada", "selecionadas")}
+                  {plural(selected.length, "selecionada", "selecionadas")}
                 </p>
                 <Button
                   size="sm"
@@ -264,7 +260,7 @@ export function ArchivedChats() {
                     <p className="min-w-0 flex-1 truncate text-xs font-medium text-fg" title={group.cwd}>
                       {group.name}
                     </p>
-                    <p className="shrink-0 text-xs text-muted">{countLabel(group.sessions.length, "conversa", "conversas")}</p>
+                    <p className="shrink-0 text-xs text-muted">{plural(group.sessions.length, "conversa", "conversas")}</p>
                     <Menu>
                       <MenuTrigger asChild>
                         <IconButton label={`Opções de ${group.name}`}>
@@ -354,7 +350,7 @@ export function ArchivedChats() {
         title={filtered.length === 1 ? "Excluir 1 conversa?" : `Excluir ${filtered.length} conversas?`}
         description={
           filteredOut
-            ? `As ${filtered.length} conversas listadas com o filtro atual saem do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
+            ? `${filtered.length === 1 ? "A conversa listada com o filtro atual sai" : `As ${filtered.length} conversas listadas com o filtro atual saem`} do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
             : "Todas as arquivadas saem do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas."
         }
       >
@@ -384,7 +380,7 @@ export function ArchivedChats() {
         title={confirmingGroup ? `Excluir tudo em ${confirmingGroup.name}?` : ""}
         description={
           confirmingGroup
-            ? `${countLabel(confirmingGroup.sessions.length, "A conversa deste projeto sai", "As conversas deste projeto saem")} do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
+            ? `${confirmingGroup.sessions.length === 1 ? "A conversa deste projeto sai" : `As ${confirmingGroup.sessions.length} conversas deste projeto saem`} do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
             : ""
         }
       >

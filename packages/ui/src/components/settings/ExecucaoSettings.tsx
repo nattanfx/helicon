@@ -65,7 +65,7 @@ export function ModoYolo(props: { cwd: string | null }) {
       <Card>
         <Row
           label={project ? `Modo YOLO em ${project}` : "Modo YOLO"}
-          description="Como muse --yolo, só neste projeto: nada pede aprovação nas conversas dele, as novas conversas dele rodam sem confinamento da sandbox, e a pasta dele é confiável. As conversas já abertas mantêm a proteção de sandbox com que começaram. Mudar isto reinicia o servidor Muse do projeto, interrompendo seus turnos."
+          description="Como muse --yolo, só neste projeto: nada pede aprovação nas conversas dele, as novas conversas dele rodam sem confinamento da sandbox, e a pasta dele é confiável. As conversas já abertas mantêm a proteção de sandbox com que começaram. Mudar isto reinicia o servidor Muse do projeto, interrompendo as mensagens em andamento."
         >
           {!props.cwd ? (
             <p className="text-xs text-subtle">Adicione um projeto</p>
@@ -124,7 +124,7 @@ export function Sandbox(props: { cwd: string | null }) {
           description={
             yolo
               ? "Desligada porque o modo YOLO está ligado neste projeto: o YOLO já roda as novas conversas dele sem confinamento da sandbox. Desligue o YOLO do projeto para controlar isto separadamente."
-              : "Os shells do Muse rodam isolados: acesso a arquivos e rede é confinado. Desligar isto remove o confinamento das novas conversas deste projeto, e só dele; as abertas mantêm a proteção com que começaram. Mudar isto reinicia o servidor Muse do projeto, interrompendo seus turnos."
+              : "Os shells do Muse rodam isolados: acesso a arquivos e rede é confinado. Desligar isto remove o confinamento das novas conversas deste projeto, e só dele; as abertas mantêm a proteção com que começaram. Mudar isto reinicia o servidor Muse do projeto, interrompendo as mensagens em andamento."
           }
         >
           {!props.cwd ? (
@@ -145,7 +145,7 @@ export function Sandbox(props: { cwd: string | null }) {
         open={confirmSandbox}
         onOpenChange={setConfirmSandbox}
         title={project ? `Desativar a sandbox do Muse em ${project}?` : "Desativar a sandbox do Muse?"}
-        description={`Os shells das novas conversas ${where} vão rodar sem confinamento de arquivos ou rede, e o servidor Muse dele reinicia, interrompendo seus turnos. Os outros projetos continuam protegidos, e as conversas já abertas mantêm o confinamento atual. Só faça isto num ambiente descartável.`}
+        description={`Os shells das novas conversas ${where} vão rodar sem confinamento de arquivos ou rede, e o servidor Muse dele reinicia, interrompendo as mensagens em andamento. Os outros projetos continuam protegidos, e as conversas já abertas mantêm o confinamento atual. Só faça isto num ambiente descartável.`}
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmSandbox(false)}>

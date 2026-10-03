@@ -19,7 +19,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { id: "zoom-redefinir", label: "Redefinir o zoom para 100%", keys: ["mod", "0"], scope: "Geral" },
   { id: "enviar", label: "Enviar a mensagem", keys: ["Enter"], scope: "Composer" },
   { id: "nova-linha", label: "Nova linha no composer", keys: ["Shift", "Enter"], scope: "Composer" },
-  { id: "parar", label: "Parar o turno (composer vazio, conversa rodando)", keys: ["Esc"], scope: "Composer" },
+  { id: "parar", label: "Parar a mensagem em andamento (composer vazio, conversa rodando)", keys: ["Esc"], scope: "Composer" },
 ];
 
 const KEY_LABELS: Readonly<Record<string, string>> = {

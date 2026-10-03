@@ -131,7 +131,7 @@ describe("contexto e uso da sessão", () => {
     assert.equal(Math.round(lastTurnSpeed(fold)?.tokensPerSecond ?? 0), 50);
     assert.deepEqual(Object.keys(turnSpeeds(fold)).sort(), ["t1", "t2"]);
     assert.equal(formatSpeed(42.4), "42 tok/s");
-    assert.equal(formatSpeed(7.25), "7.3 tok/s");
+    assert.equal(formatSpeed(7.25), "7,3 tok/s");
     assert.deepEqual([formatElapsed(42_000), formatElapsed(7 * 60_000), formatElapsed(67 * 60_000)], ["42s", "7min", "1h 7min"]);
   });
 
