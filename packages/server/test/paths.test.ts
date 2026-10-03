@@ -28,14 +28,19 @@ describe("typed paths", () => {
 
   it("lists folders for the picker, creates missing ones and refuses to clone into a full folder", async () => {
     const root = await mkdtemp(join(tmpdir(), "helicon-fs-"));
-    after(() => rm(root, { recursive: true, force: true }));
+    let server: HeliconServer | null = null;
+    // One hook, in order: the server lets go of the folder before it is removed.
+    after(async () => {
+      await server?.close();
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    });
     await mkdir(join(root, "beta"));
     await mkdir(join(root, "Alpha"));
     await mkdir(join(root, ".cache"));
     await writeFile(join(root, "notes.txt"), "");
     await writeFile(join(root, "beta", "README.md"), "");
 
-    const server = new HeliconServer({
+    server = new HeliconServer({
       port: 0,
       dataDir: ":memory:",
       platform: process.platform === "win32" ? "win32" : "linux",
@@ -47,7 +52,6 @@ describe("typed paths", () => {
       },
       opener: async () => {},
     });
-    after(() => server.close());
     const base = `http://127.0.0.1:${(await server.listen()).port}`;
 
     const listed = await request(base, `/api/fs/list?path=${encodeURIComponent("~/")}`);

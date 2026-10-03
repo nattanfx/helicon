@@ -90,6 +90,23 @@ function fakeFactory(connection: FakeConnection, probe?: FactoryProbe, init?: { 
   };
 }
 
+/** Windows briefly locks fresh temp dirs (scanner/indexer); retry so teardown never leaks them. */
+async function removeDir(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      if ((code === "EBUSY" || code === "ENOTEMPTY" || code === "EPERM") && attempt < 15) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 async function start(connection: FakeConnection, extra: Partial<ConstructorParameters<typeof HeliconServer>[0]> = {}) {
   const server = new HeliconServer({
     port: 0,
@@ -2072,12 +2089,20 @@ describe("HeliconServer", () => {
 });
 
 describe("file viewer", () => {
-  async function project() {
-    const { mkdtemp, mkdir, writeFile, symlink } = await import("node:fs/promises");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
+  type Cleanup = { after: (fn: () => Promise<void>) => void };
+
+  /** A project with files and, beside it, a folder outside it. Both go when the test ends. */
+  async function project(t: Cleanup) {
     const root = await mkdtemp(join(tmpdir(), "helicon-files-"));
     const outside = await mkdtemp(join(tmpdir(), "helicon-outside-"));
+    const connection = new FakeConnection();
+    const { server, base } = await start(connection, { platform: process.platform });
+    t.after(async () => {
+      // The server may still hold the project open; close it before removing the folders.
+      await server.close();
+      await removeDir(root);
+      await removeDir(outside);
+    });
     await mkdir(join(root, "docs"));
     await mkdir(join(root, "node_modules", "pkg"), { recursive: true });
     await writeFile(join(root, "README.md"), "# Title\n\nBody\n");
@@ -2088,17 +2113,36 @@ describe("file viewer", () => {
     await writeFile(join(root, "blob.bin"), Buffer.from([1, 0, 2, 0]));
     await writeFile(join(root, "node_modules", "pkg", "guide.md"), "vendored");
     await writeFile(join(outside, "secret.txt"), "secret");
-    await symlink(join(outside, "secret.txt"), join(root, "escape.txt"));
-    const connection = new FakeConnection();
-    const { base } = await start(connection, { platform: process.platform });
     const added = await send(base, "/api/projects", { cwd: root });
     const cwd = added.json.project.cwd as string;
     const q = (path: string) => `cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(path)}`;
-    return { base, root, cwd, q };
+    return { base, root, outside, cwd, q };
   }
 
-  it("lists folders first and reads text, markdown and media descriptions", async () => {
-    const { base, root, q } = await project();
+  /**
+   * A link inside the project to the secret outside it; returns its project-relative path. Windows
+   * without the symlink privilege refuses a file symlink (EPERM), so fall back to a directory
+   * junction, which needs no privilege and escapes the project the same way.
+   */
+  async function escapeLink(root: string, outside: string): Promise<string | null> {
+    try {
+      await symlink(join(outside, "secret.txt"), join(root, "escape.txt"));
+      return "escape.txt";
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EPERM" || process.platform !== "win32") {
+        throw error;
+      }
+    }
+    try {
+      await symlink(outside, join(root, "escape"), "junction");
+      return "escape/secret.txt";
+    } catch {
+      return null;
+    }
+  }
+
+  it("lists folders first and reads text, markdown and media descriptions", async (t) => {
+    const { base, root, q } = await project(t);
     const listing = await get(base, `/api/files/list?${q("")}`);
     assert.deepEqual(
       listing.entries.map((e: { name: string; kind: string }) => `${e.kind}:${e.name}`).slice(0, 2),
@@ -2120,11 +2164,16 @@ describe("file viewer", () => {
     assert.equal(binary.content, undefined);
   });
 
-  it("refuses paths outside the project, through .. or a symlink, and unknown projects", async () => {
-    const { base, q, cwd } = await project();
+  it("refuses paths outside the project, through .. or a symlink, and unknown projects", async (t) => {
+    const { base, root, outside, q, cwd } = await project(t);
     assert.equal((await fetch(`${base}/api/files/read?${q("../../etc/passwd")}`)).status, 403);
-    assert.equal((await fetch(`${base}/api/files/read?${q("escape.txt")}`)).status, 403, "a symlink out of the project is refused");
-    assert.equal((await fetch(`${base}/api/files/raw?${q("escape.txt")}`)).status, 403);
+    const escape = await escapeLink(root, outside);
+    if (escape === null) {
+      t.diagnostic("symlink e junção indisponíveis: a verificação do link foi pulada");
+    } else {
+      assert.equal((await fetch(`${base}/api/files/read?${q(escape)}`)).status, 403, "a symlink out of the project is refused");
+      assert.equal((await fetch(`${base}/api/files/raw?${q(escape)}`)).status, 403);
+    }
     const missing = await fetch(`${base}/api/files/read?${q("nope.md")}`);
     assert.equal(missing.status, 404);
     assert.equal(((await missing.json()) as { kind: string }).kind, "fileNotFound");
@@ -2138,8 +2187,8 @@ describe("file viewer", () => {
     assert.equal(write.status, 403);
   });
 
-  it("never serves a file as a page that can script this origin, and serves video in ranges", async () => {
-    const { base, q } = await project();
+  it("never serves a file as a page that can script this origin, and serves video in ranges", async (t) => {
+    const { base, q } = await project(t);
     const html = await fetch(`${base}/api/files/raw?${q("docs/page.html")}`);
     assert.equal(html.headers.get("content-type"), "text/plain; charset=utf-8");
     assert.match(html.headers.get("content-security-policy") ?? "", /sandbox/);
@@ -2156,10 +2205,9 @@ describe("file viewer", () => {
     assert.equal(await tail.text(), "789");
   });
 
-  it("saves an edit, and refuses one made against a file that changed on disk", async () => {
-    const { base, root, cwd, q } = await project();
-    const { writeFile, readFile, utimes } = await import("node:fs/promises");
-    const { join } = await import("node:path");
+  it("saves an edit, and refuses one made against a file that changed on disk", async (t) => {
+    const { base, root, cwd, q } = await project(t);
+    const { utimes } = await import("node:fs/promises");
     const opened = await get(base, `/api/files/read?${q("README.md")}`);
     const put = (content: string, baseMtimeMs: number | null) =>
       fetch(`${base}/api/files/write`, {
@@ -2181,8 +2229,8 @@ describe("file viewer", () => {
     assert.equal(await readFile(join(root, "README.md"), "utf8"), "# Agent\n");
   });
 
-  it("finds files by path words, skipping generated folders", async () => {
-    const { base, cwd } = await project();
+  it("finds files by path words, skipping generated folders", async (t) => {
+    const { base, cwd } = await project(t);
     const found = await get(base, `/api/files/search?cwd=${encodeURIComponent(cwd)}&q=guide`);
     assert.deepEqual(found.files.map((f: { path: string }) => f.path), ["docs/guide.md"], "node_modules is not searched");
   });
