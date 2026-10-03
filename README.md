@@ -97,19 +97,21 @@ npm run build --workspace @helicon/web
 
 # App web (interface compilada + API em :3127)
 npm run serve --workspace @helicon/web
-# abrir http://127.0.0.1:3127
+# abrir uma vez o link de entrada que o servidor imprime (http://127.0.0.1:3127/api/desktop-auth?key=…)
 ```
+
+Sem `--token`, o servidor cria uma credencial aleatória a cada início e imprime um link de entrada de uso único: abri-lo grava o cookie neste navegador. Outro processo do computador não usa a API sem esse cookie. Link já usado ou perdido: reinicie o servidor. `--no-auth` desliga a credencial; só vale em loopback e só para desenvolvimento, porque qualquer processo local passa a comandar o Muse por ele.
 
 Projetos, títulos e arquivo ficam em `~/.helicon/helicon.db` (passe `--data-dir` ao servidor, ou `:memory:` para uma execução descartável). Conversas iniciadas no terminal `muse` aparecem no projeto correspondente.
 
 Desenvolvimento da interface com recarga:
 
 ```bash
-# terminal 1: API contra o muse real
+# terminal 1: API contra o muse real; abrir uma vez o link de entrada impresso
 node packages/server/dist/src/cli.js --port 3127
 # terminal 2: Vite a partir do código de packages/ui
 npm run dev --workspace @helicon/web
-# abrir http://127.0.0.1:5173
+# abrir http://127.0.0.1:5173 (o cookie de 127.0.0.1 vale para as duas portas)
 ```
 
 A interface está em `packages/ui` (modelo em `src/model`, componentes em `src/components`); o sistema visual está em [docs/DESIGN.md](docs/DESIGN.md).
@@ -122,6 +124,8 @@ npm run dev --workspace helicon-desktop
 Publicar um instalador novo é decisão posterior, com tag e release **deste** repositório. Este fork **não** configura o plug-in de atualização do Tauri (`createUpdaterArtifacts` desligado; sem `latest.json`). Abrir o aplicativo não consulta atualizador.
 
 Daemon remoto, se precisar do modo web contra outra máquina: ver o README do Helicon original e os parâmetros `--host`, `--token`, `--allow-origin` e `--allow-host` do servidor. No desktop Windows deste fork a autenticação local é automática.
+
+**Modo YOLO** e **Desativar a sandbox** (Configurações → Segurança, ou o menu de permissões do composer) valem para um projeto por vez, sempre com confirmação. Todo projeto começa protegido, inclusive os adicionados, clonados ou removidos e adicionados de novo; só o servidor Muse do projeto alterado reinicia. A antiga chave geral não é levada a nenhum projeto na atualização.
 
 ## Aviso
 

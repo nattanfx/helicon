@@ -2,6 +2,7 @@ import {
   HeliconError,
   parseFailures,
   parseModelList,
+  parsePerProject,
   parseSandboxSettings,
   parseTitleSettings,
   parseYoloSettings,
@@ -316,20 +317,20 @@ export class WebHeliconClient implements HeliconClient {
     return parseTitleSettings(await call<unknown>("PATCH", "/api/title-settings", patch));
   }
 
-  async getSandboxSettings(): Promise<SandboxSettings> {
-    return parseSandboxSettings(await call<unknown>("GET", "/api/sandbox-settings"));
+  async getSandboxSettings(): Promise<Record<string, SandboxSettings>> {
+    return parsePerProject(await call<unknown>("GET", "/api/sandbox-settings"), parseSandboxSettings);
   }
 
-  async setSandboxSettings(patch: { disabled?: boolean }): Promise<SandboxSettings> {
-    return parseSandboxSettings(await call<unknown>("PATCH", "/api/sandbox-settings", patch));
+  async setSandboxSettings(cwd: string, patch: { disabled?: boolean }): Promise<SandboxSettings> {
+    return parseSandboxSettings(await call<unknown>("PATCH", "/api/sandbox-settings", { cwd, ...patch }));
   }
 
-  async getYoloSettings(): Promise<YoloSettings> {
-    return parseYoloSettings(await call<unknown>("GET", "/api/yolo-settings"));
+  async getYoloSettings(): Promise<Record<string, YoloSettings>> {
+    return parsePerProject(await call<unknown>("GET", "/api/yolo-settings"), parseYoloSettings);
   }
 
-  async setYoloSettings(patch: { enabled?: boolean }): Promise<YoloSettings> {
-    return parseYoloSettings(await call<unknown>("PATCH", "/api/yolo-settings", patch));
+  async setYoloSettings(cwd: string, patch: { enabled?: boolean }): Promise<YoloSettings> {
+    return parseYoloSettings(await call<unknown>("PATCH", "/api/yolo-settings", { cwd, ...patch }));
   }
 
   async restartHosts(): Promise<void> {

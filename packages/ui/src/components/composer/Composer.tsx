@@ -36,7 +36,7 @@ import { shallowEqual, useApp, useController } from "../../app/context.js";
 import { useSampled } from "../../app/sampled.js";
 import { basename, CONTRIBUTOR_LABEL, CONTRIBUTOR_NOTICE, emptyAttachmentWarning, formatDuration, formatSpeed, formatTokens, modelDisplayName } from "../../model/format.js";
 import { matchSlash, parseSlash, resolveSlash, slashCommands, type SlashCommand } from "../../model/slash.js";
-import type { SkillsState } from "../../model/store.js";
+import { yoloOn, type SkillsState } from "../../model/store.js";
 import { lastTurnSpeed, streamingSpeed } from "../../model/usage.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuOption, MenuRadioGroup, MenuSeparator, MenuTrigger, Modal, Tip, FLOATING } from "../ui/overlays.js";
@@ -503,7 +503,7 @@ export function Composer(props: ComposerProps) {
         <AttachButton onFiles={(picked) => addFiles(Array.from(picked))} disabled={props.readOnly || files.length >= MAX_FILES} />
         <ModelPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
         <EffortPicker side={props.variant === "home" ? "bottom" : "top"} />
-        <AccessPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
+        <AccessPicker sessionId={props.sessionId} cwd={props.cwd} side={props.variant === "home" ? "bottom" : "top"} />
         <span className="min-w-2 flex-1" />
         {props.sessionId ? <SpeedReadout sessionId={props.sessionId} /> : null}
         {props.sessionId ? <CostMeter sessionId={props.sessionId} /> : null}
@@ -780,7 +780,13 @@ export const MODES: { value: ApprovalMode; label: string; description: string; i
   },
 ];
 
-function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
+/** O texto da confirmação do YOLO, nomeando o projeto que ele vai afetar e deixando claro que os outros não mudam. */
+export function yoloConfirmText(cwd: string | null): string {
+  const where = cwd ? `o projeto ${basename(cwd)} (${cwd})` : "o projeto escolhido";
+  return `Como muse --yolo, só para ${where}: nada pede aprovação nas conversas dele, as novas conversas dele rodam sem confinamento da sandbox, e a pasta dele é confiável. Os outros projetos continuam protegidos. O servidor Muse deste projeto reinicia, interrompendo seus turnos, e as conversas já abertas mantêm a proteção de sandbox com que começaram. Isto fica ligado neste projeto até você desligar, mesmo depois de reiniciar o Helicon.`;
+}
+
+function AccessPicker(props: { sessionId: string | null; cwd: string | null; side: PickerSide }) {
   const controller = useController();
   const open = useApp((s) => s.picker === "permissions");
   // `/permissions full` abre a confirmação direto, então mora no estado do app, não aqui.
@@ -788,8 +794,10 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
   const bypass = useApp((s) => s.bypassAll);
   const confirmingBypass = useApp((s) => s.picker === "confirmBypass");
   const bypassId = useId();
-  const yolo = useApp((s) => s.yoloSettings?.enabled === true);
+  // O YOLO é do projeto desta conversa (ou da pasta onde a nova vai começar), nunca de todos.
+  const yolo = useApp((s) => yoloOn(s, props.cwd));
   const yoloLoaded = useApp((s) => s.yoloSettings !== null);
+  const project = props.cwd ? basename(props.cwd) : null;
   const confirmingYolo = useApp((s) => s.picker === "confirmYolo");
   const yoloId = useId();
   const preferred = useApp((s) => s.prefs.defaultMode);
@@ -815,15 +823,21 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
             <label htmlFor={yoloId} className="min-w-0 flex-1 cursor-default">
               <span className="flex items-center gap-1.5 text-sm text-fg">
                 <Zap size={14} className="text-warn-text" aria-hidden="true" />
-                Modo YOLO
+                <span className="truncate">{project ? `Modo YOLO em ${project}` : "Modo YOLO"}</span>
               </span>
-              <span className="block text-xs text-muted">Nada pergunta, novas conversas rodam sem sandbox. Reinicia os servidores Muse.</span>
+              <span className="block text-xs text-muted">
+                {project
+                  ? "Só neste projeto: nada pergunta, novas conversas rodam sem sandbox. Reinicia o servidor Muse dele."
+                  : "Escolha um projeto: o YOLO vale só para o projeto em que é ligado."}
+              </span>
             </label>
             <Switch.Root
               id={yoloId}
               checked={yolo}
-              disabled={!yoloLoaded}
-              onCheckedChange={(on) => (on ? controller.setPicker("confirmYolo") : void controller.setYoloEnabled(false))}
+              disabled={!yoloLoaded || !props.cwd}
+              onCheckedChange={(on) =>
+                on ? controller.setPicker("confirmYolo") : props.cwd ? void controller.setYoloEnabled(props.cwd, false) : undefined
+              }
               className="relative mt-0.5 inline-flex h-[18px] w-8 shrink-0 items-center rounded-full bg-line-strong outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 data-[state=checked]:bg-accent"
             >
               <Switch.Thumb className="block size-3.5 translate-x-0.5 rounded-full bg-white shadow-[0_1px_2px_oklch(0_0_0/0.3)] transition-transform duration-150 ease-out data-[state=checked]:translate-x-4" />
@@ -843,7 +857,7 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
               <MenuOption key={m.value} value={m.value} icon={m.icon} label={m.label} description={m.description} disabled={yolo} />
             ))}
           </MenuRadioGroup>
-          {yolo ? <p className="px-2 pt-1 text-xs text-subtle">O YOLO é dono do modo de cada conversa enquanto ligado. Desligue-o para escolher.</p> : null}
+          {yolo ? <p className="px-2 pt-1 text-xs text-subtle">O YOLO é dono do modo de cada conversa deste projeto enquanto ligado. Desligue-o para escolher.</p> : null}
           {/* O Muse pergunta sempre que não consegue resolver os argumentos de um comando, seja qual for o modo. Isto responde essas. */}
           <div className="mt-1 flex items-start gap-3 border-t border-line px-2 pt-2.5 pb-1">
             <label htmlFor={bypassId} className="min-w-0 flex-1 cursor-default">
@@ -865,7 +879,7 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
         open={confirming}
         onOpenChange={setConfirming}
         title="Dar acesso total ao Muse?"
-        description="Toda chamada de ferramenta, incluindo comandos e escrita de arquivos, vai executar sem perguntar antes. A sandbox do sistema continua confinando os shells, a menos que esta conversa tenha começado com a sandbox desligada, ou com o modo YOLO ligado, nas Configurações. Use isto só num ambiente descartável."
+        description="Toda chamada de ferramenta, incluindo comandos e escrita de arquivos, vai executar sem perguntar antes. A sandbox do sistema continua confinando os shells, a menos que esta conversa tenha começado com a sandbox desligada, ou com o modo YOLO ligado, no seu projeto. Use isto só num ambiente descartável."
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button
@@ -915,8 +929,8 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
       <Modal
         open={confirmingYolo}
         onOpenChange={(next) => (next ? controller.setPicker("confirmYolo") : controller.closePicker("confirmYolo"))}
-        title="Ligar o modo YOLO?"
-        description="Como muse --yolo: nada pede aprovação em nenhuma conversa, novas conversas rodam sem confinamento da sandbox, e os workspaces são confiáveis. Os servidores Muse em execução reiniciam, interrompendo seus turnos, e as conversas já abertas mantêm a proteção de sandbox com que começaram. Isto fica ligado até você desligar."
+        title={project ? `Ligar o modo YOLO em ${project}?` : "Ligar o modo YOLO?"}
+        description={yoloConfirmText(props.cwd)}
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => controller.closePicker("confirmYolo")}>
@@ -924,9 +938,12 @@ function AccessPicker(props: { sessionId: string | null; side: PickerSide }) {
           </Button>
           <Button
             variant="danger"
+            disabled={!props.cwd}
             onClick={() => {
               controller.closePicker("confirmYolo");
-              void controller.setYoloEnabled(true);
+              if (props.cwd) {
+                void controller.setYoloEnabled(props.cwd, true);
+              }
             }}
           >
             Ligar o YOLO

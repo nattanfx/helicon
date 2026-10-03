@@ -1,40 +1,79 @@
 import { useState } from "react";
 import { useApp, useController } from "../../app/context.js";
+import { basename } from "../../model/format.js";
+import { sandboxOff, yoloOn } from "../../model/store.js";
+import { yoloConfirmText } from "../composer/Composer.js";
 import { Button } from "../ui/primitives.js";
 import { Modal } from "../ui/overlays.js";
 import { Card, Row, Subhead, Toggle } from "./rows.js";
 
-/** Modo YOLO, sandbox e aprovações respondidas por você, numa página só. */
+/**
+ * Modo YOLO, sandbox e aprovações respondidas por você, numa página só. YOLO e sandbox são de um projeto por vez:
+ * a página abre no projeto de onde o usuário veio e diz qual é, e os outros projetos não mudam.
+ */
 export function Seguranca() {
+  const controller = useController();
+  const projects = useApp((s) => s.projects);
+  const [chosen, setChosen] = useState<string | null>(() => controller.postureCwd());
+  const cwd = chosen && projects.some((p) => p.cwd === chosen) ? chosen : (projects[0]?.cwd ?? null);
   return (
     <>
+      <Subhead>Projeto</Subhead>
+      <Card>
+        <Row
+          label="Projeto afetado"
+          description="O modo YOLO e a sandbox valem só para este projeto. Os outros continuam com a própria configuração, e todo projeto novo começa protegido."
+        >
+          {projects.length === 0 ? (
+            <p className="text-xs text-subtle">Nenhum projeto ainda</p>
+          ) : (
+            <select
+              aria-label="Projeto afetado"
+              value={cwd ?? ""}
+              onChange={(event) => setChosen(event.target.value)}
+              title={cwd ?? undefined}
+              className="h-7 max-w-[260px] min-w-0 truncate rounded-md border border-line bg-sunken px-2 text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {projects.map((project) => (
+                <option key={project.cwd} value={project.cwd}>
+                  {project.displayName}
+                </option>
+              ))}
+            </select>
+          )}
+        </Row>
+      </Card>
       <Subhead>Modo YOLO</Subhead>
-      <ModoYolo />
+      <ModoYolo cwd={cwd} />
       <Subhead>Sandbox</Subhead>
-      <Sandbox />
+      <Sandbox cwd={cwd} />
       <Subhead>Aprovações</Subhead>
       <Aprovacoes />
     </>
   );
 }
 
-/** Como muse --yolo: nada pede aprovação, sem confinamento nas novas conversas. Reinicia os servidores Muse na hora. */
-export function ModoYolo() {
+/** Como muse --yolo, só no projeto escolhido: nada pede aprovação, sem confinamento nas novas conversas. Reinicia o servidor Muse dele. */
+export function ModoYolo(props: { cwd: string | null }) {
   const controller = useController();
-  const yoloSettings = useApp((s) => s.yoloSettings);
+  const loaded = useApp((s) => s.yoloSettings !== null);
+  const enabled = useApp((s) => yoloOn(s, props.cwd));
   const [confirmYolo, setConfirmYolo] = useState(false);
+  const project = props.cwd ? basename(props.cwd) : null;
   return (
     <>
       <Card>
         <Row
-          label="Modo YOLO"
-          description="Como muse --yolo: nada pede aprovação em nenhuma conversa, novas conversas rodam sem confinamento da sandbox, e os workspaces são confiáveis. As conversas já abertas mantêm a proteção de sandbox com que começaram. Mudar isto reinicia os servidores Muse em execução, interrompendo seus turnos."
+          label={project ? `Modo YOLO em ${project}` : "Modo YOLO"}
+          description="Como muse --yolo, só neste projeto: nada pede aprovação nas conversas dele, as novas conversas dele rodam sem confinamento da sandbox, e a pasta dele é confiável. As conversas já abertas mantêm a proteção de sandbox com que começaram. Mudar isto reinicia o servidor Muse do projeto, interrompendo seus turnos."
         >
-          {yoloSettings ? (
+          {!props.cwd ? (
+            <p className="text-xs text-subtle">Adicione um projeto</p>
+          ) : loaded ? (
             <Toggle
-              checked={yoloSettings.enabled}
-              label="Modo YOLO"
-              onChange={(on) => (on ? setConfirmYolo(true) : void controller.setYoloEnabled(false))}
+              checked={enabled}
+              label={`Modo YOLO em ${project}`}
+              onChange={(on) => (on ? setConfirmYolo(true) : void controller.setYoloEnabled(props.cwd as string, false))}
             />
           ) : (
             <p className="text-xs text-subtle">Carregando…</p>
@@ -44,8 +83,8 @@ export function ModoYolo() {
       <Modal
         open={confirmYolo}
         onOpenChange={setConfirmYolo}
-        title="Ligar o modo YOLO?"
-        description="Como muse --yolo: nada pede aprovação em nenhuma conversa, novas conversas rodam sem confinamento da sandbox, e os workspaces são confiáveis. Os servidores Muse em execução reiniciam, interrompendo seus turnos, e as conversas já abertas mantêm a proteção de sandbox com que começaram. Isto fica ligado até você desligar."
+        title={project ? `Ligar o modo YOLO em ${project}?` : "Ligar o modo YOLO?"}
+        description={yoloConfirmText(props.cwd)}
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmYolo(false)}>
@@ -55,7 +94,9 @@ export function ModoYolo() {
             variant="danger"
             onClick={() => {
               setConfirmYolo(false);
-              void controller.setYoloEnabled(true);
+              if (props.cwd) {
+                void controller.setYoloEnabled(props.cwd, true);
+              }
             }}
           >
             Ligar o YOLO
@@ -66,29 +107,34 @@ export function ModoYolo() {
   );
 }
 
-/** Confinamento dos shells do Muse. Mudar reinicia os servidores Muse na hora. */
-export function Sandbox() {
+/** Confinamento dos shells do Muse no projeto escolhido. Mudar reinicia o servidor Muse dele na hora. */
+export function Sandbox(props: { cwd: string | null }) {
   const controller = useController();
-  const sandboxSettings = useApp((s) => s.sandboxSettings);
-  const yoloSettings = useApp((s) => s.yoloSettings);
+  const loaded = useApp((s) => s.sandboxSettings !== null);
+  const disabled = useApp((s) => sandboxOff(s, props.cwd));
+  const yolo = useApp((s) => yoloOn(s, props.cwd));
   const [confirmSandbox, setConfirmSandbox] = useState(false);
+  const project = props.cwd ? basename(props.cwd) : null;
+  const where = props.cwd ? `do projeto ${project} (${props.cwd})` : "deste projeto";
   return (
     <>
       <Card>
         <Row
-          label="Desativar a sandbox"
+          label={project ? `Desativar a sandbox em ${project}` : "Desativar a sandbox"}
           description={
-            yoloSettings?.enabled
-              ? "Desligada porque o modo YOLO está ligado: o YOLO já roda novas conversas sem confinamento da sandbox. Desligue o YOLO para controlar isto separadamente."
-              : "Os shells do Muse rodam isolados: acesso a arquivos e rede é confinado. Desligar isto remove o confinamento das novas conversas; as abertas mantêm a proteção com que começaram. Mudar isto reinicia os servidores Muse em execução, interrompendo seus turnos."
+            yolo
+              ? "Desligada porque o modo YOLO está ligado neste projeto: o YOLO já roda as novas conversas dele sem confinamento da sandbox. Desligue o YOLO do projeto para controlar isto separadamente."
+              : "Os shells do Muse rodam isolados: acesso a arquivos e rede é confinado. Desligar isto remove o confinamento das novas conversas deste projeto, e só dele; as abertas mantêm a proteção com que começaram. Mudar isto reinicia o servidor Muse do projeto, interrompendo seus turnos."
           }
         >
-          {sandboxSettings ? (
+          {!props.cwd ? (
+            <p className="text-xs text-subtle">Adicione um projeto</p>
+          ) : loaded ? (
             <Toggle
-              checked={sandboxSettings.disabled}
-              label="Desativar a sandbox"
-              disabled={yoloSettings?.enabled === true}
-              onChange={(on) => (on ? setConfirmSandbox(true) : void controller.setSandboxDisabled(false))}
+              checked={disabled}
+              label={`Desativar a sandbox em ${project}`}
+              disabled={yolo}
+              onChange={(on) => (on ? setConfirmSandbox(true) : void controller.setSandboxDisabled(props.cwd as string, false))}
             />
           ) : (
             <p className="text-xs text-subtle">Carregando…</p>
@@ -98,8 +144,8 @@ export function Sandbox() {
       <Modal
         open={confirmSandbox}
         onOpenChange={setConfirmSandbox}
-        title="Desativar a sandbox do Muse?"
-        description="Os shells das novas conversas vão rodar sem confinamento de arquivos ou rede, e os servidores Muse em execução reiniciam, interrompendo seus turnos. As conversas já abertas mantêm o confinamento atual. Só faça isto num ambiente descartável."
+        title={project ? `Desativar a sandbox do Muse em ${project}?` : "Desativar a sandbox do Muse?"}
+        description={`Os shells das novas conversas ${where} vão rodar sem confinamento de arquivos ou rede, e o servidor Muse dele reinicia, interrompendo seus turnos. Os outros projetos continuam protegidos, e as conversas já abertas mantêm o confinamento atual. Só faça isto num ambiente descartável.`}
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmSandbox(false)}>
@@ -109,7 +155,9 @@ export function Sandbox() {
             variant="danger"
             onClick={() => {
               setConfirmSandbox(false);
-              void controller.setSandboxDisabled(true);
+              if (props.cwd) {
+                void controller.setSandboxDisabled(props.cwd, true);
+              }
             }}
           >
             Desativar a sandbox

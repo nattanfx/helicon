@@ -39,7 +39,7 @@ jobs:
 
             Em relação à v0.12.4-pt4: credencial no servidor local; no máximo uma tentativa de título por conversa nova; navegação e silêncio de conversa; rótulos conhecidos em português; edição de Markdown recuperável sem gravar o original até salvar.
 
-            Não inclui sandbox, YOLO nem contas do original. Não há instalador de macOS.
+            Modo YOLO e sandbox desligada existem, mas só por projeto e com confirmação: todo projeto começa protegido e a antiga chave geral não é aplicada a nenhum. Não inclui as contas múltiplas do original. Não há instalador de macOS.
           releaseDraft: true
           prerelease: false
           retryAttempts: 3

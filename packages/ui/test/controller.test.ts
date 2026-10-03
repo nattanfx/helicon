@@ -7,6 +7,9 @@ import { ZOOM_MAX, ZOOM_MIN } from "../src/model/store.js";
 import type { ModelOption, SessionSummary, SkillEntry, TranscriptLoad, UsageBackfillStatus, UserInputRequest } from "../src/types.js";
 import { historyEvents } from "./fixtures/probe.js";
 
+/** O projeto das conversas de teste; YOLO e sandbox são de um projeto por vez. */
+const APP = "/work/app";
+
 const SESSION: SessionSummary = {
   sessionId: "s1",
   cwd: "/work/app",
@@ -172,15 +175,17 @@ class FakeClient implements HeliconClient {
     };
     return { ...this.titleSettings };
   }
-  sandboxSettings = { disabled: false };
+  sandboxSettings: Record<string, { disabled: boolean }> = {};
   sandboxError: Error | null = null;
   sandboxGate: Promise<void> | null = null;
   sandboxCalls: (boolean | undefined)[] = [];
+  sandboxCwds: string[] = [];
   async getSandboxSettings() {
-    return { ...this.sandboxSettings };
+    return structuredClone(this.sandboxSettings);
   }
-  async setSandboxSettings(patch: { disabled?: boolean }) {
+  async setSandboxSettings(cwd: string, patch: { disabled?: boolean }) {
     this.sandboxCalls.push(patch.disabled);
+    this.sandboxCwds.push(cwd);
     if (this.sandboxGate) {
       await this.sandboxGate;
     }
@@ -189,18 +194,20 @@ class FakeClient implements HeliconClient {
       this.sandboxError = null;
       throw error;
     }
-    this.sandboxSettings = { disabled: patch.disabled ?? this.sandboxSettings.disabled };
-    return { ...this.sandboxSettings };
+    this.sandboxSettings[cwd] = { disabled: patch.disabled ?? this.sandboxSettings[cwd]?.disabled ?? false };
+    return { ...this.sandboxSettings[cwd] };
   }
-  yoloSettings = { enabled: false };
+  yoloSettings: Record<string, { enabled: boolean }> = {};
   yoloError: Error | null = null;
   yoloGate: Promise<void> | null = null;
   yoloCalls: (boolean | undefined)[] = [];
+  yoloCwds: string[] = [];
   async getYoloSettings() {
-    return { ...this.yoloSettings };
+    return structuredClone(this.yoloSettings);
   }
-  async setYoloSettings(patch: { enabled?: boolean }) {
+  async setYoloSettings(cwd: string, patch: { enabled?: boolean }) {
     this.yoloCalls.push(patch.enabled);
+    this.yoloCwds.push(cwd);
     if (this.yoloGate) {
       await this.yoloGate;
     }
@@ -209,8 +216,8 @@ class FakeClient implements HeliconClient {
       this.yoloError = null;
       throw error;
     }
-    this.yoloSettings = { enabled: patch.enabled ?? this.yoloSettings.enabled };
-    return { ...this.yoloSettings };
+    this.yoloSettings[cwd] = { enabled: patch.enabled ?? this.yoloSettings[cwd]?.enabled ?? false };
+    return { ...this.yoloSettings[cwd] };
   }
   async setSessionModel() {}
   approvalModes: { sessionId: string; mode: string }[] = [];
@@ -422,16 +429,16 @@ describe("HeliconController", () => {
 
   it("loads the sandbox switch at boot and flips it with rollback", async () => {
     const client = new FakeClient();
-    client.sandboxSettings = { disabled: true };
+    client.sandboxSettings = { [APP]: { disabled: true } };
     const { controller, stop } = await started(client);
-    assert.deepEqual(controller.store.get().sandboxSettings, { disabled: true });
+    assert.deepEqual(controller.store.get().sandboxSettings?.[APP], { disabled: true });
 
-    await controller.setSandboxDisabled(false);
-    assert.deepEqual(controller.store.get().sandboxSettings, { disabled: false });
+    await controller.setSandboxDisabled(APP, false);
+    assert.deepEqual(controller.store.get().sandboxSettings?.[APP], { disabled: false });
 
     client.sandboxError = new Error("daemon away");
-    await controller.setSandboxDisabled(true);
-    assert.deepEqual(controller.store.get().sandboxSettings, { disabled: false }, "a failed flip rolls back");
+    await controller.setSandboxDisabled(APP, true);
+    assert.deepEqual(controller.store.get().sandboxSettings?.[APP], { disabled: false }, "a failed flip rolls back");
     assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Não foi possível alterar a configuração da sandbox/);
     stop();
   });
@@ -444,8 +451,8 @@ describe("HeliconController", () => {
       client.sandboxGate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const first = controller.setSandboxDisabled(true);
-      const second = controller.setSandboxDisabled(false);
+      const first = controller.setSandboxDisabled(APP, true);
+      const second = controller.setSandboxDisabled(APP, false);
       try {
         await new Promise((r) => setTimeout(r, 0));
         assert.deepEqual(client.sandboxCalls, [true], "the second PATCH waits for the first");
@@ -454,8 +461,8 @@ describe("HeliconController", () => {
       }
       await Promise.all([first, second]);
       assert.deepEqual(client.sandboxCalls, [true, false]);
-      assert.deepEqual(client.sandboxSettings, { disabled: false }, "the server ends at the latest flip");
-      assert.deepEqual(controller.store.get().sandboxSettings, { disabled: false });
+      assert.deepEqual(client.sandboxSettings[APP], { disabled: false }, "the server ends at the latest flip");
+      assert.deepEqual(controller.store.get().sandboxSettings?.[APP], { disabled: false });
     } finally {
       stop();
     }
@@ -502,21 +509,21 @@ describe("HeliconController", () => {
 
   it("loads the YOLO switch at boot and flips it with rollback", async () => {
     const client = new FakeClient();
-    client.yoloSettings = { enabled: true };
+    client.yoloSettings = { [APP]: { enabled: true } };
     const { controller, stop } = await started(client);
-    assert.deepEqual(controller.store.get().yoloSettings, { enabled: true });
+    assert.deepEqual(controller.store.get().yoloSettings?.[APP], { enabled: true });
     assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "allowAll", "boot under YOLO joins the open thread");
     assert.ok(
       client.approvalModes.some((p) => p.sessionId === "s1" && p.mode === "allowAll"),
       "the join is pushed to Muse",
     );
 
-    await controller.setYoloEnabled(false);
-    assert.deepEqual(controller.store.get().yoloSettings, { enabled: false });
+    await controller.setYoloEnabled(APP, false);
+    assert.deepEqual(controller.store.get().yoloSettings?.[APP], { enabled: false });
 
     client.yoloError = new Error("daemon away");
-    await controller.setYoloEnabled(true);
-    assert.deepEqual(controller.store.get().yoloSettings, { enabled: false }, "a failed flip rolls back");
+    await controller.setYoloEnabled(APP, true);
+    assert.deepEqual(controller.store.get().yoloSettings?.[APP], { enabled: false }, "a failed flip rolls back");
     assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /Não foi possível mudar o modo YOLO/);
     stop();
   });
@@ -529,8 +536,8 @@ describe("HeliconController", () => {
       client.yoloGate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const first = controller.setYoloEnabled(true);
-      const second = controller.setYoloEnabled(false);
+      const first = controller.setYoloEnabled(APP, true);
+      const second = controller.setYoloEnabled(APP, false);
       try {
         await new Promise((r) => setTimeout(r, 0));
         assert.deepEqual(client.yoloCalls, [true], "the second PATCH waits for the first");
@@ -539,8 +546,8 @@ describe("HeliconController", () => {
       }
       await Promise.all([first, second]);
       assert.deepEqual(client.yoloCalls, [true, false]);
-      assert.deepEqual(client.yoloSettings, { enabled: false }, "the server ends at the latest flip");
-      assert.deepEqual(controller.store.get().yoloSettings, { enabled: false });
+      assert.deepEqual(client.yoloSettings[APP], { enabled: false }, "the server ends at the latest flip");
+      assert.deepEqual(controller.store.get().yoloSettings?.[APP], { enabled: false });
     } finally {
       stop();
     }
@@ -553,16 +560,17 @@ describe("HeliconController", () => {
     controller.setPrefs({ defaultMode: "promptUnmatched" });
     assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "denyUnmatched");
 
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     const on = controller.store.get();
-    assert.equal(on.prefs.defaultMode, "allowAll");
+    assert.deepEqual(client.yoloCwds, [APP], "the switch names the open thread's project");
+    assert.equal(on.prefs.defaultMode, "promptUnmatched", "a project's YOLO never touches the default every project shares");
     assert.equal(on.threads["s1"]?.fold.meta.approvalMode, "allowAll");
     assert.deepEqual(client.approvalModes.at(-1), { sessionId: "s1", mode: "allowAll" });
     assert.equal(controller.bypassArmed("s1"), true);
 
-    await controller.setYoloEnabled(false);
+    await controller.setYoloEnabled(APP, false);
     const off = controller.store.get();
-    assert.equal(off.prefs.defaultMode, "promptUnmatched", "the default from before arming comes back");
+    assert.equal(off.prefs.defaultMode, "promptUnmatched", "the shared default stays where the user left it");
     assert.equal(off.threads["s1"]?.fold.meta.approvalMode, "denyUnmatched", "and so does the thread's own mode");
     assert.deepEqual(client.approvalModes.at(-1), { sessionId: "s1", mode: "denyUnmatched" });
     assert.equal(controller.bypassArmed("s1"), false);
@@ -574,13 +582,13 @@ describe("HeliconController", () => {
     const { controller, stop } = await started(client);
     await controller.setMode("denyUnmatched");
 
-    await controller.setYoloEnabled(false);
+    await controller.setYoloEnabled(APP, false);
     assert.deepEqual(client.yoloCalls, [], "no PATCH leaves for a no-op flip");
     assert.equal(controller.store.get().prefs.defaultMode, "denyUnmatched");
     assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "denyUnmatched");
 
-    await controller.setYoloEnabled(true);
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
+    await controller.setYoloEnabled(APP, true);
     assert.deepEqual(client.yoloCalls, [true], "the double-click enable PATCHes once");
     stop();
   });
@@ -588,7 +596,7 @@ describe("HeliconController", () => {
   it("refuses permission changes while YOLO is on", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     const pushes = client.approvalModes.length;
 
     await controller.setMode("onRequest");
@@ -601,9 +609,9 @@ describe("HeliconController", () => {
   it("refuses to change the sandbox switch while YOLO is on, with a toast", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
 
-    await controller.setSandboxDisabled(false);
+    await controller.setSandboxDisabled(APP, false);
     assert.deepEqual(client.sandboxCalls, [], "no PATCH leaves while YOLO owns the sandbox posture");
     assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /O modo YOLO está ligado/);
     stop();
@@ -612,7 +620,7 @@ describe("HeliconController", () => {
   it("joins a thread opened under YOLO to full access", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client, "#/");
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     await controller.loadThread("s1");
     assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "allowAll");
     assert.deepEqual(client.approvalModes.at(-1), { sessionId: "s1", mode: "allowAll" });
@@ -631,7 +639,7 @@ describe("HeliconController", () => {
       },
     });
     controller.setPrefs({ notifications: true });
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     client.handler?.({
       type: "session-status",
       sessionId: "s1",
@@ -667,7 +675,7 @@ describe("HeliconController", () => {
     client.yoloGate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const flip = controller.setYoloEnabled(true);
+    const flip = controller.setYoloEnabled(APP, true);
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(client.approvalModes.length, 0, "no mode push leaves before the PATCH resolves");
     assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "onRequest", "the thread's own mode is untouched until then");
@@ -683,8 +691,8 @@ describe("HeliconController", () => {
     await controller.setMode("denyUnmatched");
     const pushes = client.approvalModes.length;
     client.yoloError = new Error("daemon away");
-    await controller.setYoloEnabled(true);
-    assert.deepEqual(controller.store.get().yoloSettings, { enabled: false });
+    await controller.setYoloEnabled(APP, true);
+    assert.equal(controller.store.get().yoloSettings?.[APP]?.enabled ?? false, false, "the project falls back to protected");
     assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "denyUnmatched", "the thread's mode never moved");
     assert.equal(client.approvalModes.length, pushes, "no mode push leaves for a flip that never landed");
     stop();
@@ -717,9 +725,9 @@ describe("HeliconController", () => {
 
     await controller.setMode("denyUnmatched");
     client.yoloError = new Error("daemon away");
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     await settle();
-    assert.deepEqual(controller.store.get().yoloSettings, { enabled: false });
+    assert.equal(controller.store.get().yoloSettings?.[APP]?.enabled ?? false, false);
     assert.equal(
       (saved as { preYolo: unknown } | null)?.preYolo ?? null,
       null,
@@ -729,11 +737,11 @@ describe("HeliconController", () => {
     // A different mode than the failed attempt saw, so a stale snapshot from that attempt would
     // be caught by this asserting the wrong value instead of passing by coincidence.
     await controller.setMode("promptUnmatched");
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     await settle();
-    assert.deepEqual(controller.store.get().yoloSettings, { enabled: true });
+    assert.deepEqual(controller.store.get().yoloSettings?.[APP], { enabled: true });
     assert.equal(
-      (saved as { preYolo: { defaultMode: string } | null } | null)?.preYolo?.defaultMode,
+      (saved as { preYolo: { threads: Record<string, string> } | null } | null)?.preYolo?.threads["s1"],
       "promptUnmatched",
       "a following successful enable captures a fresh snapshot",
     );
@@ -745,7 +753,7 @@ describe("HeliconController", () => {
     const client = new FakeClient();
     // Boot converges the open thread through convergeThread, not applyYoloApprovals, so the default
     // mode itself is left exactly as it starts: the case a new thread must not trust.
-    client.yoloSettings = { enabled: true };
+    client.yoloSettings = { [APP]: { enabled: true } };
     const { controller, stop } = await started(client, "");
     assert.equal(controller.store.get().prefs.defaultMode, "onRequest");
     controller.newThread();
@@ -757,19 +765,19 @@ describe("HeliconController", () => {
 
   it("reloads YOLO and sandbox settings after hosts restart, and restores this client when YOLO went off elsewhere", async () => {
     const client = new FakeClient();
-    client.yoloSettings = { enabled: true };
+    client.yoloSettings = { [APP]: { enabled: true } };
     const { controller, stop } = await started(client);
     assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "allowAll", "boot under YOLO joins the open thread");
 
     // Another client turned YOLO off and the sandbox on; this one never called setYoloEnabled itself,
     // so a restart is the only way it learns either happened.
-    client.yoloSettings = { enabled: false };
-    client.sandboxSettings = { disabled: true };
+    client.yoloSettings = { [APP]: { enabled: false } };
+    client.sandboxSettings = { [APP]: { disabled: true } };
     client.handler?.({ type: "host", key: "k", state: "restarted", message: "The Muse host restarted." });
     await settle();
 
-    assert.deepEqual(controller.store.get().yoloSettings, { enabled: false });
-    assert.deepEqual(controller.store.get().sandboxSettings, { disabled: true });
+    assert.deepEqual(controller.store.get().yoloSettings?.[APP], { enabled: false });
+    assert.deepEqual(controller.store.get().sandboxSettings?.[APP], { disabled: true });
     assert.equal(
       controller.store.get().threads["s1"]?.fold.meta.approvalMode,
       "onRequest",
@@ -803,7 +811,7 @@ describe("HeliconController", () => {
     await settle();
     await settle();
     await first.setMode("denyUnmatched");
-    await first.setYoloEnabled(true);
+    await first.setYoloEnabled(APP, true);
     await settle();
     stopFirst();
 
@@ -811,18 +819,66 @@ describe("HeliconController", () => {
     const stopSecond = second.start();
     await settle();
     await settle();
-    await second.setYoloEnabled(false);
-    assert.equal(second.store.get().prefs.defaultMode, "denyUnmatched", "the real default survives the reload");
+    await second.setYoloEnabled(APP, false);
+    assert.equal(second.store.get().prefs.defaultMode, "denyUnmatched", "the real default was never touched");
     assert.equal(second.store.get().threads["s1"]?.fold.meta.approvalMode, "denyUnmatched", "and so does the thread's own mode");
     stopSecond();
+  });
+
+  it("keeps YOLO to its own project: threads elsewhere keep asking and new ones there start from the default", async () => {
+    const client = new FakeClient();
+    client.yoloSettings = { "/work/other": { enabled: true } };
+    const { controller, stop } = await started(client);
+    assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "onRequest", "a thread in another project is left alone");
+    assert.equal(controller.bypassArmed("s1"), false);
+    assert.equal(client.approvalModes.length, 0);
+
+    controller.navigate({ kind: "new", cwd: APP });
+    await controller.send("hello");
+    assert.equal(client.startCalls.at(-1)?.approvalMode, "onRequest", "a protected project's new thread asks");
+
+    // From the open thread, settings show the posture of that thread's project.
+    controller.navigate({ kind: "thread", sessionId: "s1" });
+    controller.navigate({ kind: "settings" });
+    assert.equal(controller.postureCwd(), APP);
+
+    await controller.setSandboxDisabled(APP, true);
+    assert.deepEqual(client.sandboxCwds, [APP]);
+    assert.deepEqual(controller.store.get().sandboxSettings, { [APP]: { disabled: true } });
+    stop();
+  });
+
+  it("restores the default and the threads an old global YOLO snapshot left behind", async () => {
+    const client = new FakeClient();
+    let saved: unknown = {
+      defaultMode: "allowAll",
+      preYolo: { defaultMode: "denyUnmatched", threads: { s1: "promptUnmatched" } },
+    };
+    const shared: Platform & { hash: string } = {
+      ...platform("#/t/s1"),
+      loadPrefs: () => saved,
+      savePrefs: (prefs) => {
+        saved = prefs;
+      },
+    };
+    const controller = new HeliconController(client, shared);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    const state = controller.store.get();
+    assert.equal(state.prefs.defaultMode, "denyUnmatched", "the old YOLO's forced full-access default is undone");
+    assert.equal(state.threads["s1"]?.fold.meta.approvalMode, "promptUnmatched", "the thread goes back to its own mode");
+    assert.deepEqual(client.approvalModes.at(-1), { sessionId: "s1", mode: "promptUnmatched" });
+    assert.equal(state.prefs.preYolo, null, "nothing is left waiting to be restored");
+    stop();
   });
 
   it("keeps the failed-thread toast singular for exactly one thread", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     client.approvalModeFailFor = new Set(["s1"]);
-    await controller.setYoloEnabled(false);
+    await controller.setYoloEnabled(APP, false);
     // The mode push is fire-and-forget from setYoloEnabled's own promise, so the toast it ends in
     // lands a tick later than the flip itself.
     await flushMicrotasks();
@@ -834,9 +890,9 @@ describe("HeliconController", () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
     await controller.loadThread("s2");
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     client.approvalModeFailFor = new Set(["s1", "s2"]);
-    await controller.setYoloEnabled(false);
+    await controller.setYoloEnabled(APP, false);
     await flushMicrotasks();
     assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /^2 conversas continuam com acesso total\.$/);
     stop();
@@ -845,7 +901,7 @@ describe("HeliconController", () => {
   it("refuses /permissions full while YOLO is on, without opening the confirm dialog", async () => {
     const client = new FakeClient();
     const { controller, stop } = await started(client);
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     await controller.send("/permissions full");
     assert.equal(controller.store.get().picker, null, "the confirm dialog never opens");
     assert.match(controller.store.get().toasts.at(-1)?.title ?? "", /O YOLO está ligado/);
@@ -864,7 +920,7 @@ describe("HeliconController", () => {
       },
     });
     controller.setPrefs({ notifications: true });
-    await controller.setYoloEnabled(true);
+    await controller.setYoloEnabled(APP, true);
     // A rule-only choice gives autoAllow nothing to click, so it stays pending for the user.
     client.handler?.({
       type: "msp",

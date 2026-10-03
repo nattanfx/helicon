@@ -41,9 +41,17 @@ Estas mudanças estão no commit \`6306632\`, aprovado no CI 94 e no Windows Tes
 - Leituras idênticas de uso do plano não repetem o evento para a interface. Leituras alteradas com o mesmo timestamp continuam sendo entregues; não há redução das consultas ou do consumo do Muse.
 - A instrução dos títulos automáticos pede português brasileiro e preservação de nomes próprios e termos técnicos. O limite de uma tentativa e a proteção dos títulos antigos permanecem.
 
+## Segurança de execução por projeto
+
+Mudança posterior ao build Teste já gerado, ainda sem build próprio.
+
+- **Modo YOLO** e **Desativar a sandbox** existem e valem só para um projeto por vez. As Configurações e o menu de permissões dizem qual projeto vai mudar, e ligar qualquer um deles pede confirmação. Só o servidor Muse daquele projeto reinicia.
+- Todo projeto começa protegido, inclusive os adicionados, clonados ou removidos e adicionados de novo. A antiga chave geral não é aplicada a nenhum projeto ao atualizar: quem usava YOLO ou sandbox desligada liga de novo no projeto desejado.
+- Pelo terminal, o servidor sem \`--token\` cria uma credencial aleatória e imprime um link de entrada de uso único. \`--no-auth\` desliga isso, só em loopback e só para desenvolvimento.
+
 ## O que este pacote não inclui
 
-Opção de desativar o sandbox, modo YOLO e gerenciamento de múltiplas contas do original. Instalador de macOS ou Linux. Atualização automática e \`latest.json\`.
+Gerenciamento de múltiplas contas do original. Instalador de macOS ou Linux. Atualização automática e \`latest.json\`.
 
 ## Antes de instalar por cima da pt4
 

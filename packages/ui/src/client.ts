@@ -120,10 +120,14 @@ export interface HeliconClient {
   listModels(sessionId?: string): Promise<ModelOption[]>;
   getTitleSettings(): Promise<TitleSettings>;
   setTitleSettings(patch: { enabled?: boolean; modelId?: string | null }): Promise<TitleSettings>;
-  getSandboxSettings(): Promise<SandboxSettings>;
-  setSandboxSettings(patch: { disabled?: boolean }): Promise<SandboxSettings>;
-  getYoloSettings(): Promise<YoloSettings>;
-  setYoloSettings(patch: { enabled?: boolean }): Promise<YoloSettings>;
+  /** A sandbox de cada projeto, por pasta; um projeto ausente está protegido. */
+  getSandboxSettings(): Promise<Record<string, SandboxSettings>>;
+  /** Muda só o projeto em `cwd`; só o servidor Muse dele reinicia. */
+  setSandboxSettings(cwd: string, patch: { disabled?: boolean }): Promise<SandboxSettings>;
+  /** O YOLO de cada projeto, por pasta; um projeto ausente está sem YOLO. */
+  getYoloSettings(): Promise<Record<string, YoloSettings>>;
+  /** Muda só o projeto em `cwd`; só o servidor Muse dele reinicia. */
+  setYoloSettings(cwd: string, patch: { enabled?: boolean }): Promise<YoloSettings>;
   /** Reinicia os servidores Muse em execução; turnos em andamento são interrompidos. */
   restartHosts(): Promise<void>;
   setSessionModel(sessionId: string, modelId: string): Promise<void>;
@@ -198,6 +202,19 @@ export function parseYoloSettings(value: unknown): YoloSettings {
   return {
     enabled: r["enabled"] === true,
   };
+}
+
+/** A lista `{ projects: [{ cwd, ... }] }` do servidor como mapa por pasta; entradas inválidas ficam de fora (protegidas). */
+export function parsePerProject<T>(value: unknown, parse: (entry: unknown) => T): Record<string, T> {
+  const r = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const out: Record<string, T> = {};
+  for (const entry of Array.isArray(r["projects"]) ? r["projects"] : []) {
+    const cwd = entry && typeof entry === "object" ? (entry as Record<string, unknown>)["cwd"] : null;
+    if (typeof cwd === "string" && cwd) {
+      out[cwd] = parse(entry);
+    }
+  }
+  return out;
 }
 
 /** Interpreta um resultado bruto de `model/list` em opções do seletor. */

@@ -1,6 +1,6 @@
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -118,6 +118,11 @@ async function send(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: res.status, json: await res.json() };
+}
+
+/** Registers a project without starting anything, so a posture switch has a project to name. */
+async function addProject(base: string, cwd: string): Promise<void> {
+  assert.equal((await send(base, "/api/projects/pin", { cwd, pinned: false }, "PATCH")).status, 200);
 }
 
 async function get(base: string, path: string): Promise<any> {
@@ -1288,19 +1293,26 @@ describe("HeliconServer", () => {
     assert.deepEqual(await get(base, "/api/title-settings"), { enabled: true, modelId: "m1" }, "a rejected patch changes nothing");
   });
 
-  it("keeps sandbox settings behind a boolean switch, defaulting to sandbox-on", async () => {
+  it("keeps sandbox settings per project behind a boolean switch, defaulting to sandbox-on", async () => {
     const connection = new FakeConnection();
     const { base } = await start(connection);
-    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: false });
+    await addProject(base, "/work/a");
+    await addProject(base, "/work/b");
+    assert.deepEqual(await get(base, "/api/sandbox-settings?cwd=/work/a"), { cwd: "/work/a", disabled: false });
 
-    const patched = await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    const patched = await send(base, "/api/sandbox-settings", { cwd: "/work/a", disabled: true }, "PATCH");
     assert.equal(patched.status, 200);
-    assert.deepEqual(patched.json, { disabled: true });
-    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: true });
+    assert.deepEqual(patched.json, { cwd: "/work/a", disabled: true });
+    assert.deepEqual(await get(base, "/api/sandbox-settings?cwd=/work/a"), { cwd: "/work/a", disabled: true });
+    assert.deepEqual(await get(base, "/api/sandbox-settings?cwd=/work/b"), { cwd: "/work/b", disabled: false }, "another project stays protected");
+    const all = (await get(base, "/api/sandbox-settings")).projects as { cwd: string; disabled: boolean }[];
+    assert.deepEqual(all.sort((x, y) => x.cwd.localeCompare(y.cwd)), [{ cwd: "/work/a", disabled: true }, { cwd: "/work/b", disabled: false }]);
 
-    const bad = await send(base, "/api/sandbox-settings", { disabled: "yes" }, "PATCH");
+    const bad = await send(base, "/api/sandbox-settings", { cwd: "/work/a", disabled: "yes" }, "PATCH");
     assert.equal(bad.status, 400);
-    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: true }, "a rejected patch changes nothing");
+    assert.deepEqual(await get(base, "/api/sandbox-settings?cwd=/work/a"), { cwd: "/work/a", disabled: true }, "a rejected patch changes nothing");
+    assert.equal((await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH")).status, 400, "a switch must name its project");
+    assert.equal((await send(base, "/api/sandbox-settings", { cwd: "/work/unknown", disabled: true }, "PATCH")).status, 404);
   });
 
   it("spawns hosts with --disable-sandbox, restarting them when the switch flips", async () => {
@@ -1323,7 +1335,7 @@ describe("HeliconServer", () => {
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(probe.targets.map((t) => t.args), [["serve"]]);
 
-    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: true }, "PATCH");
     await waitFor(() => closes === 1, "the live host closing");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(
@@ -1332,7 +1344,7 @@ describe("HeliconServer", () => {
       "the respawned host carries the new posture",
     );
 
-    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: true }, "PATCH");
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(closes, 1, "an unchanged switch restarts nothing");
   });
@@ -1366,8 +1378,8 @@ describe("HeliconServer", () => {
       [["serve"], ["serve"]],
       "the respawned host keeps its posture",
     );
-    assert.deepEqual(await get(base, "/api/sandbox-settings"), { disabled: false });
-    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: false });
+    assert.deepEqual(await get(base, "/api/sandbox-settings?cwd=/work/proj"), { cwd: "/work/proj", disabled: false });
+    assert.deepEqual(await get(base, "/api/yolo-settings?cwd=/work/proj"), { cwd: "/work/proj", enabled: false });
   });
   it("records failed turns with the usage seen at the time", async () => {
     const connection = new FakeConnection();
@@ -1598,11 +1610,12 @@ describe("HeliconServer", () => {
     };
     const { base } = await start(connection, { hostFactory: counting });
 
-    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await addProject(base, "/work/proj");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: true }, "PATCH");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox"]]);
 
-    await send(base, "/api/sandbox-settings", { disabled: false }, "PATCH");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: false }, "PATCH");
     await waitFor(() => closes === 1, "the live host closing");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(
@@ -1621,7 +1634,8 @@ describe("HeliconServer", () => {
     const plain = await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.equal(plain.json.session.sandboxDisabled, false);
 
-    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await addProject(base, "/work/other");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/other", disabled: true }, "PATCH");
     const lifted = await send(base, "/api/sessions", { cwd: "/work/other" });
     assert.equal(lifted.json.session.sandboxDisabled, true, "a session records its creating host's flags");
 
@@ -1663,11 +1677,12 @@ describe("HeliconServer", () => {
     };
     const { base } = await start(connection, { hostFactory: counting });
 
-    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await addProject(base, "/work/proj");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: true }, "PATCH");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox"]]);
 
-    await send(base, "/api/sandbox-settings", { disabled: false }, "PATCH");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: false }, "PATCH");
     const pending = send(base, "/api/sessions", { cwd: "/work/proj" });
     try {
       const raced = await Promise.race([pending.then((r) => r), new Promise((r) => setTimeout(() => r("waiting"), 50))]);
@@ -1681,19 +1696,73 @@ describe("HeliconServer", () => {
     assert.equal(created.json.session.sandboxDisabled, false, "the session lands on the new posture's host");
   });
 
-  it("keeps YOLO settings behind a boolean switch, defaulting to off", async () => {
+  it("keeps YOLO settings per project behind a boolean switch, defaulting to off", async () => {
     const connection = new FakeConnection();
     const { base } = await start(connection);
-    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: false });
+    await addProject(base, "/work/a");
+    await addProject(base, "/work/b");
+    assert.deepEqual(await get(base, "/api/yolo-settings?cwd=/work/a"), { cwd: "/work/a", enabled: false });
 
-    const patched = await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    const patched = await send(base, "/api/yolo-settings", { cwd: "/work/a", enabled: true }, "PATCH");
     assert.equal(patched.status, 200);
-    assert.deepEqual(patched.json, { enabled: true });
-    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: true });
+    assert.deepEqual(patched.json, { cwd: "/work/a", enabled: true });
+    assert.deepEqual(await get(base, "/api/yolo-settings?cwd=/work/a"), { cwd: "/work/a", enabled: true });
+    assert.deepEqual(await get(base, "/api/yolo-settings?cwd=/work/b"), { cwd: "/work/b", enabled: false }, "another project keeps asking");
 
-    const bad = await send(base, "/api/yolo-settings", { enabled: "yes" }, "PATCH");
+    const bad = await send(base, "/api/yolo-settings", { cwd: "/work/a", enabled: "yes" }, "PATCH");
     assert.equal(bad.status, 400);
-    assert.deepEqual(await get(base, "/api/yolo-settings"), { enabled: true }, "a rejected patch changes nothing");
+    assert.deepEqual(await get(base, "/api/yolo-settings?cwd=/work/a"), { cwd: "/work/a", enabled: true }, "a rejected patch changes nothing");
+    assert.equal((await send(base, "/api/yolo-settings", { enabled: true }, "PATCH")).status, 400, "a switch must name its project");
+    assert.equal((await send(base, "/api/yolo-settings", { cwd: "/work/unknown", enabled: true }, "PATCH")).status, 404);
+
+    // A project added later, and one removed and added back, start protected.
+    await addProject(base, "/work/c");
+    assert.deepEqual(await get(base, "/api/yolo-settings?cwd=/work/c"), { cwd: "/work/c", enabled: false });
+    assert.equal((await fetch(`${base}/api/projects?cwd=${encodeURIComponent("/work/a")}`, { method: "DELETE" })).status, 200);
+    await addProject(base, "/work/a");
+    assert.deepEqual(await get(base, "/api/yolo-settings?cwd=/work/a"), { cwd: "/work/a", enabled: false });
+  });
+
+  it("restarts and reconfigures only the host of the project whose posture changed", async () => {
+    const connection = new FakeConnection();
+    let started = 0;
+    connection.replies.set("session/start", () => ({ session: { sessionId: `s${(started += 1)}` } }));
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    const closed: string[] = [];
+    const inner = fakeFactory(connection, probe);
+    const counting = (target: ServeTarget): HostHandle => {
+      const handle = inner(target);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        closed.push(target.cwd);
+        return close();
+      };
+      return handle;
+    };
+    const { base } = await start(connection, { hostFactory: counting });
+
+    await send(base, "/api/sessions", { cwd: "/work/a" });
+    await send(base, "/api/sessions", { cwd: "/work/b" });
+    assert.deepEqual(probe.targets.map((t) => t.args), [["serve"], ["serve"]]);
+
+    await send(base, "/api/yolo-settings", { cwd: "/work/a", enabled: true }, "PATCH");
+    await waitFor(() => closed.length === 1, "project a's host closing");
+    await new Promise((r) => setTimeout(r, 30));
+    assert.deepEqual(closed, ["/work/a"], "project b's host keeps running");
+
+    const a = await send(base, "/api/sessions", { cwd: "/work/a" });
+    const b = await send(base, "/api/sessions", { cwd: "/work/b" });
+    assert.equal(a.json.session.sandboxDisabled, true, "project a's new thread runs without the sandbox");
+    assert.equal(b.json.session.sandboxDisabled, false, "project b's new thread stays protected");
+    assert.deepEqual(
+      probe.targets.map((t) => [t.cwd, t.args]),
+      [
+        ["/work/a", ["serve"]],
+        ["/work/b", ["serve"]],
+        ["/work/a", ["serve", "--disable-sandbox", "--trust-workspace"]],
+      ],
+      "only project a respawned, with its own flags",
+    );
   });
 
   it("spawns hosts with the YOLO flags, restarting them when the switch flips", async () => {
@@ -1716,7 +1785,7 @@ describe("HeliconServer", () => {
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(probe.targets.map((t) => t.args), [["serve"]]);
 
-    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await send(base, "/api/yolo-settings", { cwd: "/work/proj", enabled: true }, "PATCH");
     await waitFor(() => closes === 1, "the live host closing");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(
@@ -1725,7 +1794,7 @@ describe("HeliconServer", () => {
       "the respawned host carries the new posture",
     );
 
-    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await send(base, "/api/yolo-settings", { cwd: "/work/proj", enabled: true }, "PATCH");
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(closes, 1, "an unchanged switch restarts nothing");
   });
@@ -1747,11 +1816,12 @@ describe("HeliconServer", () => {
     };
     const { base } = await start(connection, { hostFactory: counting });
 
-    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await addProject(base, "/work/proj");
+    await send(base, "/api/yolo-settings", { cwd: "/work/proj", enabled: true }, "PATCH");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox", "--trust-workspace"]]);
 
-    await send(base, "/api/yolo-settings", { enabled: false }, "PATCH");
+    await send(base, "/api/yolo-settings", { cwd: "/work/proj", enabled: false }, "PATCH");
     await waitFor(() => closes === 1, "the live host closing");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(
@@ -1770,8 +1840,9 @@ describe("HeliconServer", () => {
     const probe: FactoryProbe = { targets: [], exits: [] };
     const { base } = await start(connection, { hostFactory: fakeFactory(connection, probe) });
 
-    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
-    await send(base, "/api/yolo-settings", { enabled: true }, "PATCH");
+    await addProject(base, "/work/proj");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: true }, "PATCH");
+    await send(base, "/api/yolo-settings", { cwd: "/work/proj", enabled: true }, "PATCH");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(probe.targets.map((t) => t.args), [["serve", "--disable-sandbox", "--trust-workspace"]]);
   });
@@ -2332,6 +2403,92 @@ describe("slash commands, skills and shell", () => {
     assert.equal(empty.status, 400, "a message with neither text nor a file is refused");
   });
 
+  it("serves attachments with a locked-down type: known images inline, anything else as a download", async (t) => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("turn/start", { turnId: "t1", status: "accepted", disposition: "started" });
+    const { base } = await start(connection);
+    const dir = await mkdtemp(join(tmpdir(), "helicon-attach-type-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    await send(base, "/api/sessions", { cwd: dir });
+    const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+    const html = Buffer.from("<script>alert(document.cookie)</script>").toString("base64");
+    const sent = await send(base, "/api/turns", {
+      sessionId: "s1",
+      text: "look",
+      attachments: [
+        { name: "shot.png", mediaType: "image/png", base64: png },
+        { name: "page.html", mediaType: "text/html", base64: html },
+        { name: "logo.svg", mediaType: "image/svg+xml", base64: html },
+      ],
+    });
+    assert.equal(sent.status, 200);
+    const [image, page, svg] = sent.json.attachments as { url: string }[];
+
+    const shown = await fetch(`${base}${image?.url}`);
+    assert.equal(shown.headers.get("content-type"), "image/png");
+    assert.equal(shown.headers.get("x-content-type-options"), "nosniff");
+    assert.match(shown.headers.get("content-security-policy") ?? "", /sandbox/);
+    assert.equal(shown.headers.get("content-disposition"), "inline");
+
+    for (const file of [page, svg]) {
+      const served = await fetch(`${base}${file?.url}`);
+      assert.equal(served.headers.get("content-type"), "application/octet-stream", "the client's type never decides how a page renders");
+      assert.equal(served.headers.get("x-content-type-options"), "nosniff");
+      assert.match(served.headers.get("content-security-policy") ?? "", /sandbox/);
+      assert.match(served.headers.get("content-disposition") ?? "", /^attachment; filename="/);
+      await served.arrayBuffer();
+    }
+  });
+
+  it("refuses to write attachments through a linked .helicon folder", async (t) => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("turn/start", { turnId: "t1", status: "accepted", disposition: "started" });
+    const { base } = await start(connection);
+    const dir = await mkdtemp(join(tmpdir(), "helicon-attach-link-"));
+    const outside = await mkdtemp(join(tmpdir(), "helicon-attach-outside-"));
+    t.after(async () => {
+      await rm(dir, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    });
+    try {
+      await symlink(outside, join(dir, ".helicon"), process.platform === "win32" ? "junction" : "dir");
+    } catch (error) {
+      t.skip(`cannot create a directory link here: ${(error as NodeJS.ErrnoException).code}`);
+      return;
+    }
+    await send(base, "/api/sessions", { cwd: dir });
+    const sent = await send(base, "/api/turns", {
+      sessionId: "s1",
+      text: "here",
+      attachments: [{ name: "notes.txt", mediaType: "text/plain", base64: Buffer.from("hi").toString("base64") }],
+    });
+    assert.equal(sent.status, 400);
+    assert.deepEqual(await readdir(outside), [], "nothing lands outside the workspace");
+    assert.equal(connection.calls.some((c) => c.method === "turn/start"), false, "the turn never starts");
+  });
+
+  it("creates attachment files fresh, picking a new name instead of writing through an existing one", async (t) => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("turn/start", { turnId: "t1", status: "accepted", disposition: "started" });
+    const { base } = await start(connection);
+    const dir = await mkdtemp(join(tmpdir(), "helicon-attach-fresh-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    await mkdir(join(dir, ".helicon", "attachments"), { recursive: true });
+    await writeFile(join(dir, ".helicon", "attachments", "notes.txt"), "keep me");
+    await send(base, "/api/sessions", { cwd: dir });
+    const sent = await send(base, "/api/turns", {
+      sessionId: "s1",
+      text: "here",
+      attachments: [{ name: "notes.txt", mediaType: "text/plain", base64: Buffer.from("new").toString("base64") }],
+    });
+    assert.equal(sent.status, 200);
+    assert.equal(await readFile(join(dir, ".helicon", "attachments", "notes.txt"), "utf8"), "keep me");
+    assert.equal(await readFile(join(dir, ".helicon", "attachments", "notes-2.txt"), "utf8"), "new");
+  });
+
   it("lets Muse's own name replace a title derived from a /skill prompt", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
@@ -2611,7 +2768,8 @@ describe("session list stream", () => {
     const { base } = await start(connection, {
       hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
     });
-    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    await addProject(base, "/work/proj");
+    await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: true }, "PATCH");
     const started = await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.equal(started.json.session.sandboxDisabled, true);
     assert.equal(started.json.session.origin, "helicon");

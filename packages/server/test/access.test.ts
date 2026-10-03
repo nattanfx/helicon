@@ -5,6 +5,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { HeliconServer } from "../src/server.js";
 
 /** Windows briefly locks fresh temp dirs (scanner/indexer); retry so teardown never fails the run. */
@@ -168,4 +169,96 @@ it("CLI delivers the desktop bootstrap through stdout and rejects a missing netw
   });
   assert.equal(code, 1);
   assert.ok(message.includes("token is required"));
+});
+
+/** Starts the CLI and resolves with what it printed first, which is the address to open. */
+async function cliFirstLine(t: { after: (fn: () => void) => void }, args: string[]): Promise<string> {
+  const cli = join(__dirname, "../src/cli.js");
+  const child = spawn(process.execPath, [cli, ...args], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  t.after(() => { child.kill(); });
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("The CLI printed no address")), 10000);
+    let output = "";
+    child.on("error", reject);
+    child.stdout.on("data", (data: Buffer) => {
+      output += data.toString();
+      const line = output.split("\n")[0];
+      if (output.includes("\n") && line) {
+        clearTimeout(timer);
+        resolve(line.trim().replace("helicon-server listening on ", ""));
+      }
+    });
+  });
+}
+
+it("CLI on loopback demands a token by default, handing out a one-use sign-in link", async (t) => {
+  const launch = await cliFirstLine(t, ["--port", "0", "--data-dir", ":memory:"]);
+  const url = new URL(launch);
+  assert.equal(url.pathname, "/api/desktop-auth");
+  assert.equal((await fetch(`${url.origin}/api/health`)).status, 401, "a local process without the cookie is refused");
+  assert.equal((await fetch(`${url.origin}/api/yolo-settings`, { method: "PATCH", body: "{}" })).status, 401);
+  const signed = await fetch(launch, { redirect: "manual" });
+  assert.equal(signed.status, 303);
+  const cookie = signed.headers.get("set-cookie")!.split(";")[0]!;
+  assert.equal((await fetch(`${url.origin}/api/health`, { headers: { cookie } })).status, 200);
+  assert.equal((await fetch(launch, { redirect: "manual" })).status, 401, "the link works once");
+});
+
+it("CLI keeps an explicit token and an explicit --no-auth opt-out", async (t) => {
+  const withToken = new URL(await cliFirstLine(t, ["--port", "0", "--data-dir", ":memory:", "--token", "cli-test-secret"]));
+  assert.equal(withToken.pathname, "/");
+  assert.equal((await fetch(`${withToken.origin}/api/health`)).status, 401);
+  assert.equal((await fetch(`${withToken.origin}/api/health`, { headers: { authorization: "Bearer cli-test-secret" } })).status, 200);
+  const open = new URL(await cliFirstLine(t, ["--port", "0", "--data-dir", ":memory:", "--no-auth"]));
+  assert.equal(open.pathname, "/");
+  assert.equal((await fetch(`${open.origin}/api/health`)).status, 200);
+});
+
+it("accepts localhost from this machine when bound to every interface, still refusing other names", async (t) => {
+  const server = new HeliconServer({ host: "0.0.0.0", port: 0, dataDir: ":memory:", token: "any-test-secret" });
+  t.after(() => server.close());
+  const { port } = await server.listen();
+  const status = (host: string) => new Promise<number | undefined>((resolve, reject) => {
+    const req = request({ hostname: "127.0.0.1", port, path: "/api/health", headers: { host, authorization: "Bearer any-test-secret" } }, (res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    req.on("error", reject);
+    req.end();
+  });
+  assert.equal(await status(`localhost:${port}`), 200);
+  assert.equal(await status(`127.0.0.1:${port}`), 200);
+  assert.equal(await status(`[::1]:${port}`), 200);
+  assert.equal(await status(`evil.example:${port}`), 403, "a rebinding name is still refused");
+});
+
+it("serves the page with a script policy that allows only its own inline boot script", async (t) => {
+  const staticDir = await mkdtemp(join(tmpdir(), "helicon-csp-"));
+  // Windows line endings on disk, as a checkout there has them: the browser hashes the LF-normalized text.
+  const boot = "\n      document.documentElement.dataset.theme = 'dark';\n    ";
+  await writeFile(
+    join(staticDir, "index.html"),
+    `<!doctype html><html><head><script>${boot.replace(/\n/g, "\r\n")}</script></head><body><script type="module" src="/app.js"></script></body></html>`,
+  );
+  await writeFile(join(staticDir, "app.js"), "export {};");
+  const server = new HeliconServer({ port: 0, dataDir: ":memory:", staticDir });
+  t.after(async () => {
+    await server.close();
+    await removeDir(staticDir);
+  });
+  const { port } = await server.listen();
+  const page = await fetch(`http://127.0.0.1:${port}/`);
+  const policy = page.headers.get("content-security-policy") ?? "";
+  const scripts = policy.split(";").map((part) => part.trim()).find((part) => part.startsWith("script-src")) ?? "";
+  const hash = createHash("sha256").update(boot, "utf8").digest("base64");
+  assert.equal(scripts, `script-src 'self' 'sha256-${hash}'`);
+  assert.match(policy, /object-src 'none'/);
+  assert.match(policy, /frame-src 'self' blob:;/, "frames from another local server are refused");
+  assert.match(policy, /frame-ancestors 'none'/);
+  assert.match(policy, /base-uri 'self'/);
+  assert.equal(page.headers.get("x-content-type-options"), "nosniff");
+  const asset = await fetch(`http://127.0.0.1:${port}/app.js`);
+  assert.equal(asset.headers.get("content-security-policy"), null, "only pages carry the policy");
+  await asset.text();
+  await page.text();
 });

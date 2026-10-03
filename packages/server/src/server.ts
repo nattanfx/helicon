@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, join, normalize, posix, resolve, sep, win32 } from "node:path";
+import { extname, isAbsolute, join, normalize, posix, relative, resolve, sep, win32 } from "node:path";
 import {
   HeliconMspHost,
   HeliconStore,
@@ -36,6 +36,7 @@ import {
   type ExecFn,
   type ServeTarget,
   type ReasoningEffort,
+  type Project,
   type SessionRecord,
   type SessionSkill,
   type SubscriptionUsage,
@@ -551,6 +552,54 @@ export function defaultOpener(platform: string): Opener {
     });
 }
 
+/** Loopback bind addresses: the only ones that may run without a token. */
+export function isLoopbackHost(host: string): boolean {
+  return ["127.0.0.1", "::1", "localhost"].includes(host.trim().toLowerCase());
+}
+
+/** A connection's own address is loopback: the request came from this machine. */
+function isLoopbackAddress(address: string | undefined): boolean {
+  const plain = (address ?? "").replace(/^::ffff:/i, "");
+  return plain === "::1" || /^127\./.test(plain);
+}
+
+/**
+ * The page's policy. Scripts only from this origin plus the exact inline boot scripts of the page being served,
+ * so injected markup can never run. Connections, images and media may also reach another daemon, which
+ * the web app can point at; that never lets a script run.
+ */
+export function pageSecurityPolicy(html: string): string {
+  const hashes: string[] = [];
+  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    if (/\bsrc\s*=/i.test(match[1] ?? "")) {
+      continue;
+    }
+    // The browser hashes the script as parsed, and HTML parsing turns every CRLF or CR into LF first. A checkout
+    // with Windows line endings would otherwise get a hash that matches nothing and a page that never boots.
+    const source = (match[2] ?? "").replace(/\r\n?/g, "\n");
+    hashes.push(`'sha256-${createHash("sha256").update(source, "utf8").digest("base64")}'`);
+  }
+  return [
+    "default-src 'self'",
+    `script-src 'self'${hashes.map((hash) => ` ${hash}`).join("")}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: http: https:",
+    "media-src 'self' blob: http: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' http: https: ws: wss: ipc:",
+    // Frames stay on this origin: a frame from another local server could reach the desktop shell's commands.
+    "frame-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
+/** Attachment types safe to show inline; anything else downloads, so nothing sent with a prompt can run as a page. */
+const INLINE_ATTACHMENT_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp"]);
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -765,7 +814,7 @@ export class HeliconServer {
 
   constructor(options: ServerOptions = {}) {
     const host = options.host ?? "127.0.0.1";
-    const local = ["127.0.0.1", "::1", "localhost"].includes(host.toLowerCase());
+    const local = isLoopbackHost(host);
     if (options.desktopAuth && !local) {
       throw new Error("Desktop authentication requires a loopback address.");
     }
@@ -899,6 +948,11 @@ export class HeliconServer {
     const local = ["127.0.0.1", "::1", "localhost"];
     const bind = this.options.host.toLowerCase();
     const allowed = local.includes(bind) ? local : [bind, req.socket.localAddress?.replace(/^::ffff:/, "")];
+    // Bound to every interface, a browser on this same machine still says `localhost`. Only a connection that
+    // arrived over loopback may use those names; a rebinding domain sends its own name and stays refused.
+    if (!local.includes(bind) && isLoopbackAddress(req.socket.localAddress)) {
+      allowed.push(...local);
+    }
     return [...allowed, ...this.options.allowHosts].some((value) => value?.toLowerCase() === hostname);
   }
 
@@ -1225,7 +1279,12 @@ export class HeliconServer {
       if (!cwd) {
         throw new HttpError(400, "cwd is required.");
       }
+      const hidden = this.store.getProject(cwd);
       this.store.setHidden(cwd, true);
+      if (hidden && (hidden.yoloEnabled || hidden.sandboxDisabled)) {
+        // Removing a project drops its posture, so its live host must not keep running with it.
+        this.restartProjectHost(hidden.cwd);
+      }
       this.sessionsChanged();
       this.json(res, 200, { ok: true });
       return true;
@@ -1567,12 +1626,21 @@ export class HeliconServer {
       this.json(res, 200, next);
       return true;
     }
+    // YOLO and sandbox-off belong to one project each: the switch names its project by folder, and only that
+    // project's host restarts. Without `cwd`, a read lists every project, which is what the UI loads at boot.
     if (method === "GET" && path === "/api/sandbox-settings") {
-      this.json(res, 200, this.store.getSandboxSettings());
+      const cwd = url.searchParams.get("cwd");
+      if (cwd !== null) {
+        const project = this.store.getProject(normalizeCwd(cwd));
+        this.json(res, 200, { cwd: normalizeCwd(cwd), disabled: project?.sandboxDisabled ?? false });
+        return true;
+      }
+      this.json(res, 200, { projects: this.store.listProjects().map((p) => ({ cwd: p.cwd, disabled: p.sandboxDisabled })) });
       return true;
     }
     if (method === "PATCH" && path === "/api/sandbox-settings") {
       const body = await this.readBody(req);
+      const project = this.postureProject(body);
       const patch: { disabled?: boolean } = {};
       if ("disabled" in body) {
         if (typeof body["disabled"] !== "boolean") {
@@ -1580,23 +1648,26 @@ export class HeliconServer {
         }
         patch.disabled = body["disabled"];
       }
-      const wasDisabled = this.store.getSandboxSettings().disabled;
-      const next = this.store.setSandboxSettings(patch);
-      if (wasDisabled !== next.disabled) {
-        // Posture is fixed at spawn, so live hosts restart; closing can outlast this request.
-        // Restarts queue behind each other so a session created mid-flip never lands on a retired host.
-        const run = this.restartChain.then(() => this.restartHosts());
-        this.restartChain = run.catch(() => undefined);
+      const next = this.store.setSandboxSettings(project.id, patch) ?? { disabled: false };
+      if (project.sandboxDisabled !== next.disabled) {
+        this.restartProjectHost(project.cwd);
       }
-      this.json(res, 200, next);
+      this.json(res, 200, { cwd: project.cwd, ...next });
       return true;
     }
     if (method === "GET" && path === "/api/yolo-settings") {
-      this.json(res, 200, this.store.getYoloSettings());
+      const cwd = url.searchParams.get("cwd");
+      if (cwd !== null) {
+        const project = this.store.getProject(normalizeCwd(cwd));
+        this.json(res, 200, { cwd: normalizeCwd(cwd), enabled: project?.yoloEnabled ?? false });
+        return true;
+      }
+      this.json(res, 200, { projects: this.store.listProjects().map((p) => ({ cwd: p.cwd, enabled: p.yoloEnabled })) });
       return true;
     }
     if (method === "PATCH" && path === "/api/yolo-settings") {
       const body = await this.readBody(req);
+      const project = this.postureProject(body);
       const patch: { enabled?: boolean } = {};
       if ("enabled" in body) {
         if (typeof body["enabled"] !== "boolean") {
@@ -1604,15 +1675,11 @@ export class HeliconServer {
         }
         patch.enabled = body["enabled"];
       }
-      const wasEnabled = this.store.getYoloSettings().enabled;
-      const next = this.store.setYoloSettings(patch);
-      if (wasEnabled !== next.enabled) {
-        // Posture is fixed at spawn, so live hosts restart; closing can outlast this request.
-        // Restarts queue behind each other so a session created mid-flip never lands on a retired host.
-        const run = this.restartChain.then(() => this.restartHosts());
-        this.restartChain = run.catch(() => undefined);
+      const next = this.store.setYoloSettings(project.id, patch) ?? { enabled: false };
+      if (project.yoloEnabled !== next.enabled) {
+        this.restartProjectHost(project.cwd);
       }
-      this.json(res, 200, next);
+      this.json(res, 200, { cwd: project.cwd, ...next });
       return true;
     }
     if (method === "POST" && path === "/api/hosts/restart") {
@@ -1646,10 +1713,15 @@ export class HeliconServer {
       if (!found) {
         throw new HttpError(404, "No such attachment.");
       }
+      // The type came from the client. Only a known image type shows inline; the rest download as opaque bytes.
+      const inline = INLINE_ATTACHMENT_TYPES.has(found.record.mediaType.toLowerCase());
       res.writeHead(200, {
-        "content-type": found.record.mediaType,
+        "content-type": inline ? found.record.mediaType : "application/octet-stream",
         "content-length": String(found.bytes.length),
         "cache-control": "private, max-age=86400",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "sandbox; default-src 'none'",
+        "content-disposition": inline ? "inline" : `attachment; filename="${safeFileName(found.record.name)}"`,
       });
       res.end(Buffer.from(found.bytes));
       return true;
@@ -1905,10 +1977,16 @@ export class HeliconServer {
       const file = info.isDirectory() ? join(full, "index.html") : full;
       const body = await readFile(file);
       const immutable = file.includes(`${sep}assets${sep}`);
-      res.writeHead(200, {
+      const headers: Record<string, string> = {
         "content-type": MIME[extname(file)] ?? "application/octet-stream",
         "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
-      });
+        "x-content-type-options": "nosniff",
+      };
+      if (extname(file) === ".html") {
+        headers["content-security-policy"] = pageSecurityPolicy(body.toString("utf8"));
+        headers["referrer-policy"] = "no-referrer";
+      }
+      res.writeHead(200, headers);
       res.end(body);
       return true;
     } catch {
@@ -2381,26 +2459,50 @@ export class HeliconServer {
     };
   }
 
-  /** Writes an attached file into the workspace, keeping its name unless one is already taken. */
+  /**
+   * Writes an attached file into the workspace, keeping its name unless one is already taken. A cloned repository
+   * decides what `.helicon/attachments` is, so each folder on the way must be a real directory inside the
+   * workspace, never a link out of it, and the file is created fresh rather than written through whatever is there.
+   */
   private async writeIntoWorkspace(cwd: string, name: string, bytes: Buffer): Promise<string> {
-    const directory = join(cwd, ...ATTACHMENT_DIR);
-    await mkdir(directory, { recursive: true });
+    const root = await realpath(cwd).catch(() => {
+      throw new HttpError(400, "The workspace folder does not exist.");
+    });
+    const refused = `${ATTACHMENT_DIR.join("/")} must be a plain folder inside the workspace.`;
+    let directory = root;
+    for (const part of ATTACHMENT_DIR) {
+      directory = join(directory, part);
+      await mkdir(directory).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") {
+          throw error;
+        }
+      });
+      const info = await lstat(directory);
+      if (info.isSymbolicLink() || !info.isDirectory()) {
+        throw new HttpError(400, refused);
+      }
+    }
+    const real = await realpath(directory);
+    const inside = relative(root, real);
+    if (!inside || inside.startsWith("..") || isAbsolute(inside)) {
+      throw new HttpError(400, refused);
+    }
     const dot = name.lastIndexOf(".");
     const stem = dot > 0 ? name.slice(0, dot) : name;
     const suffix = dot > 0 ? name.slice(dot) : "";
-    let candidate = name;
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      const taken = await stat(join(directory, candidate)).then(
-        () => true,
-        () => false,
-      );
-      if (!taken) {
-        break;
+      const candidate = attempt === 0 ? name : `${stem}-${attempt + 1}${suffix}`;
+      try {
+        // `wx` never follows or replaces whatever already has that name, a planted link included.
+        await writeFile(join(real, candidate), bytes, { flag: "wx" });
+        return candidate;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw error;
+        }
       }
-      candidate = `${stem}-${attempt + 2}${suffix}`;
     }
-    await writeFile(join(directory, candidate), bytes);
-    return candidate;
+    throw new HttpError(409, `Too many attachments are already named ${name}.`);
   }
 
   /**
@@ -3290,10 +3392,12 @@ export class HeliconServer {
   private async managerForSession(sessionId: string): Promise<SessionManager> {
     const key = this.sessionHosts.get(sessionId);
     const loaded = key ? this.hosts.get(key) : undefined;
-    if (loaded) {
+    const found = this.store.findSession(sessionId);
+    // A session seen on another project's host (a list stream reports every workspace) must not borrow that
+    // host's YOLO or sandbox-off posture: it only stays there while the flags match its own project's.
+    if (loaded && (!found || HeliconServer.hostFlags(loaded).join(" ") === this.postureFlags(found.cwd).join(" "))) {
       return loaded.manager;
     }
-    const found = this.store.findSession(sessionId);
     return (await this.hostFor(found?.cwd ?? "")).manager;
   }
 
@@ -3303,7 +3407,7 @@ export class HeliconServer {
     // starts on a host with the previous posture. Starts never wait for the chain, so this
     // cannot deadlock against the restart awaiting them.
     await this.restartChain;
-    const key = this.hostPathFor(cwd) || "__default__";
+    const key = this.hostKeyFor(cwd);
     const existing = this.hosts.get(key);
     if (existing) {
       return existing;
@@ -3403,6 +3507,46 @@ export class HeliconServer {
     }
   }
 
+  /** The project a posture switch names, by folder; unknown folders get nothing. */
+  private postureProject(body: Record<string, unknown>): Project {
+    const raw = str(body["cwd"]);
+    if (!raw) {
+      throw new HttpError(400, "cwd is required.");
+    }
+    const project = this.store.getProject(normalizeCwd(raw));
+    if (!project) {
+      throw new HttpError(404, "That folder is not a project here.");
+    }
+    return project;
+  }
+
+  /** The Muse flags a project's host must carry: its own YOLO and sandbox switches, never another project's. */
+  private postureFlags(cwd: string): string[] {
+    const project = cwd ? this.store.getProject(cwd) : null;
+    const yolo = project?.yoloEnabled === true;
+    const sandboxOff = project?.sandboxDisabled === true;
+    return [...(sandboxOff || yolo ? ["--disable-sandbox"] : []), ...(yolo ? ["--trust-workspace"] : [])];
+  }
+
+  /** The posture flags a live host was actually spawned with. */
+  private static hostFlags(managed: ManagedHost): string[] {
+    return ["--disable-sandbox", "--trust-workspace"].filter((flag) => managed.target.args.includes(flag));
+  }
+
+  private hostKeyFor(cwd: string): string {
+    return this.hostPathFor(cwd) || "__default__";
+  }
+
+  /**
+   * Restarts only the host of one project after its posture changed. Posture is fixed at spawn, and closing can
+   * outlast the request; restarts queue behind each other so a session created mid-flip never lands on a retired host.
+   */
+  private restartProjectHost(cwd: string): void {
+    const key = this.hostKeyFor(cwd);
+    const run = this.restartChain.then(() => this.restartHosts(undefined, (managed) => managed.key === key));
+    this.restartChain = run.catch(() => undefined);
+  }
+
   /**
    * Closes every live host so the next use respawns it with the current sandbox and YOLO
    * posture. Never throws: closing is best effort, and a host that refuses to die is dropped
@@ -3412,11 +3556,14 @@ export class HeliconServer {
    * mode flips over MSP instead. A manual restart reuses the same close-and-respawn
    * without changing any posture.
    */
-  private async restartHosts(message = "The Muse host restarted to apply a settings change."): Promise<void> {
+  private async restartHosts(
+    message = "The Muse host restarted to apply a settings change.",
+    only: (managed: ManagedHost) => boolean = () => true,
+  ): Promise<void> {
     for (const pending of this.starting.values()) {
       await pending.catch(() => undefined);
     }
-    for (const managed of [...this.hosts.values()]) {
+    for (const managed of [...this.hosts.values()].filter(only)) {
       try {
         await managed.handle.close();
       } catch {
@@ -3429,14 +3576,11 @@ export class HeliconServer {
   }
 
   private async serveTargetFor(cwd: string): Promise<ServeTarget> {
-    // Sandbox posture is fixed at spawn: every host carries the settings as they stand now.
-    const sandboxDisabled = this.store.getSandboxSettings().disabled;
-    const yoloEnabled = this.store.getYoloSettings().enabled;
-    const serveArgs = [
-      "serve",
-      ...(sandboxDisabled || yoloEnabled ? ["--disable-sandbox"] : []),
-      ...(yoloEnabled ? ["--trust-workspace"] : []),
-    ];
+    // Sandbox posture is fixed at spawn: each host carries its own project's settings as they stand now.
+    const flags = this.postureFlags(cwd);
+    const sandboxDisabled = flags.includes("--disable-sandbox");
+    const yoloEnabled = flags.includes("--trust-workspace");
+    const serveArgs = ["serve", ...flags];
     if (this.options.platform !== "win32") {
       return { command: this.options.musePath ?? "muse", args: serveArgs, cwd: cwd || process.cwd() };
     }

@@ -163,14 +163,14 @@ describe("web client", () => {
     const { WebHeliconClient } = await freshClient();
     const client = new WebHeliconClient();
 
-    assert.deepEqual(await client.getSandboxSettings(), { disabled: false });
+    assert.deepEqual(await client.getSandboxSettings(), {});
     assert.equal(world.calls.at(-1)?.url, "/api/sandbox-settings");
 
-    await client.setSandboxSettings({ disabled: true });
+    await client.setSandboxSettings("/work/a", { disabled: true });
     const patch = world.calls.at(-1);
     assert.equal(patch?.url, "/api/sandbox-settings");
     assert.equal(patch?.init?.method, "PATCH");
-    assert.deepEqual(JSON.parse(String(patch?.init?.body)), { disabled: true });
+    assert.deepEqual(JSON.parse(String(patch?.init?.body)), { cwd: "/work/a", disabled: true }, "the switch names its project");
   });
 
   it("reads and writes the YOLO switch", async () => {
@@ -178,14 +178,14 @@ describe("web client", () => {
     const { WebHeliconClient } = await freshClient();
     const client = new WebHeliconClient();
 
-    assert.deepEqual(await client.getYoloSettings(), { enabled: false });
+    assert.deepEqual(await client.getYoloSettings(), {});
     assert.equal(world.calls.at(-1)?.url, "/api/yolo-settings");
 
-    await client.setYoloSettings({ enabled: true });
+    await client.setYoloSettings("/work/a", { enabled: true });
     const patch = world.calls.at(-1);
     assert.equal(patch?.url, "/api/yolo-settings");
     assert.equal(patch?.init?.method, "PATCH");
-    assert.deepEqual(JSON.parse(String(patch?.init?.body)), { enabled: true });
+    assert.deepEqual(JSON.parse(String(patch?.init?.body)), { cwd: "/work/a", enabled: true }, "the switch names its project");
   });
 
   it("cancels a stuck turn through the turns route", async () => {

@@ -10,6 +10,10 @@ export interface Project {
   updatedAt: string;
   /** Latest activity across the project's visible sessions, or its creation time. */
   activityAt: string;
+  /** YOLO for this project's hosts only; every project starts without it. */
+  yoloEnabled: boolean;
+  /** Muse sandbox lifted for this project's hosts only; every project starts protected. */
+  sandboxDisabled: boolean;
 }
 
 /** How a session title was chosen; a higher rank is never overwritten by a lower one. */
@@ -90,7 +94,10 @@ export interface TitleSettings {
 
 export const DEFAULT_TITLE_SETTINGS: TitleSettings = { enabled: true, modelId: null };
 
-/** Server-owned Muse sandbox posture: whether `muse serve` hosts spawn with `--disable-sandbox`. Off by default. */
+/**
+ * Muse sandbox posture of one project: whether that project's `muse serve` host spawns with `--disable-sandbox`.
+ * Off by default, and kept per project so lifting it in one workspace never reaches another.
+ */
 export interface SandboxSettings {
   disabled: boolean;
 }
@@ -98,9 +105,9 @@ export interface SandboxSettings {
 export const DEFAULT_SANDBOX_SETTINGS: SandboxSettings = { disabled: false };
 
 /**
- * Server-owned YOLO mode: the `muse --yolo` posture for every host it spawns
- * (`--disable-sandbox --trust-workspace`) plus the wire-level approval bypass.
- * Off by default.
+ * YOLO mode of one project: the `muse --yolo` posture for that project's host
+ * (`--disable-sandbox --trust-workspace`) plus the wire-level approval bypass for its threads.
+ * Off by default for every project, including any added or cloned later.
  */
 export interface YoloSettings {
   enabled: boolean;
@@ -234,6 +241,13 @@ const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
   { table: "sessions", column: "unsettled_at", ddl: "ALTER TABLE sessions ADD COLUMN unsettled_at TEXT" },
   // NULL for sessions recorded before posture tracking; only new rows carry a value.
   { table: "sessions", column: "sandbox_disabled", ddl: "ALTER TABLE sessions ADD COLUMN sandbox_disabled INTEGER" },
+  // Execution posture per project. Every existing project starts protected; see `migrate` for the old global switch.
+  { table: "projects", column: "yolo_enabled", ddl: "ALTER TABLE projects ADD COLUMN yolo_enabled INTEGER NOT NULL DEFAULT 0" },
+  {
+    table: "projects",
+    column: "sandbox_disabled",
+    ddl: "ALTER TABLE projects ADD COLUMN sandbox_disabled INTEGER NOT NULL DEFAULT 0",
+  },
 ];
 
 type Row = Record<string, string | number | null>;
@@ -335,6 +349,9 @@ export class HeliconStore {
       }
     }
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_source ON usage(session_id, source_key) WHERE source_key IS NOT NULL");
+    // YOLO and sandbox-off used to be one global switch. Spreading it to every project would lift the sandbox in
+    // workspaces nobody chose, so the old rows are dropped and every project starts protected. Idempotent.
+    this.db.exec("DELETE FROM settings WHERE key IN ('sandbox', 'yolo')");
   }
 
   /** Malformed rows fall back to defaults rather than breaking the worker that reads them. */
@@ -366,58 +383,42 @@ export class HeliconStore {
     return next;
   }
 
-  /** Malformed rows fall back to sandbox-on rather than breaking host startup. */
-  getSandboxSettings(): SandboxSettings {
-    const row = this.db.prepare(`SELECT value FROM settings WHERE key = 'sandbox'`).get() as Row | undefined;
-    if (!row) {
-      return { ...DEFAULT_SANDBOX_SETTINGS };
-    }
-    try {
-      const parsed = JSON.parse(String(row["value"])) as Partial<SandboxSettings>;
-      return {
-        disabled: typeof parsed.disabled === "boolean" ? parsed.disabled : DEFAULT_SANDBOX_SETTINGS.disabled,
-      };
-    } catch {
-      return { ...DEFAULT_SANDBOX_SETTINGS };
-    }
+  /** A project's sandbox posture; an unknown project is protected. */
+  getSandboxSettings(projectId: number): SandboxSettings {
+    const row = this.db.prepare(`SELECT sandbox_disabled FROM projects WHERE id = ?`).get(projectId) as Row | undefined;
+    return { disabled: Number(row?.["sandbox_disabled"] ?? 0) === 1 };
   }
 
-  setSandboxSettings(patch: Partial<SandboxSettings>): SandboxSettings {
-    const current = this.getSandboxSettings();
-    const next: SandboxSettings = {
-      disabled: patch.disabled ?? current.disabled,
-    };
-    this.db
-      .prepare(`INSERT INTO settings (key, value) VALUES ('sandbox', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
-      .run(JSON.stringify(next));
-    return next;
+  /** Null when there is no such project: a posture never lands on a workspace Helicon does not know. */
+  setSandboxSettings(projectId: number, patch: Partial<SandboxSettings>): SandboxSettings | null {
+    if (!this.projectExists(projectId)) {
+      return null;
+    }
+    if (patch.disabled !== undefined) {
+      this.db.prepare(`UPDATE projects SET sandbox_disabled = ? WHERE id = ?`).run(patch.disabled ? 1 : 0, projectId);
+    }
+    return this.getSandboxSettings(projectId);
   }
 
-  /** Malformed rows fall back to YOLO-off rather than breaking host startup. */
-  getYoloSettings(): YoloSettings {
-    const row = this.db.prepare(`SELECT value FROM settings WHERE key = 'yolo'`).get() as Row | undefined;
-    if (!row) {
-      return { ...DEFAULT_YOLO_SETTINGS };
-    }
-    try {
-      const parsed = JSON.parse(String(row["value"])) as Partial<YoloSettings>;
-      return {
-        enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : DEFAULT_YOLO_SETTINGS.enabled,
-      };
-    } catch {
-      return { ...DEFAULT_YOLO_SETTINGS };
-    }
+  /** A project's YOLO posture; an unknown project has it off. */
+  getYoloSettings(projectId: number): YoloSettings {
+    const row = this.db.prepare(`SELECT yolo_enabled FROM projects WHERE id = ?`).get(projectId) as Row | undefined;
+    return { enabled: Number(row?.["yolo_enabled"] ?? 0) === 1 };
   }
 
-  setYoloSettings(patch: Partial<YoloSettings>): YoloSettings {
-    const current = this.getYoloSettings();
-    const next: YoloSettings = {
-      enabled: patch.enabled ?? current.enabled,
-    };
-    this.db
-      .prepare(`INSERT INTO settings (key, value) VALUES ('yolo', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
-      .run(JSON.stringify(next));
-    return next;
+  /** Null when there is no such project. */
+  setYoloSettings(projectId: number, patch: Partial<YoloSettings>): YoloSettings | null {
+    if (!this.projectExists(projectId)) {
+      return null;
+    }
+    if (patch.enabled !== undefined) {
+      this.db.prepare(`UPDATE projects SET yolo_enabled = ? WHERE id = ?`).run(patch.enabled ? 1 : 0, projectId);
+    }
+    return this.getYoloSettings(projectId);
+  }
+
+  private projectExists(projectId: number): boolean {
+    return this.db.prepare(`SELECT 1 AS found FROM projects WHERE id = ?`).get(projectId) !== undefined;
   }
 
   /** Only newly created conversations opt in; migration never enrolls existing history. */
@@ -631,11 +632,17 @@ export class HeliconStore {
       .run(pinned ? 1 : 0, nowIso(), cwd);
   }
 
-  /** Hiding removes a project from the sidebar without touching Muse's own session data. */
+  /**
+   * Hiding removes a project from the sidebar without touching Muse's own session data. It also drops the project's
+   * YOLO and sandbox posture, so adding the folder back later starts protected like any new project.
+   */
   setHidden(cwd: string, hidden: boolean): void {
     this.db
       .prepare(`UPDATE projects SET hidden = ?, updated_at = ? WHERE cwd = ?`)
       .run(hidden ? 1 : 0, nowIso(), cwd);
+    if (hidden) {
+      this.db.prepare(`UPDATE projects SET yolo_enabled = 0, sandbox_disabled = 0 WHERE cwd = ?`).run(cwd);
+    }
   }
 
   /**
@@ -913,6 +920,8 @@ export class HeliconStore {
       createdAt: String(row["created_at"]),
       updatedAt: String(row["updated_at"]),
       activityAt: String(row["activity_at"] ?? row["created_at"]),
+      yoloEnabled: Number(row["yolo_enabled"] ?? 0) === 1,
+      sandboxDisabled: Number(row["sandbox_disabled"] ?? 0) === 1,
     };
   }
 

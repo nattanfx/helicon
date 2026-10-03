@@ -112,10 +112,11 @@ export interface Prefs {
   /** Pílulas de estatísticas da sessão acima do composer: turnos, velocidade e tokens da conversa aberta. */
   showTelemetry: boolean;
   /**
-   * Modos de aprovação de antes de ligar o YOLO, que sobrevivem a um recarregar para desligar o YOLO
-   * ainda os restaurar em vez de cair para onRequest. Null quando o YOLO nunca foi ligado aqui.
+   * Modos de aprovação de antes de o YOLO do projeto pegar cada conversa, que sobrevivem a um recarregar para
+   * desligar o YOLO ainda os restaurar. Null quando nenhuma conversa espera restauração. `defaultMode` só
+   * aparece em fotos antigas, de quando o YOLO era geral e forçava o padrão; é restaurado e descartado ao abrir.
    */
-  preYolo: { defaultMode: ApprovalMode; threads: Record<string, ApprovalMode | null> } | null;
+  preYolo: { defaultMode?: ApprovalMode; threads: Record<string, ApprovalMode | null> } | null;
 }
 
 export const DEFAULT_FILES_WIDTH = 480;
@@ -221,10 +222,10 @@ export interface AppState {
   models: ModelOption[];
   /** Ativação e modelo dos títulos, mantidos pelo servidor; null até a resposta do carregamento inicial. */
   titleSettings: TitleSettings | null;
-  /** Proteção da sandbox, mantida pelo servidor; null até a resposta do carregamento inicial. */
-  sandboxSettings: SandboxSettings | null;
-  /** YOLO, mantido pelo servidor; null até a resposta do carregamento inicial. */
-  yoloSettings: YoloSettings | null;
+  /** Proteção da sandbox de cada projeto, por pasta, mantida pelo servidor; null até a resposta do carregamento inicial. */
+  sandboxSettings: Record<string, SandboxSettings> | null;
+  /** YOLO de cada projeto, por pasta, mantido pelo servidor; null até a resposta do carregamento inicial. */
+  yoloSettings: Record<string, YoloSettings> | null;
   prefs: Prefs;
   toasts: Toast[];
   paletteOpen: boolean;
@@ -277,6 +278,21 @@ export interface SkillsState {
   loadedAt: number;
   /** The host's skill catalog is scoped to this session; null means the CLI preview. */
   sessionId?: string | null;
+}
+
+/** O YOLO está ligado no projeto desta pasta. Sem pasta, ou com um projeto que o servidor não listou, não está. */
+export function yoloOn(state: Pick<AppState, "yoloSettings">, cwd: string | null | undefined): boolean {
+  return Boolean(cwd) && state.yoloSettings?.[cwd as string]?.enabled === true;
+}
+
+/** A sandbox está desligada no projeto desta pasta (por ela mesma, sem contar o YOLO). */
+export function sandboxOff(state: Pick<AppState, "sandboxSettings">, cwd: string | null | undefined): boolean {
+  return Boolean(cwd) && state.sandboxSettings?.[cwd as string]?.disabled === true;
+}
+
+/** A pasta do projeto de uma conversa, quando a lista de conversas a conhece. */
+export function sessionCwd(state: Pick<AppState, "sessions">, sessionId: string): string | null {
+  return state.sessions[sessionId]?.cwd ?? null;
 }
 
 export function initialState(prefs: Prefs): AppState {
@@ -344,7 +360,7 @@ export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
     }
     const snapshot = v as { defaultMode?: unknown; threads?: unknown };
     return (
-      isApprovalMode(snapshot.defaultMode) &&
+      (snapshot.defaultMode === undefined || isApprovalMode(snapshot.defaultMode)) &&
       typeof snapshot.threads === "object" &&
       snapshot.threads !== null &&
       !Array.isArray(snapshot.threads) &&

@@ -294,15 +294,18 @@ export interface TitleSettings {
   modelId: string | null;
 }
 
-/** Proteção da sandbox do Muse, mantida pelo servidor: se os servidores sobem com `--disable-sandbox`. */
+/** Proteção da sandbox do Muse num projeto, mantida pelo servidor: se o servidor dele sobe com `--disable-sandbox`. */
 export interface SandboxSettings {
   disabled: boolean;
 }
 
-/** YOLO server-owned: hosts sobem com `--disable-sandbox --trust-workspace` e aprovações passam direto. */
+/** YOLO de um projeto, mantido pelo servidor: o servidor dele sobe com `--disable-sandbox --trust-workspace` e as aprovações das suas conversas passam direto. */
 export interface YoloSettings {
   enabled: boolean;
 }
+
+/** Uma postura por pasta de projeto. Um projeto ausente está protegido. */
+export type PerProject<T> = Record<string, T>;
 
 /** A skill Muse can load in a workspace, from `muse skills list`. Skills switched off are left out. */
 export interface SkillEntry {

@@ -298,24 +298,81 @@ describe("HeliconStore", () => {
     assert.deepEqual(store.setTitleSettings({ enabled: true, modelId: null }), { enabled: true, modelId: null });
   });
 
-  it("keeps sandbox settings, defaulting to sandbox-on", () => {
+  it("keeps sandbox settings per project, defaulting to sandbox-on", () => {
     const store = new HeliconStore();
     after(() => store.close());
-    assert.deepEqual(store.getSandboxSettings(), { disabled: false });
-    assert.deepEqual(store.setSandboxSettings({ disabled: true }), { disabled: true });
-    assert.deepEqual(store.getSandboxSettings(), { disabled: true });
-    assert.deepEqual(store.setSandboxSettings({}), { disabled: true }, "an empty patch changes nothing");
-    assert.deepEqual(store.setSandboxSettings({ disabled: false }), { disabled: false });
+    const a = store.upsertProject("/work/a");
+    const b = store.upsertProject("/work/b");
+    assert.deepEqual(store.getSandboxSettings(a.id), { disabled: false });
+    assert.deepEqual(store.setSandboxSettings(a.id, { disabled: true }), { disabled: true });
+    assert.deepEqual(store.getSandboxSettings(a.id), { disabled: true });
+    assert.deepEqual(store.getSandboxSettings(b.id), { disabled: false }, "another project keeps its protection");
+    assert.deepEqual(store.setSandboxSettings(a.id, {}), { disabled: true }, "an empty patch changes nothing");
+    assert.deepEqual(store.setSandboxSettings(a.id, { disabled: false }), { disabled: false });
+    assert.equal(store.setSandboxSettings(9999, { disabled: true }), null, "an unknown project gets nothing");
+    assert.deepEqual(store.getSandboxSettings(9999), { disabled: false });
   });
 
-  it("keeps YOLO settings, defaulting to off", () => {
+  it("keeps YOLO settings per project, defaulting to off, and new projects start protected", () => {
     const store = new HeliconStore();
     after(() => store.close());
-    assert.deepEqual(store.getYoloSettings(), { enabled: false });
-    assert.deepEqual(store.setYoloSettings({ enabled: true }), { enabled: true });
-    assert.deepEqual(store.getYoloSettings(), { enabled: true });
-    assert.deepEqual(store.setYoloSettings({}), { enabled: true }, "an empty patch changes nothing");
-    assert.deepEqual(store.setYoloSettings({ enabled: false }), { enabled: false });
+    const a = store.upsertProject("/work/a");
+    assert.deepEqual(store.getYoloSettings(a.id), { enabled: false });
+    assert.deepEqual(store.setYoloSettings(a.id, { enabled: true }), { enabled: true });
+    assert.deepEqual(store.getYoloSettings(a.id), { enabled: true });
+    assert.deepEqual(store.setYoloSettings(a.id, {}), { enabled: true }, "an empty patch changes nothing");
+    assert.equal(store.getProject("/work/a")?.yoloEnabled, true);
+    const later = store.upsertProject("/work/later");
+    assert.deepEqual(store.getYoloSettings(later.id), { enabled: false });
+    assert.equal(later.sandboxDisabled, false);
+    assert.equal(store.setYoloSettings(9999, { enabled: true }), null);
+  });
+
+  it("drops a project's posture when it is removed, so adding it back starts protected", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    const a = store.upsertProject("/work/a");
+    store.setYoloSettings(a.id, { enabled: true });
+    store.setSandboxSettings(a.id, { disabled: true });
+    store.setHidden("/work/a", true);
+    store.upsertProject("/work/a");
+    store.setHidden("/work/a", false);
+    assert.deepEqual(store.getYoloSettings(a.id), { enabled: false });
+    assert.deepEqual(store.getSandboxSettings(a.id), { disabled: false });
+  });
+
+  it("migrates the old global YOLO and sandbox switch without spreading it to any project", () => {
+    const folder = mkdtempSync(join(tmpdir(), "helicon-posture-migration-"));
+    const path = join(folder, "synthetic.db");
+    after(() => rmSync(folder, { recursive: true, force: true }));
+    const db = new DatabaseSync(path);
+    db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, cwd TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL,
+      pinned INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO projects (cwd, display_name, created_at, updated_at) VALUES ('/work/old', 'old', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+      INSERT INTO settings (key, value) VALUES ('yolo', '{"enabled":true}'), ('sandbox', '{"disabled":true}'), ('title', '{"enabled":false,"modelId":null}');`);
+    db.close();
+    for (let open = 0; open < 2; open += 1) {
+      const store = new HeliconStore(path);
+      const old = store.getProject("/work/old")!;
+      assert.deepEqual(store.getYoloSettings(old.id), { enabled: false }, "the old switch never reaches a project");
+      assert.deepEqual(store.getSandboxSettings(old.id), { disabled: false });
+      assert.equal(store.getTitleSettings().enabled, false, "other settings survive");
+      if (open === 0) {
+        store.setYoloSettings(old.id, { enabled: true });
+      }
+      store.close();
+      if (open === 0) {
+        const check = new DatabaseSync(path);
+        assert.equal(check.prepare("SELECT COUNT(*) AS n FROM settings WHERE key IN ('yolo', 'sandbox')").get()?.["n"], 0);
+        check.close();
+        // A project chosen after the upgrade keeps its choice across a reopen; the migration runs again harmlessly.
+        const again = new HeliconStore(path);
+        assert.deepEqual(again.getYoloSettings(old.id), { enabled: true });
+        again.setYoloSettings(old.id, { enabled: false });
+        again.close();
+      }
+    }
   });
 
   it("keeps usage rows when a session is deleted, flagged as deleted", () => {

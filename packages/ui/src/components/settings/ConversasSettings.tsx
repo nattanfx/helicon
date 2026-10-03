@@ -33,7 +33,7 @@ export function NovasConversas() {
   const controller = useController();
   const prefs = useApp((s) => s.prefs);
   const models = useApp((s) => s.models);
-  const yoloSettings = useApp((s) => s.yoloSettings);
+  const yoloProjects = useApp((s) => Object.values(s.yoloSettings ?? {}).filter((entry) => entry.enabled).length);
   return (
     <Card>
       <Row label="Modelo" description="Com o que uma nova conversa começa. Mudar aqui não afeta conversas em andamento.">
@@ -59,10 +59,9 @@ export function NovasConversas() {
             value={prefs.defaultMode}
             options={MODES.map((mode) => ({ value: mode.value as ApprovalMode, label: mode.label, hint: mode.description }))}
             onChange={(value) => void controller.setMode(value as ApprovalMode)}
-            disabled={yoloSettings?.enabled === true}
           />
-          {yoloSettings?.enabled ? (
-            <p className="text-xs text-subtle">O YOLO é dono do modo de cada conversa enquanto ligado. Desligue-o para escolher.</p>
+          {yoloProjects > 0 ? (
+            <p className="text-xs text-subtle">Nos projetos com o YOLO ligado, as conversas começam com acesso total mesmo assim.</p>
           ) : null}
         </div>
       </Row>

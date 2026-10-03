@@ -12,7 +12,9 @@ function usage(): string {
     "  --host <addr>     bind address (default 127.0.0.1)",
     "  --data-dir <dir>  sqlite directory, or :memory: (default ~/.helicon)",
     "  --static <dir>    serve a built frontend from this directory",
-    "  --token <value>   require a token for non-loopback access",
+    "  --token <value>   require this token (needed for non-loopback access);",
+    "                    without it, a random token is made and a one-use sign-in link is printed",
+    "  --no-auth         loopback only: answer any local process without a token (unsafe, development only)",
     "  --allow-origin <o>  browser origin allowed to connect from another site (repeatable)",
     "  --allow-host <h>  extra hostname accepted behind a reverse proxy (repeatable)",
     "  --distro <name>   WSL distro for muse on Windows (default Ubuntu)",
@@ -46,21 +48,26 @@ async function main(): Promise<void> {
     process.stdout.write(usage() + "\n");
     return;
   }
-  const { HeliconServer } = await import("./server.js");
+  const { HeliconServer, isLoopbackHost } = await import("./server.js");
   const portRaw = flagValue(argv, "--port");
   const dataDir = flagValue(argv, "--data-dir") ?? join(homedir(), ".helicon");
   if (dataDir !== ":memory:") {
     mkdirSync(dataDir, { recursive: true });
   }
+  const host = flagValue(argv, "--host") ?? "127.0.0.1";
+  const token = flagValue(argv, "--token");
+  // Without a token any local process could drive Muse through this server, so a loopback server makes its own:
+  // the same one-use launch the desktop uses. Network binds still need --token; --no-auth is the explicit opt-out.
+  const launchAuth = !token && !argv.includes("--no-auth") && isLoopbackHost(host);
   const server = new HeliconServer({
     port: portRaw ? Number.parseInt(portRaw, 10) : 3127,
-    host: flagValue(argv, "--host") ?? "127.0.0.1",
+    host,
     dataDir,
     staticDir: flagValue(argv, "--static"),
-    token: flagValue(argv, "--token"),
+    token,
     allowOrigins: flagValues(argv, "--allow-origin"),
     allowHosts: flagValues(argv, "--allow-host"),
-    desktopAuth: argv.includes("--desktop-auth"),
+    desktopAuth: argv.includes("--desktop-auth") || launchAuth,
     distro: flagValue(argv, "--distro") ?? undefined,
     runtime: parseRuntimePreference(flagValue(argv, "--runtime") ?? process.env["HELICON_MUSE_RUNTIME"]),
     musePath: flagValue(argv, "--muse") ?? undefined,
@@ -68,6 +75,9 @@ async function main(): Promise<void> {
   const bound = await server.listen();
   const base = `http://${bound.host.includes(":") ? `[${bound.host}]` : bound.host}:${bound.port}`;
   process.stdout.write(`helicon-server listening on ${server.desktopLaunchUrl(base)}\n`);
+  if (launchAuth && !argv.includes("--desktop-auth")) {
+    process.stdout.write("Open the link above once to sign this browser in; it works a single time. Restart helicon-server for a new one.\n");
+  }
   const shutdown = () => {
     void server.close().then(() => process.exit(0));
   };
