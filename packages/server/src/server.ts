@@ -4240,20 +4240,4 @@ function firstUserText(events: { method: string; params: Record<string, unknown>
   return null;
 }
 
-export async function resolveMusePath(
-  platform: string,
-  distro: string,
-): Promise<string | null> {
-  if (platform === "win32") {
-    const probe = await probeEnvironment(defaultExec, platform);
-    void distro;
-    return probe.musePath;
-  }
-  const found = await defaultExec("sh", ["-lc", "command -v muse"]);
-  if (found.exitCode !== 0) {
-    return null;
-  }
-  return found.stdout.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
-}
-
 export { resolveMuseInDistro };
