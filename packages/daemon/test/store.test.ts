@@ -1,8 +1,61 @@
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { HeliconStore } from "../src/store.js";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("HeliconStore", () => {
+  it("preserves legacy spending and registration dates without claiming they are completion dates", () => {
+    const folder = mkdtempSync(join(tmpdir(), "helicon-usage-migration-"));
+    const path = join(folder, "synthetic.db");
+    after(() => rmSync(folder, { recursive: true, force: true }));
+    const db = new DatabaseSync(path);
+    db.exec(`CREATE TABLE usage (key TEXT PRIMARY KEY, session_id TEXT NOT NULL, turn_id TEXT, model_id TEXT,
+      prompt_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_tokens INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER, at TEXT NOT NULL);
+      INSERT INTO usage (key, session_id, prompt_tokens, output_tokens, at) VALUES ('old-cursor', 's1', 10, 5, '2020-01-01T00:00:00.000Z');`);
+    db.close();
+    const store = new HeliconStore(path);
+    const row = store.listUsage("2026-01-01T00:00:00.000Z")[0]!;
+    assert.equal(row.at, null);
+    assert.equal(row.promptTokens, 10);
+    // New provenance attaches through an old cursor; it cannot delete equal-valued calls.
+    assert.equal(store.recordUsage({ ...row, key: "source-new", sourceKey: "raw1", legacyKey: "old-cursor" }), false);
+    assert.equal(store.recordUsage({ ...row, key: "source-replayed", sourceKey: "raw1", legacyKey: "cursor-after-compaction" }), false);
+    assert.equal(store.recordUsage({ ...row, key: "source-distinct", sourceKey: "raw2", legacyKey: "old-cursor" }), true);
+    assert.equal(store.listUsage().length, 2);
+    store.close();
+    const check = new DatabaseSync(path);
+    assert.deepEqual(check.prepare("SELECT prompt_tokens, output_tokens, at FROM usage WHERE key = 'old-cursor'").get(),
+      Object.assign(Object.create(null), { prompt_tokens: 10, output_tokens: 5, at: "2020-01-01T00:00:00.000Z" }));
+    check.close();
+    const reopened = new HeliconStore(path);
+    assert.equal(reopened.listUsage().length, 2);
+    reopened.close();
+  });
+
+  it("keeps accumulated readings separate from calls and never moves token evidence backwards", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    store.recordUsageRecovery("s1", false, "snapshot only", 100, 50);
+    store.recordUsageRecovery("s1", false, "unavailable", null, null);
+    store.recordUsageRecovery("s1", true, null, 10, 5);
+    assert.deepEqual(store.listUsageRecovery()[0], { sessionId: "s1", complete: true, reason: null, promptTokens: 100, outputTokens: 50, recordedPromptTokens: 0, recordedOutputTokens: 0 });
+    assert.equal(store.listUsage().length, 0);
+  });
+
+  it("does not discard a different raw completion whose regenerated cursor collides with a legacy row", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    const call = { key: "legacy", sessionId: "s1", turnId: null, modelId: null, promptTokens: 10, outputTokens: 5, inputTokens: 10, cachedTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, durationMs: null, at: null };
+    store.recordUsage(call);
+    assert.equal(store.recordUsage({ ...call, key: "source", sourceKey: "different-raw-call", legacyKey: "legacy", promptTokens: 20 }), true);
+    assert.equal(store.listUsage().length, 2);
+    assert.equal(store.usageTokens("s1").promptTokens, 30);
+  });
   it("groups sessions under projects by directory", () => {
     const store = new HeliconStore();
     after(() => store.close());

@@ -186,6 +186,13 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS usage_recovery (
+  session_id TEXT PRIMARY KEY,
+  complete INTEGER NOT NULL DEFAULT 0,
+  reason TEXT,
+  prompt_tokens INTEGER,
+  output_tokens INTEGER
+);
 CREATE TABLE IF NOT EXISTS title_attempts (
   session_id TEXT PRIMARY KEY REFERENCES sessions(id),
   state TEXT NOT NULL,
@@ -205,6 +212,9 @@ CREATE INDEX IF NOT EXISTS idx_attachments_session ON attachments(session_id, tu
 
 /** Columns added after the first release; applied in place so existing databases keep their data. */
 const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
+  // Legacy `at` was the insertion time, including replays; retain it without claiming a call date.
+  { table: "usage", column: "occurred_at", ddl: "ALTER TABLE usage ADD COLUMN occurred_at TEXT" },
+  { table: "usage", column: "source_key", ddl: "ALTER TABLE usage ADD COLUMN source_key TEXT" },
   { table: "projects", column: "hidden", ddl: "ALTER TABLE projects ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0" },
   { table: "projects", column: "position", ddl: "ALTER TABLE projects ADD COLUMN position INTEGER" },
   {
@@ -265,6 +275,8 @@ export interface ShellRunRecord {
 /** One model call's tokens, as the store keeps them for the usage page. */
 export interface UsageCall {
   key: string;
+  sourceKey?: string | null;
+  legacyKey?: string | null;
   sessionId: string;
   turnId: string | null;
   modelId: string | null;
@@ -276,7 +288,7 @@ export interface UsageCall {
   cacheWriteTokens: number;
   reasoningTokens: number;
   durationMs: number | null;
-  at: string;
+  at: string | null;
 }
 
 export interface UsageRow extends UsageCall {
@@ -317,6 +329,7 @@ export class HeliconStore {
         this.db.exec(migration.ddl);
       }
     }
+    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_source ON usage(session_id, source_key) WHERE source_key IS NOT NULL");
   }
 
   /** Malformed rows fall back to defaults rather than breaking the worker that reads them. */
@@ -494,15 +507,28 @@ export class HeliconStore {
   }
 
   /**
-   * One model call's tokens. Keyed by the view cursor that carried it, so replaying a thread's history
-   * never counts a call twice.
+   * Reconcile durable provenance and scoped cursors, preserving pre-upgrade ledger values.
    */
-  recordUsage(call: UsageCall): void {
-    this.db
+  recordUsage(call: UsageCall): boolean {
+    const sourceKey = call.sourceKey ?? null;
+    const existing = sourceKey ? this.db.prepare("SELECT key FROM usage WHERE session_id = ? AND source_key = ?").get(call.sessionId, sourceKey) : undefined;
+    if (existing) return false;
+    // Attach provenance to a known cursor from older versions; never merge different raw ranges.
+    const cursorKey = call.legacyKey ? JSON.stringify([call.sessionId, "cursor", call.legacyKey]) : call.key;
+    const prior = this.db.prepare("SELECT key, source_key, prompt_tokens, output_tokens FROM usage WHERE session_id = ? AND key IN (?, ?, ?)")
+      .all(call.sessionId, call.key, cursorKey, call.legacyKey ?? call.key) as Row[];
+    const match = prior.find((row) => (row["source_key"] === null || row["source_key"] === sourceKey)
+      && (row["key"] === call.key || (Number(row["prompt_tokens"]) === call.promptTokens && Number(row["output_tokens"]) === call.outputTokens)));
+    if (match) {
+      this.db.prepare("UPDATE usage SET source_key = COALESCE(source_key, ?), occurred_at = COALESCE(occurred_at, ?) WHERE key = ?")
+        .run(sourceKey, call.at, String(match["key"]));
+      return false;
+    }
+    const inserted = this.db
       .prepare(
         `INSERT INTO usage (key, session_id, turn_id, model_id, prompt_tokens, output_tokens, input_tokens,
-           cached_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, duration_ms, at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           cached_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, duration_ms, at, occurred_at, source_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(key) DO NOTHING`,
       )
       .run(
@@ -518,8 +544,34 @@ export class HeliconStore {
         call.cacheWriteTokens,
         call.reasoningTokens,
         call.durationMs ?? null,
+        call.at ?? nowIso(),
         call.at,
+        sourceKey,
       );
+    return Number(inserted.changes) > 0;
+  }
+
+  /** Snapshots are independent evidence, never synthetic calls added to the detailed ledger. */
+  recordUsageRecovery(sessionId: string, complete: boolean, reason: string | null, promptTokens: number | null = null, outputTokens: number | null = null): void {
+    this.db.prepare(`INSERT INTO usage_recovery (session_id, complete, reason, prompt_tokens, output_tokens) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET complete = excluded.complete, reason = excluded.reason,
+      prompt_tokens = CASE WHEN excluded.prompt_tokens IS NULL THEN prompt_tokens ELSE MAX(COALESCE(prompt_tokens, 0), excluded.prompt_tokens) END,
+      output_tokens = CASE WHEN excluded.output_tokens IS NULL THEN output_tokens ELSE MAX(COALESCE(output_tokens, 0), excluded.output_tokens) END`)
+      .run(sessionId, complete ? 1 : 0, reason, promptTokens, outputTokens);
+  }
+
+  listUsageRecovery(): { sessionId: string; complete: boolean; reason: string | null; promptTokens: number | null; outputTokens: number | null; recordedPromptTokens: number; recordedOutputTokens: number }[] {
+    return (this.db.prepare(`SELECT r.*, COALESCE(SUM(u.prompt_tokens), 0) AS recorded_prompt, COALESCE(SUM(u.output_tokens), 0) AS recorded_output
+      FROM usage_recovery r LEFT JOIN usage u ON u.session_id = r.session_id GROUP BY r.session_id`).all() as Row[]).map((row) => ({
+      sessionId: String(row["session_id"]), complete: Number(row["complete"]) === 1, reason: row["reason"] === null ? null : String(row["reason"]),
+      promptTokens: row["prompt_tokens"] === null ? null : Number(row["prompt_tokens"]), outputTokens: row["output_tokens"] === null ? null : Number(row["output_tokens"]),
+      recordedPromptTokens: Number(row["recorded_prompt"]), recordedOutputTokens: Number(row["recorded_output"]),
+    }));
+  }
+
+  usageTokens(sessionId: string): { promptTokens: number; outputTokens: number } {
+    const row = this.db.prepare("SELECT COALESCE(SUM(prompt_tokens), 0) AS prompt, COALESCE(SUM(output_tokens), 0) AS output FROM usage WHERE session_id = ?").get(sessionId) as Row;
+    return { promptTokens: Number(row["prompt"]), outputTokens: Number(row["output"]) };
   }
 
   /** Every recorded call since `since`, newest last, with the thread and project it belongs to. */
@@ -531,8 +583,8 @@ export class HeliconStore {
          LEFT JOIN sessions s ON s.id = u.session_id
          LEFT JOIN projects p ON p.id = s.project_id
          LEFT JOIN deleted_sessions d ON d.session_id = u.session_id
-         ${since ? "WHERE u.at >= ?" : ""}
-         ORDER BY u.at`,
+         ${since ? "WHERE u.occurred_at >= ? OR u.occurred_at IS NULL" : ""}
+         ORDER BY u.occurred_at`,
       )
       .all(...(since ? [since] : [])) as Row[];
     return rows.map((row) => ({
@@ -548,7 +600,7 @@ export class HeliconStore {
       cacheWriteTokens: Number(row["cache_write_tokens"] ?? 0),
       reasoningTokens: Number(row["reasoning_tokens"] ?? 0),
       durationMs: row["duration_ms"] === null ? null : Number(row["duration_ms"]),
-      at: String(row["at"]),
+      at: row["occurred_at"] === null ? null : String(row["occurred_at"]),
       sessionTitle: row["session_title"] === null || row["session_title"] === undefined ? null : String(row["session_title"]),
       projectCwd: row["project_cwd"] === null || row["project_cwd"] === undefined ? null : String(row["project_cwd"]),
       deleted: Number(row["deleted"] ?? 0) === 1,

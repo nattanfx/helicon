@@ -28,3 +28,13 @@ Após os passos anteriores, uma conversa nova no projeto descartável permite co
 Registre abertura, reabertura, navegação, arquivo e resposta separadamente. Se a cota estiver esgotada, não classifique resposta/eventos como aprovados. Não apague nem modifique sessões antigas para tentar resolver erros.
 
 Se surgir erro, registre a mensagem e o `BUILD.txt`. A pt4 continua disponível pelo atalho original **Helicon**. Não desinstale nem remova os dados da pt4.
+
+## Conferência da página Uso
+
+1. Abra **Uso**. Chamadas com data conhecida entram no período escolhido. Quando o Muse não informa a data, o consumo aparece em **Consumo sem data conhecida**, fora do gráfico diário. Registros de versões anteriores também ficam nessa seção: a data antiga era a da leitura, e os valores permanecem guardados.
+2. Em **Configurações → Conversas**, clique em **Recuperar uso** e aguarde. A tela informa chamadas **novas** recuperadas, leituras incompletas e falhas. A recuperação consulta o histórico sem reabrir as conversas.
+3. Abra Uso, anote os totais e execute a recuperação outra vez. Sem novas chamadas ao modelo, os números das chamadas já identificadas devem permanecer iguais. Reabrir a conversa também não deve aumentá-los.
+4. Se aparecer **Consumo com detalhamento incompleto**, confira a mensagem. O acumulado disponível fica separado das chamadas: não se inventam datas, modelos, quantidade de chamadas ou preço para a parte sem detalhamento. Pode haver histórico compacto, sessão usada por outro host, repetição de páginas ou limite de leitura.
+5. Para conferir a exclusão, use apenas uma conversa de teste descartável com consumo já conhecido. Apagar deve preservar o consumo; a linha passa a **Conversa excluída**, sem botão para reabrir.
+
+A recuperação percorre até 100 páginas da lista de conversas e 100 páginas por histórico, no host padrão do perfil atual. Dados de outro perfil ou runtime podem ficar fora da consulta. Registros antigos sem identidade durável não são apagados por semelhança de valores; duplicação antiga exige investigação própria.

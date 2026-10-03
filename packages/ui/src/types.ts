@@ -351,7 +351,7 @@ export interface ShellRun {
 
 /** One day's tokens for one model, as the server aggregates them for the usage page. */
 export interface UsageBucket {
-  day: string;
+  day: string | null;
   modelId: string;
   calls: number;
   promptTokens: number;
@@ -376,7 +376,7 @@ export interface UsageThread {
   modelIds: string[];
   /** Tokens split by model, so a thread that switched models is priced at each model's own rate. */
   models?: { modelId: string; calls: number; promptTokens: number; outputTokens: number; cachedTokens: number }[];
-  lastAt: string;
+  lastAt: string | null;
 }
 
 /** Every model call Helicon has seen, bucketed; the UI puts prices on it. */
@@ -385,6 +385,8 @@ export interface UsageReport {
   days: number;
   buckets: UsageBucket[];
   threads: UsageThread[];
+  undated?: { buckets: UsageBucket[]; threads: UsageThread[] };
+  recovery?: { sessionId: string; complete: boolean; reason: string | null; promptTokens: number | null; outputTokens: number | null; recordedPromptTokens: number; recordedOutputTokens: number }[];
 }
 
 /** Progresso da releitura de uso em todas as sessões do host. */
@@ -394,6 +396,9 @@ export interface UsageBackfillStatus {
   done: number;
   calls: number;
   failed: number;
+  incomplete?: number;
+  skipped?: number;
+  enumerationIncomplete?: boolean;
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;

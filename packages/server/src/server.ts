@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -45,6 +45,7 @@ import { FailureLog } from "./failureLog.js";
 import { FileError, listFolder, readProjectFile, resolveInRoot, searchProjectFiles, serveProjectFile, writeProjectFile } from "./files.js";
 import { PathError, createDirectory, listDirectory, resolveUserPath, type PathContext } from "./paths.js";
 import { buildThreadTitlePrompt, deriveTitle, parseExecTitle, sanitizeThreadTitle } from "./threadTitles.js";
+import { usageIdentity, usageSnapshot } from "./usage.js";
 
 export const HELICON_VERSION = "0.12.5-pt5";
 
@@ -196,6 +197,7 @@ function goalOf(value: unknown): GoalBlock | null | undefined {
 type SseSink = (event: string, data: unknown) => void;
 
 const MAX_HISTORY_PAGES = 4;
+const MAX_USAGE_PAGES = 100;
 /** Older pages scanned for the latest route transition beyond the transcript window. */
 const ROUTE_HISTORY_SCAN_PAGES = 8;
 const HISTORY_PAGE_SIZE = 1000;
@@ -432,14 +434,14 @@ function stripSource(params: Record<string, unknown>): Record<string, unknown> {
   return rest;
 }
 
-function stripEvent(event: unknown): { method: string; params: Record<string, unknown> } | null {
+function stripEvent(event: unknown, preserveSource = false): { method: string; params: Record<string, unknown> } | null {
   const record = asRecord(event);
   const method = record ? str(record["method"]) : null;
   const params = record ? asRecord(record["params"]) : null;
   if (!method || !params) {
     return null;
   }
-  return { method, params: stripSource(params) };
+  return { method, params: preserveSource ? params : stripSource(params) };
 }
 
 function asHistoryItem(value: unknown): Record<string, unknown> | null {
@@ -690,7 +692,7 @@ export class HeliconServer {
   /** The newest subscription window any host reported; `usage/changed` carries no session, so it lives here. */
   private planUsage: SubscriptionUsage | null = null;
   /** Progresso da releitura de uso; uma por vez, sem adotar sessões na barra lateral. */
-  private usageBackfill: { running: boolean; total: number; done: number; calls: number; failed: number; startedAt: string | null; finishedAt: string | null; error: string | null } = { running: false, total: 0, done: 0, calls: 0, failed: 0, startedAt: null, finishedAt: null, error: null };
+  private usageBackfill = { running: false, total: 0, done: 0, calls: 0, failed: 0, incomplete: 0, skipped: 0, enumerationIncomplete: false, startedAt: null as string | null, finishedAt: null as string | null, error: null as string | null };
   /** Append-only failure log; memory-only when the server runs without a data dir. */
   private readonly failures: FailureLog;
   /** The reasoning effort each session is known to be running at, so a turn only re-sets it when it changes. */
@@ -2375,17 +2377,23 @@ export class HeliconServer {
 
   /**
    * One model call's tokens, kept so the usage page can look across every thread rather than only the ones
-   * open in the UI. The view cursor is the key, so replaying a thread's history never counts a call twice.
+   * open in the UI. Durable source ranges identify replays even when the view cursor changes.
    */
-  private recordUsage(sessionId: string, params: Record<string, unknown>): void {
+  private recordUsage(sessionId: string, params: Record<string, unknown>): boolean {
     const usage = asRecord(params["usage"]) ?? {};
     const promptTokens = num(params["promptTokens"]) ?? num(usage["inputTokens"]) ?? 0;
     const outputTokens = num(usage["outputTokens"]) ?? Math.max(0, (num(params["totalTokens"]) ?? 0) - promptTokens);
     if (promptTokens === 0 && outputTokens === 0) {
-      return;
+      return false;
     }
-    this.store.recordUsage({
-      key: str(params["viewCursor"]) ?? `${sessionId}:${str(params["turnId"]) ?? "turn"}:${randomUUID()}`,
+    const identity = usageIdentity(sessionId, params);
+    if (!identity) {
+      const cumulative = asRecord(params["cumulative"]);
+      this.store.recordUsageRecovery(sessionId, false, "Há chamadas sem identificação confiável.", num(cumulative?.["promptTokens"]) ?? null, num(cumulative?.["outputTokens"]) ?? null);
+      return false;
+    }
+    return this.store.recordUsage({
+      ...identity,
       sessionId,
       turnId: str(params["turnId"]),
       modelId: str(params["modelId"]),
@@ -2397,7 +2405,7 @@ export class HeliconServer {
       cacheWriteTokens: num(usage["cacheWriteTokens"]) ?? 0,
       reasoningTokens: num(usage["reasoningTokens"]) ?? 0,
       durationMs: num(params["durationMs"]) ?? null,
-      at: normalizeIso(params["at"]) ?? nowIso(),
+      at: normalizeIso(params["at"]) ?? null,
     });
   }
 
@@ -2410,7 +2418,7 @@ export class HeliconServer {
   /** Começa a releitura se nenhuma roda; idempotente enquanto roda. */
   private startUsageBackfill(): Record<string, unknown> {
     if (!this.usageBackfill.running) {
-      this.usageBackfill = { running: true, total: 0, done: 0, calls: 0, failed: 0, startedAt: nowIso(), finishedAt: null, error: null };
+      this.usageBackfill = { running: true, total: 0, done: 0, calls: 0, failed: 0, incomplete: 0, skipped: 0, enumerationIncomplete: false, startedAt: nowIso(), finishedAt: null, error: null };
       void this.runUsageBackfill().catch((error: unknown) => {
         this.usageBackfill.running = false;
         this.usageBackfill.finishedAt = nowIso();
@@ -2422,49 +2430,127 @@ export class HeliconServer {
 
   /**
    * Relê o histórico de cada sessão do host e registra as chamadas, sem adotar nada na barra lateral:
-   * excluídas e CLI-only voltam aos números sem voltar à lista. Só lê (view/page); nunca resume, então
-   * não envenena turnos em voo. Idempotente: a chave é o cursor da chamada.
+   * Uses read-only queries; the recovery scan has its own budget, separate from the displayed transcript.
    */
   private async runUsageBackfill(): Promise<void> {
     const host = await this.hostFor("");
-    const ids: string[] = [];
+    const ids = new Set<string>();
+    const cursors = new Set<string>();
+    const pageSignatures = new Set<string>();
     let cursor: string | null = null;
-    for (;;) {
-      const page = await host.manager.listSessionsPage({ limit: 100, cursor });
+    for (let index = 0; index < MAX_USAGE_PAGES; index += 1) {
+      let page;
+      try {
+        page = await host.manager.listSessionsPage({ limit: 100, cursor });
+      } catch {
+        this.usageBackfill.enumerationIncomplete = true;
+        break;
+      }
+      const signature = createHash("sha256").update(JSON.stringify(page.sessions)).digest("hex");
+      if (pageSignatures.has(signature)) {
+        this.usageBackfill.enumerationIncomplete = true;
+        break;
+      }
+      pageSignatures.add(signature);
       for (const item of page.sessions) {
         const record = asRecord(item);
         const session = (record && asRecord(record["session"])) ?? record;
         const sessionId = session ? str(session["sessionId"]) : null;
         if (sessionId) {
-          ids.push(sessionId);
+          ids.add(sessionId);
         }
       }
       cursor = page.nextCursor;
-      if (!cursor) {
+      if (!cursor) break;
+      if (cursors.has(cursor) || page.sessions.length === 0 || index === MAX_USAGE_PAGES - 1) {
+        this.usageBackfill.enumerationIncomplete = true;
         break;
       }
+      cursors.add(cursor);
     }
-    this.usageBackfill.total = ids.length;
+    this.usageBackfill.total = ids.size;
     for (const sessionId of ids) {
-      try {
-        const { events } = await this.pageTranscript(host.manager, sessionId);
-        this.usageBackfill.calls += this.recordUsageFromEvents(sessionId, events);
-      } catch {
-        this.usageBackfill.failed += 1;
-      }
+      const result = await this.recoverUsage(host.manager, sessionId);
+      this.usageBackfill.calls += result.calls;
+      this.usageBackfill.skipped += result.skipped;
+      if (!result.complete) this.usageBackfill.incomplete += 1;
+      if (result.failed) this.usageBackfill.failed += 1;
       this.usageBackfill.done += 1;
     }
     this.usageBackfill.running = false;
     this.usageBackfill.finishedAt = nowIso();
   }
 
-  /** Registra o uso dos eventos tokenUsage; devolve quantas chamadas viu (novas ou repetidas). */
+  private async recoverUsage(manager: SessionManager, sessionId: string): Promise<{ calls: number; skipped: number; complete: boolean; failed: boolean }> {
+    const cursors = new Set<string>();
+    const signatures = new Set<string>();
+    let cursor: string | undefined;
+    let calls = 0;
+    let skipped = 0;
+    let seenUsage = 0;
+    let complete = false;
+    let failed = false;
+    let reason: string | null = "Limite de páginas atingido.";
+    let snapshot: Record<string, unknown> | null = null;
+    try {
+      for (let index = 0; index < MAX_USAGE_PAGES; index += 1) {
+        const page = await manager.pageView(sessionId, { cursor, direction: "backward", limit: HISTORY_PAGE_SIZE });
+        const signature = createHash("sha256").update(JSON.stringify(page.events)).digest("hex");
+        if (signatures.has(signature)) {
+          reason = "O histórico repetiu uma página.";
+          break;
+        }
+        signatures.add(signature);
+        const events = page.events.map((event) => stripEvent(event, true)).filter((event): event is NonNullable<typeof event> => event !== null);
+        for (const event of events) {
+          if (event.method !== "session/tokenUsage") continue;
+          seenUsage += 1;
+          if (!usageIdentity(sessionId, event.params)) skipped += 1;
+          if (this.recordUsage(sessionId, event.params)) calls += 1;
+          const cumulative = asRecord(event.params["cumulative"]);
+          if (cumulative && (!snapshot || (num(cumulative["totalTokens"]) ?? 0) > (num(snapshot["totalTokens"]) ?? 0))) snapshot = cumulative;
+        }
+        if (!page.nextCursor) { complete = skipped === 0; reason = skipped ? "Há chamadas sem identificação confiável." : null; break; }
+        if (cursors.has(page.nextCursor) || page.events.length === 0) { reason = "O histórico não avançou para outra página."; break; }
+        cursors.add(page.nextCursor);
+        cursor = page.nextCursor;
+      }
+    } catch (error) {
+      const kind = errorInfo(error).kind;
+      failed = kind !== "sessionNotLoaded" && kind !== "sessionInUse";
+      reason = "Não foi possível ler todas as chamadas do histórico.";
+    }
+    // Other hosts' leases and compacted snapshots can expose totals without individual completions.
+    if (!complete || seenUsage === 0) {
+      try {
+        const read = await manager.readSession(sessionId, false);
+        snapshot = usageSnapshot(read) ?? snapshot;
+        const history = asRecord(asRecord(read)?.["history"]);
+        if (seenUsage === 0 && ((num(snapshot?.["totalTokens"]) ?? 0) > 0 || eventsFromHistory(read).length > 0 || history?.["mode"] === "none" || !history)) {
+          complete = false;
+          reason = snapshot ? "Só o consumo acumulado está disponível; faltam as chamadas individuais." : "O histórico disponível não informa as chamadas ao modelo.";
+        }
+      } catch {
+        failed = true;
+        complete = false;
+        reason = "Não foi possível ler o consumo desta conversa.";
+      }
+    }
+    const recorded = this.store.usageTokens(sessionId);
+    if (complete && snapshot && ((num(snapshot["promptTokens"]) ?? recorded.promptTokens) !== recorded.promptTokens || (num(snapshot["outputTokens"]) ?? recorded.outputTokens) !== recorded.outputTokens)) {
+      complete = false;
+      reason = "O acumulado disponível e as chamadas registradas divergem; a leitura pode ser parcial ou desatualizada.";
+    }
+    this.store.recordUsageRecovery(sessionId, complete, reason, num(snapshot?.["promptTokens"]) ?? null, num(snapshot?.["outputTokens"]) ?? null);
+    return { calls, skipped, complete, failed };
+  }
+
+  /** Only newly inserted calls count as recovered; replays remain idempotent. */
   private recordUsageFromEvents(sessionId: string, events: { method: string; params: Record<string, unknown> }[]): number {
     let calls = 0;
     for (const event of events) {
       if (event.method === "session/tokenUsage") {
-        this.recordUsage(sessionId, event.params);
-        calls += 1;
+        if (this.recordUsage(sessionId, event.params)) calls += 1;
       }
     }
     return calls;
@@ -2475,12 +2561,16 @@ export class HeliconServer {
     const rows = this.store.listUsage(since);
     const buckets = new Map<string, Record<string, unknown>>();
     const threads = new Map<string, Record<string, unknown>>();
+    const undatedBuckets = new Map<string, Record<string, unknown>>();
+    const undatedThreads = new Map<string, Record<string, unknown>>();
     for (const row of rows) {
-      const day = row.at.slice(0, 10);
+      const day = row.at?.slice(0, 10) ?? null;
+      const rowBuckets = day ? buckets : undatedBuckets;
+      const rowThreads = day ? threads : undatedThreads;
       const modelId = row.modelId ?? "unknown";
       const cached = Math.min(row.promptTokens, row.cacheReadTokens || row.cachedTokens);
       const bucketKey = `${day}|${modelId}`;
-      const bucket = buckets.get(bucketKey) ?? {
+      const bucket = rowBuckets.get(bucketKey) ?? {
         day,
         modelId,
         calls: 0,
@@ -2500,9 +2590,9 @@ export class HeliconServer {
       bucket["cacheWriteTokens"] = (bucket["cacheWriteTokens"] as number) + row.cacheWriteTokens;
       bucket["reasoningTokens"] = (bucket["reasoningTokens"] as number) + row.reasoningTokens;
       bucket["durationMs"] = (bucket["durationMs"] as number) + (row.durationMs ?? 0);
-      buckets.set(bucketKey, bucket);
+      rowBuckets.set(bucketKey, bucket);
 
-      const thread = threads.get(row.sessionId) ?? {
+      const thread = rowThreads.get(row.sessionId) ?? {
         sessionId: row.sessionId,
         title: row.sessionTitle,
         cwd: row.projectCwd,
@@ -2541,13 +2631,15 @@ export class HeliconServer {
         });
       }
       thread["lastAt"] = row.at;
-      threads.set(row.sessionId, thread);
+      rowThreads.set(row.sessionId, thread);
     }
     return {
       since,
       days,
       buckets: [...buckets.values()],
       threads: [...threads.values()].sort((a, b) => ((a["lastAt"] as string) < (b["lastAt"] as string) ? 1 : -1)),
+      undated: { buckets: [...undatedBuckets.values()], threads: [...undatedThreads.values()] },
+      recovery: this.store.listUsageRecovery().filter((row) => !row.complete || (row.promptTokens ?? 0) > row.recordedPromptTokens || (row.outputTokens ?? 0) > row.recordedOutputTokens),
     };
   }
 
@@ -2610,7 +2702,7 @@ export class HeliconServer {
       truncated = page === MAX_HISTORY_PAGES - 1;
     }
     return {
-      events: pages.flat().map(stripEvent).filter((e): e is NonNullable<typeof e> => e !== null),
+      events: pages.flat().map((event) => stripEvent(event, true)).filter((e): e is NonNullable<typeof e> => e !== null),
       truncated,
       nextCursor: truncated ? cursor ?? null : null,
     };
@@ -2644,7 +2736,7 @@ export class HeliconServer {
       if (seen.has(cursor)) throw new Error("view/page repeated a history cursor");
       seen.add(cursor);
       const page = await manager.pageView(sessionId, { cursor, direction: "backward", limit: HISTORY_PAGE_SIZE });
-      const events = page.events.map(stripEvent).filter((event): event is NonNullable<typeof event> => event !== null);
+      const events = page.events.map((event) => stripEvent(event)).filter((event): event is NonNullable<typeof event> => event !== null);
       route = this.routeFromEvents(events);
       cursor = page.nextCursor;
       scanned += 1;
@@ -2769,6 +2861,8 @@ export class HeliconServer {
         msp = asRecord(payload?.["session"]);
       }
       events = eventsFromHistory(payload);
+      const snapshot = usageSnapshot(payload);
+      this.store.recordUsageRecovery(sessionId, false, "O histórico disponível não detalha as chamadas ao modelo.", num(snapshot?.["promptTokens"]) ?? null, num(snapshot?.["outputTokens"]) ?? null);
     }
 
     const pending = await manager.listPending(sessionId).catch(() => ({ approvals: [], userInputs: [] }));
@@ -2795,6 +2889,7 @@ export class HeliconServer {
     }
     // Opening a thread backfills the usage page with the calls it made before this server ever ran.
     this.recordUsageFromEvents(sessionId, events);
+    if (truncated) this.store.recordUsageRecovery(sessionId, false, "A abertura mostrou apenas parte do histórico; use Recuperar uso para ampliar a leitura.");
     // The history's last goal change is the goal as of now, unless a live one arrived while this load ran.
     for (let index = events.length - 1; live.goalSeq === goalSeqAtStart && index >= 0; index -= 1) {
       const event = events[index];
@@ -2841,7 +2936,7 @@ export class HeliconServer {
             tokenUsage: asRecord(msp["tokenUsage"]) ?? null,
           }
         : null,
-      events,
+      events: events.map((event) => ({ ...event, params: stripSource(event.params) })),
       truncated,
       attachments: this.store.listAttachments(sessionId).map((record) => this.attachmentView(record)),
       shellRuns: this.store.listShellRuns(sessionId),
@@ -3038,7 +3133,7 @@ export class HeliconServer {
         if (this.closed) {
           return;
         }
-        const events = page.events.map(stripEvent).filter((e): e is NonNullable<typeof e> => e !== null);
+        const events = page.events.map((event) => stripEvent(event)).filter((e): e is NonNullable<typeof e> => e !== null);
         const latest = this.store.getSession(sessionId);
         if (!latest || latest.titleSource === "user" || latest.title !== current.title) {
           this.titleUpgradePending.delete(sessionId);
@@ -3450,7 +3545,7 @@ export class HeliconServer {
           if (Array.isArray(attention)) live.attention = attention.filter((flag): flag is string => typeof flag === "string");
         }
         if (page) {
-          const events = page.events.map(stripEvent).filter((event): event is NonNullable<typeof event> => event !== null);
+          const events = page.events.map((event) => stripEvent(event)).filter((event): event is NonNullable<typeof event> => event !== null);
           this.observeViewTerminals(sessionId, hostKey, events);
           const latest = [...events].reverse().find((event) => event.method === "turn/completed");
           if (latest && !live.activeTurnId) {

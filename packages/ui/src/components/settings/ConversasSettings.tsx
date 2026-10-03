@@ -1,4 +1,5 @@
 import { useApp, useController } from "../../app/context.js";
+import { backfillDetail } from "../../model/usage-recovery.js";
 import { CONTRIBUTOR_NOTICE, contributorChoiceLabel, modelDisplayName } from "../../model/format.js";
 import { type GroupBy } from "../../model/store.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
@@ -97,13 +98,7 @@ function UsoDasConversas() {
   const controller = useController();
   const backfill = useApp((s) => s.usageBackfill);
   const running = backfill?.running === true;
-  const detail = !backfill
-    ? "Relê as conversas guardadas no disco — inclusive excluídas e as que foram só no CLI — e traz os números de volta para a página de Uso. Não reabre nem altera conversas."
-    : running
-      ? `Lendo ${backfill.done} de ${backfill.total} conversas… ${backfill.calls} chamadas encontradas.`
-      : backfill.error
-        ? `Parou com erro: ${backfill.error}`
-        : `Concluído: ${backfill.done} conversas, ${backfill.calls} chamadas encontradas${backfill.failed > 0 ? `, ${backfill.failed} falharam` : ""}. Abra a página de Uso para ver os números.`;
+  const detail = backfillDetail(backfill);
   return (
     <Card>
       <Row label="Recuperar uso" description={detail}>

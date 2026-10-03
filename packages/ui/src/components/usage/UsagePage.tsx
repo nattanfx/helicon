@@ -5,6 +5,7 @@ import { useOverlayDragProps } from "../../app/frame.js";
 import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, relativeTime } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
 import { fillUsageDays, USAGE_RANGES } from "../../model/usage-range.js";
+import { recoveryGap } from "../../model/usage-recovery.js";
 import type { ModelOption, UsageBucket, UsageReport, UsageThread } from "../../types.js";
 import { Button, Spinner, cn } from "../ui/primitives.js";
 import { TopBar } from "../chrome.js";
@@ -56,7 +57,6 @@ export function UsagePage() {
     };
   }, [controller, days]);
 
-  const view = useMemo(() => (report ? summarize(report, models) : null), [report, models]);
   const collapsed = useApp((s) => s.prefs.sidebarCollapsed);
   const drag = useOverlayDragProps();
 
@@ -95,26 +95,57 @@ export function UsagePage() {
         </div>
         {error ? (
           <p className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-text">{error}</p>
-        ) : !view ? (
+        ) : !report ? (
           <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted">
             <Spinner size={13} /> Lendo uso
           </div>
-        ) : view.calls === 0 ? (
-          <EmptyUsage />
         ) : (
-          <div className="flex flex-col gap-6">
-            <Totals view={view} />
-            <DailyChart view={view} />
-            <Models view={view} />
-            <Threads view={view} />
-            <p className="text-xs text-subtle">
-              Os preços são as tarifas publicadas pela Meta por milhão de tokens, ou o preço de catálogo do próprio modelo quando ele
-              tem um. Níveis de contribuidor são cobrados à parte e marcados como tal.
-            </p>
-          </div>
+          <UsageResults report={report} models={models} />
         )}
       </div>
       </div>
+    </div>
+  );
+}
+
+export function UsageResults({ report, models }: { report: UsageReport; models: readonly ModelOption[] }) {
+  const view = useMemo(() => summarize(report, models), [report, models]);
+  const undated = useMemo(() => report.undated ? summarize({ ...report, ...report.undated }, models) : null, [report, models]);
+  return (
+    <div className="flex flex-col gap-6">
+      {view.calls === 0 ? <EmptyUsage /> : <>
+        <p className="text-xs text-muted">Consumo com data conhecida no período selecionado.</p>
+        <Totals view={view} />
+        <DailyChart view={view} />
+        <Models view={view} />
+        <Threads view={view} />
+      </>}
+      {undated && undated.calls > 0 ? <>
+        <div>
+          <h2 className="text-sm font-semibold text-fg">Consumo sem data conhecida</h2>
+          <p className="mt-1 text-xs text-muted">Preservado à parte, fora dos totais e do gráfico do período. O Muse não informa a data destas chamadas. Registros de versões anteriores também ficam aqui porque guardavam a data da leitura.</p>
+        </div>
+        <Totals view={undated} />
+        <Models view={undated} />
+        <Threads view={undated} />
+      </> : null}
+      {report?.recovery?.length ? <section className="rounded-xl bg-raised px-4 py-4 shadow-[0_0_0_1px_var(--border)]">
+        <h2 className="text-sm font-semibold text-fg">Consumo com detalhamento incompleto</h2>
+        <p className="mt-1 text-xs text-muted">Estes dados não entram nos custos nem nos totais acima. Faltam datas, modelos ou chamadas individuais. Recuperar uso pode ampliar a leitura disponível.</p>
+        <ul className="mt-3 flex flex-col gap-3">
+          {report.recovery.map((row) => {
+            const gap = recoveryGap(row);
+            return <li key={row.sessionId} className="text-xs text-muted">
+              <p>{row.reason ?? "O acumulado informa mais consumo do que as chamadas registradas."}</p>
+              {gap.promptTokens !== null && gap.outputTokens !== null ? <p className="mt-1 tabular-nums">Diferença para o acumulado: {formatTokens(gap.promptTokens)} tokens de entrada e {formatTokens(gap.outputTokens)} de saída sem detalhamento.</p> : <p className="mt-1">Consumo acumulado indisponível.</p>}
+            </li>;
+          })}
+        </ul>
+      </section> : null}
+      <p className="text-xs text-subtle">
+        Os preços são as tarifas publicadas pela Meta por milhão de tokens, ou o preço de catálogo do próprio modelo quando ele
+        tem um. Níveis de contribuidor são cobrados à parte e marcados como tal.
+      </p>
     </div>
   );
 }
@@ -203,6 +234,7 @@ function summarize(report: UsageReport, models: readonly ModelOption[]): UsageVi
     row.cost += amount;
     byModel.set(bucket.modelId, row);
 
+    if (!bucket.day) continue;
     const day = byDay.get(bucket.day) ?? { day: bucket.day, cost: 0, byModel: [] };
     day.cost += amount;
     const slice = day.byModel.find((s) => s.modelId === bucket.modelId);
@@ -387,7 +419,7 @@ function Threads(props: { view: UsageView }) {
                 <p className="truncate text-sm text-fg">{thread.deleted ? "Conversa excluída" : (thread.title ?? "Nova conversa")}</p>
                 <p className="truncate text-2xs text-subtle tabular-nums">
                   {thread.cwd ? `${basename(thread.cwd)} · ` : ""}
-                  {thread.calls} chamadas · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {relativeTime(thread.lastAt)}
+                  {thread.calls} chamadas · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {thread.lastAt ? relativeTime(thread.lastAt) : "data desconhecida"}
                 </p>
               </div>
               <span className="shrink-0 text-sm text-fg tabular-nums">{formatCost(thread.cost, view.currency)}</span>
@@ -417,10 +449,9 @@ function Threads(props: { view: UsageView }) {
 function EmptyUsage() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl bg-raised px-6 py-16 text-center shadow-[0_0_0_1px_var(--border)]">
-      <p className="text-sm font-medium text-fg">Nenhuma chamada ao modelo neste período</p>
+      <p className="text-sm font-medium text-fg">Nenhuma chamada com data conhecida neste período</p>
       <p className="max-w-[42ch] text-xs text-muted">
-        Isto se preenche conforme as conversas executam. Abrir uma conversa mais antiga também preenche o que ela gastou, então suas
-        chamadas aparecem aqui também.
+        Chamadas sem data aparecem na seção separada abaixo. Recuperar uso, em Configurações → Conversas, busca o consumo disponível no histórico.
       </p>
     </div>
   );

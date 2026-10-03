@@ -139,7 +139,230 @@ async function waitFor(cond: () => boolean | Promise<boolean>, what: string): Pr
 
 const RANGE = { first: { id: "r", sequence: 1 }, last: { id: "r", sequence: 1 }, stream: { id: "s", kind: "session" } };
 
+function usageEvent(id: string, cursor = id, extra: Record<string, unknown> = {}) {
+  return { method: "session/tokenUsage", params: {
+    sessionId: "s1", turnId: "t1", modelId: "m", viewCursor: cursor,
+    sourceRange: { ...RANGE, first: { id, sequence: 1 }, last: { id, sequence: 1 } },
+    promptTokens: 10, totalTokens: 15, usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0, reasoningTokens: 0 }, ...extra,
+  } };
+}
+
+async function backfill(base: string) {
+  await send(base, "/api/usage/backfill", {});
+  await waitFor(async () => !(await get(base, "/api/usage/backfill")).running, "usage recovery");
+  return get(base, "/api/usage/backfill");
+}
+
 describe("HeliconServer", () => {
+  it("reconciles live, reopened and compacted usage through raw provenance instead of token equality", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }, { sessionId: "s2" }], nextCursor: null });
+    connection.replies.set("view/page", () => ({ events: [usageEvent("r1", "regenerated-cursor"), usageEvent("r2", "second-call")], nextCursor: null }));
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/p" });
+    connection.notify("session/tokenUsage", usageEvent("r1", "original-cursor").params);
+    const resumed = await send(base, "/api/sessions/s1/resume", {});
+    assert.equal(resumed.status, 200);
+    assert.equal(resumed.json.events[0].params.sourceRange, undefined);
+    assert.equal((await backfill(base)).calls, 2); // Two distinct calls from s2, independent of s1's identical cursors/ranges.
+    const report = await get(base, "/api/usage?days=1");
+    assert.equal(report.buckets.length, 0);
+    assert.equal(report.threads.length, 0);
+    assert.equal(report.undated.buckets[0].day, null);
+    assert.equal(report.undated.buckets[0].calls, 4);
+    assert.equal(report.undated.buckets[0].promptTokens, 40);
+    assert.equal(report.undated.threads.length, 2);
+    assert.ok(report.undated.threads.every((row: { lastAt: unknown }) => row.lastAt === null));
+    assert.equal((await backfill(base)).calls, 0);
+    assert.equal((await get(base, "/api/usage?days=90")).undated.buckets[0].calls, 4);
+  });
+
+  it("records cursorless raw ranges once and discloses unidentified events instead of creating random calls", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", { events: [usageEvent("r1", "", { viewCursor: undefined }), usageEvent("invalid", "", { viewCursor: undefined, sourceRange: undefined, cumulative: { promptTokens: 30, outputTokens: 15, totalTokens: 45 } })], nextCursor: null });
+    connection.replies.set("session/read", { history: { mode: "inline", items: [] } });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.calls, 1);
+    assert.equal(status.skipped, 1);
+    assert.equal(status.incomplete, 1);
+    assert.equal((await backfill(base)).calls, 0);
+    const report = await get(base, "/api/usage");
+    assert.equal(report.undated.buckets[0].calls, 1);
+    assert.equal(report.recovery[0].promptTokens, 30);
+    assert.equal(report.recovery[0].recordedPromptTokens, 10);
+  });
+
+  it("scopes legacy cursor-only identities to the session and keeps equal-valued calls", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }, { sessionId: "s2" }], nextCursor: null });
+    connection.replies.set("view/page", { events: [usageEvent("a", "shared", { sourceRange: undefined }), usageEvent("b", "another", { sourceRange: undefined })], nextCursor: null });
+    const { base } = await start(connection);
+    assert.equal((await backfill(base)).calls, 4);
+    assert.equal((await backfill(base)).calls, 0);
+    assert.equal((await get(base, "/api/usage")).undated.buckets[0].calls, 4);
+  });
+
+  it("filters genuine dates by the selected period and leaves unknown dates outside it", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const old = new Date(Date.now() - 10 * 86_400_000).toISOString();
+    connection.replies.set("view/page", { events: [usageEvent("recent", "recent", { at: recent }), usageEvent("old", "old", { at: old }), usageEvent("undated")], nextCursor: null });
+    const { base } = await start(connection);
+    await backfill(base);
+    const day = await get(base, "/api/usage?days=1");
+    assert.equal(day.buckets[0].calls, 1);
+    assert.equal(day.buckets[0].day, recent.slice(0, 10));
+    assert.equal(day.undated.buckets[0].calls, 1);
+    const month = await get(base, "/api/usage?days=30");
+    assert.equal(month.buckets.reduce((sum: number, row: { calls: number }) => sum + row.calls, 0), 2);
+    assert.equal(month.undated.buckets[0].calls, 1);
+  });
+
+  it("recovers beyond the four display pages without reopening or adopting sessions", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => {
+      const page = Number(params["cursor"] ?? 0);
+      return { events: [usageEvent(`r${page}`)], nextCursor: page < 5 ? String(page + 1) : null };
+    });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.calls, 6);
+    assert.equal(status.incomplete, 0);
+    assert.equal(connection.requests.filter((call) => call.method === "view/page").length, 6);
+    assert.equal(connection.calls.filter((call) => call.method === "session/resume").length, 0);
+    assert.equal((await get(base, "/api/sessions")).sessions.length, 0);
+  });
+
+  it("terminates repeated session cursors and repeated view pages while retaining recovered data", async () => {
+    const connection = new FakeConnection();
+    let listPage = 0;
+    connection.replies.set("session/list", () => ({ sessions: [{ sessionId: "s1" }, { sessionId: `s${++listPage}` }], nextCursor: "stuck-list" }));
+    let viewPage = 0;
+    connection.replies.set("view/page", () => ({ events: [usageEvent("r1")], nextCursor: `changing-${++viewPage}` }));
+    connection.replies.set("session/read", { history: { mode: "inline", items: [] } });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.enumerationIncomplete, true);
+    assert.equal(status.total, 2);
+    assert.equal(status.calls, 2);
+    assert.equal(status.incomplete, 2);
+    assert.equal(connection.requests.filter((call) => call.method === "session/list").length, 2);
+    assert.equal(connection.requests.filter((call) => call.method === "view/page").length, 4);
+    assert.equal((await get(base, "/api/usage")).undated.buckets[0].calls, 2);
+  });
+
+  it("stops the usage scan at its page budget and exposes the remaining gap", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => { const n = Number(params["cursor"] ?? 0); return { events: [usageEvent(`r${n}`)], nextCursor: String(n + 1) }; });
+    connection.replies.set("session/read", { history: { mode: "snapshot", snapshot: { state: { tokenUsage: { promptTokens: 1100, outputTokens: 550, totalTokens: 1650 } } } } });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.calls, 100);
+    assert.equal(status.incomplete, 1);
+    assert.equal(connection.requests.filter((call) => call.method === "view/page").length, 100);
+    const report = await get(base, "/api/usage");
+    assert.equal(report.undated.buckets[0].promptTokens, 1000);
+    assert.equal(report.recovery[0].promptTokens, 1100);
+    assert.equal(report.recovery[0].recordedPromptTokens, 1000);
+  });
+
+  it("detects a compacted gap even when all available view pages were read", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", { events: [usageEvent("last-call", "last-call", { cumulative: { promptTokens: 90, outputTokens: 45, totalTokens: 135 } })], nextCursor: null });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.incomplete, 1);
+    assert.equal(status.calls, 1);
+    const report = await get(base, "/api/usage");
+    assert.equal(report.undated.buckets[0].promptTokens, 10);
+    assert.equal(report.recovery[0].promptTokens, 90);
+    assert.equal(report.recovery[0].recordedPromptTokens, 10);
+  });
+
+  it("marks an empty snapshot as an empty conversation instead of missing spending", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", { events: [], nextCursor: null });
+    connection.replies.set("session/read", { history: { mode: "snapshot", snapshot: { state: { tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 }, items: [] } } } });
+    const { base } = await start(connection);
+    assert.equal((await backfill(base)).incomplete, 0);
+    assert.equal((await get(base, "/api/usage")).recovery.length, 0);
+  });
+
+  it("terminates repeated view cursors even when their event pages keep changing", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    let index = 0;
+    connection.replies.set("view/page", () => ({ events: [usageEvent(`r${++index}`)], nextCursor: "stuck" }));
+    connection.replies.set("session/read", { history: { mode: "inline", items: [] } });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.calls, 2);
+    assert.equal(status.incomplete, 1);
+    assert.equal(connection.requests.filter((call) => call.method === "view/page").length, 2);
+  });
+
+  it("reads leased session snapshots without inventing priced calls, then reconciles later detailed history", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", new MspTestError("loaded elsewhere", "sessionNotLoaded"));
+    connection.replies.set("session/read", { history: { mode: "snapshot", snapshot: { state: { tokenUsage: { promptTokens: 20, outputTokens: 10, totalTokens: 30 } } } } });
+    const { base } = await start(connection);
+    const partial = await backfill(base);
+    assert.equal(partial.calls, 0);
+    assert.equal(partial.incomplete, 1);
+    assert.equal(partial.failed, 0);
+    const report = await get(base, "/api/usage");
+    assert.equal(report.undated.buckets.length, 0);
+    assert.equal(report.recovery[0].promptTokens, 20);
+    assert.equal(report.recovery[0].recordedPromptTokens, 0);
+    connection.replies.set("view/page", { events: [usageEvent("r1"), usageEvent("r2")], nextCursor: null });
+    assert.equal((await backfill(base)).calls, 2);
+    assert.equal((await get(base, "/api/usage")).recovery.length, 0);
+    assert.equal((await backfill(base)).calls, 0);
+  });
+
+  it("discloses unavailable usage and preserves earlier pages when a later page fails", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => {
+      if (params["cursor"]) throw new Error("temporary read failure");
+      return { events: [usageEvent("r1")], nextCursor: "next" };
+    });
+    connection.replies.set("session/read", new Error("snapshot unavailable"));
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.calls, 1);
+    assert.equal(status.failed, 1);
+    assert.equal(status.incomplete, 1);
+    const report = await get(base, "/api/usage");
+    assert.equal(report.undated.buckets[0].calls, 1);
+    assert.equal(report.recovery[0].promptTokens, null);
+    assert.match(report.recovery[0].reason, /Não foi possível/);
+  });
+
+  it("makes snapshot-only consumption visible when opening a read-only conversation", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", new MspTestError("loaded elsewhere", "sessionInUse"));
+    connection.replies.set("view/page", new MspTestError("not loaded", "sessionNotLoaded"));
+    connection.replies.set("session/read", { session: { sessionId: "s1" }, history: { mode: "snapshot", snapshot: { state: { tokenUsage: { promptTokens: 99, outputTokens: 33, totalTokens: 132 }, items: [] } } } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/p" });
+    assert.equal((await send(base, "/api/sessions/s1/resume", {})).status, 200);
+    const report = await get(base, "/api/usage");
+    assert.equal(report.buckets.length, 0);
+    assert.equal(report.undated.buckets.length, 0);
+    assert.equal(report.recovery[0].promptTokens, 99);
+  });
   it("serves health, projects, sessions and turns", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1", modelId: "muse-spark-1.3" } });
