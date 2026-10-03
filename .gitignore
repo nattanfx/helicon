@@ -38,12 +38,6 @@ Thumbs.db
 !apps/web/public/*.png
 !assets/social/*.png
 !assets/social/**/*.png
-!landing/**/*.png
-
-# Marketing / CMO run — local-only strategy + logs, never commit to the public repo
-marketing/
-projects/
-.agents/product-marketing.md
 
 # Bundled Node.js sidecar (apps/desktop/scripts/fetch-node.mjs)
 **/src-tauri/binaries/

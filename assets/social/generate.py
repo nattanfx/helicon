@@ -46,8 +46,8 @@ def mark_ink() -> Image.Image:
     """The mark cropped to its ink box (RGBA)."""
     if os.path.exists(MARK_PNG):
         return Image.open(MARK_PNG).crop(MARK_INK)
-    # Fallback: the site logo (blue on black) as an alpha mask.
-    logo = os.path.join(ROOT, "landing", "public", "assets", "logo-dark.png")
+    # Fallback: the logo (blue on black) kept beside this script, as an alpha mask.
+    logo = os.path.join(HERE, "logo-dark.png")
     im = Image.open(logo).convert("RGBA")
     alpha = im.convert("L").point(lambda v: min(255, v * 2) if v > 16 else 0)
     layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
@@ -410,7 +410,7 @@ def main() -> None:
     for name in needed:
         assert os.path.exists(os.path.join(FONTS, name)), f"missing {name}"
     if not os.path.exists(MARK_PNG):
-        logo = os.path.join(ROOT, "landing", "public", "assets", "logo-dark.png")
+        logo = os.path.join(HERE, "logo-dark.png")
         assert os.path.exists(logo), "missing mark master and logo-dark.png"
     check_glyphs(
         README_TAGLINE + "Helicon" if readme_only else (
