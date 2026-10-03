@@ -2162,7 +2162,8 @@ export class HeliconController {
   async rename(sessionId: string, title: string): Promise<void> {
     const clean = title.trim();
     const current = this.state.sessions[sessionId];
-    if (!clean || !current || clean === current.title) {
+    // Confirmar o nome exibido de uma conversa provisória não é renomear: ela seguiria esperando o título automático.
+    if (!clean || !current || clean === current.title || clean === displayTitle(current)) {
       return;
     }
     this.upsertSession({ ...current, title: clean, titleSource: "user" });
@@ -2193,7 +2194,7 @@ export class HeliconController {
     }
     try {
       await this.client.updateSession(sessionId, { archived: true });
-      this.toast("info", "Conversa arquivada", current.title, {
+      this.toast("info", "Conversa arquivada", displayTitle(current), {
         label: "Desfazer",
         run: () => void this.unarchive(current),
       });
@@ -2253,7 +2254,7 @@ export class HeliconController {
       const saved = await this.client.updateSession(sessionId, { archived: false });
       this.upsertSession(saved ?? { ...current, archived: false });
       this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== sessionId) }));
-      this.toast("info", "Conversa restaurada", current.title);
+      this.toast("info", "Conversa restaurada", displayTitle(current));
     } catch (error) {
       this.toast("error", "Não foi possível restaurar a conversa", userFacingError(error));
     }
@@ -2269,7 +2270,7 @@ export class HeliconController {
       await this.client.deleteSession(sessionId);
       this.platform.forgetDraft?.(sessionId);
       this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== sessionId) }));
-      this.toast("info", "Conversa excluída", current.title);
+      this.toast("info", "Conversa excluída", displayTitle(current));
     } catch (error) {
       this.toast("error", "Não foi possível excluir a conversa", userFacingError(error));
     } finally {

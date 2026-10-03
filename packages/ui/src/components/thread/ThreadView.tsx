@@ -3,7 +3,7 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { CaptionSpacer, useOverlayDragProps } from "../../app/frame.js";
 import { isTurnFinalizing } from "../../model/fold.js";
-import { basename, displayTitle, formatDuration, modelDisplayName, sessionLoadLabel } from "../../model/format.js";
+import { basename, displayTitle, formatDuration, modelDisplayName, renameInitial, sessionLoadLabel } from "../../model/format.js";
 import { backgroundTasks } from "../../model/plan.js";
 import { goalView } from "../../model/goal.js";
 import type { ThreadState } from "../../model/store.js";
@@ -85,7 +85,7 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
       <div className="flex min-w-0 flex-1 items-center gap-2 pl-1">
         {renaming ? (
           <TitleField
-            initial={session.title}
+            initial={renameInitial(session)}
             onDone={(title) => {
               setRenaming(false);
               if (title !== null) {
@@ -239,6 +239,7 @@ function TitleField(props: { initial: string; onDone: (title: string | null) => 
       autoFocus
       aria-label="Título da conversa"
       defaultValue={props.initial}
+      placeholder="Nova conversa"
       onFocus={(e) => e.currentTarget.select()}
       onBlur={(e) => finish(e.currentTarget.value)}
       onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {

@@ -9,6 +9,8 @@ import {
   diffLines,
   diffStats,
   displayTitle,
+  renameInitial,
+  usageThreadTitle,
   emptyAttachmentWarning,
   extractDiff,
   formatDuration,
@@ -405,6 +407,15 @@ describe("aprovações e modelos", () => {
     assert.equal(displayTitle({ title: "New thread", titleSource: "user" }), "New thread");
     assert.equal(displayTitle({ title: "Meu nome", titleSource: "user" }), "Meu nome");
     assert.equal(displayTitle({ title: "Fix login", titleSource: "auto" }), "Fix login");
+  });
+
+  it("nunca abre o renomear nem o relatório de uso com o título provisório cru", () => {
+    assert.equal(renameInitial({ title: "New thread", titleSource: "placeholder" }), "");
+    assert.equal(renameInitial({ title: "Meu nome", titleSource: "user" }), "Meu nome");
+    assert.equal(usageThreadTitle({ title: "New thread", deleted: false }), "Nova conversa");
+    assert.equal(usageThreadTitle({ title: null, deleted: false }), "Nova conversa");
+    assert.equal(usageThreadTitle({ title: "Fix login", deleted: false }), "Fix login");
+    assert.equal(usageThreadTitle({ title: "New thread", deleted: true }), "Conversa excluída");
   });
 
   it("interpreta o catálogo real de modelos e marca níveis de colaborador", () => {

@@ -2,7 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
-import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, relativeTime } from "../../model/format.js";
+import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, relativeTime, usageThreadTitle } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
 import { fillUsageDays, formatUsageDay, USAGE_RANGES } from "../../model/usage-range.js";
 import { recoveryGap } from "../../model/usage-recovery.js";
@@ -421,7 +421,7 @@ function Threads(props: { view: UsageView }) {
           const body = (
             <>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-fg">{thread.deleted ? "Conversa excluída" : (thread.title ?? "Nova conversa")}</p>
+                <p className="truncate text-sm text-fg">{usageThreadTitle(thread)}</p>
                 <p className="truncate text-2xs text-subtle tabular-nums">
                   {thread.cwd ? `${basename(thread.cwd)} · ` : ""}
                   {thread.calls} chamadas · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {thread.lastAt ? relativeTime(thread.lastAt) : "data desconhecida"}

@@ -1,4 +1,4 @@
-import { basename } from "./format.js";
+import { basename, displayTitle } from "./format.js";
 import type { ProjectView, SessionSummary } from "../types.js";
 
 export interface ArchivedGroup {
@@ -39,11 +39,11 @@ export function groupArchivedByProject(projects: ProjectView[], sessions: Sessio
     );
 }
 
-/** Busca por título (caixa alta/baixa e espaços nas pontas não importam) e filtro por projeto. */
+/** Busca pelo título exibido (caixa alta/baixa e espaços nas pontas não importam) e filtro por projeto. */
 export function filterArchived(sessions: SessionSummary[], query: string, cwd: string | null): SessionSummary[] {
   const q = query.trim().toLowerCase();
   return sessions.filter(
-    (session) => (cwd === null || session.cwd === cwd) && (q === "" || session.title.toLowerCase().includes(q)),
+    (session) => (cwd === null || session.cwd === cwd) && (q === "" || displayTitle(session).toLowerCase().includes(q)),
   );
 }
 

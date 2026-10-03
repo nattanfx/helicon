@@ -909,9 +909,28 @@ export function describeApproval(request: ApprovalRequest): ApprovalDescription 
   }
 }
 
+/** O título provisório que o daemon grava numa conversa nova (`PLACEHOLDER_TITLE`); nunca é mostrado cru. */
+export const PLACEHOLDER_TITLE = "New thread";
+
 /** Título para exibir: placeholder vira "Nova conversa"; manual "New thread" é preservado pela origem. */
 export function displayTitle(session: Pick<SessionSummary, "title" | "titleSource">): string {
   return session.titleSource === "placeholder" ? "Nova conversa" : session.title;
+}
+
+/** O que o campo de renomear mostra ao abrir: vazio para o título provisório, que não é um nome a editar. */
+export function renameInitial(session: Pick<SessionSummary, "title" | "titleSource">): string {
+  return session.titleSource === "placeholder" ? "" : session.title;
+}
+
+/**
+ * Título de uma linha do relatório de uso. O relatório não traz a origem do título, então o provisório do daemon
+ * é reconhecido pelo texto.
+ */
+export function usageThreadTitle(thread: { title: string | null; deleted: boolean }): string {
+  if (thread.deleted) {
+    return "Conversa excluída";
+  }
+  return !thread.title || thread.title === PLACEHOLDER_TITLE ? "Nova conversa" : thread.title;
 }
 
 /** Tira o sufixo de nível do provedor para exibição; o nível ganha seu próprio selo. */

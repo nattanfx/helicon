@@ -79,6 +79,12 @@ describe("filterArchived", () => {
     );
   });
 
+  it("busca pelo título exibido: uma conversa provisória responde a Nova conversa", () => {
+    const fresh = { ...session("s3", "/work/a", "New thread", "2026-09-25T00:00:00.000Z"), titleSource: "placeholder" as const };
+    assert.deepEqual(filterArchived([...sessions, fresh], "nova conversa", null).map((s) => s.sessionId), ["s3"]);
+    assert.deepEqual(filterArchived([...sessions, fresh], "new thread", null), []);
+  });
+
   it("narrows to one project", () => {
     assert.deepEqual(
       filterArchived(sessions, "", "/work/b").map((s) => s.sessionId),

@@ -2753,6 +2753,25 @@ describe("archived threads", () => {
     stop();
   });
 
+  it("names a placeholder thread in Portuguese in its toasts and keeps it waiting for a title", async () => {
+    const client = new FakeClient();
+    const fresh: SessionSummary = { ...S9, title: "New thread", titleSource: "placeholder" };
+    client.archivedSessions = [fresh];
+    const { controller, stop } = await started(client, "");
+    await controller.loadArchived();
+    await controller.deleteArchived("s9");
+    assert.equal(controller.store.get().toasts.at(-1)?.detail, "Nova conversa");
+    const updates: string[] = [];
+    client.updateSession = async (sessionId: string) => {
+      updates.push(sessionId);
+      return SESSION;
+    };
+    controller.store.set((state) => ({ ...state, sessions: { ...state.sessions, s9: { ...fresh, archived: false } } }));
+    await controller.rename("s9", "Nova conversa");
+    assert.deepEqual(updates, [], "confirmar o nome exibido não vira título manual");
+    stop();
+  });
+
   it("forgets the stored composer draft only of threads actually deleted", async () => {
     const client = new FakeClient();
     client.archivedSessions = [S9, { ...S9, sessionId: "a" }, { ...S9, sessionId: "b" }];

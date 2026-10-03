@@ -34,7 +34,7 @@ import { memo, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent,
 import { shallowEqual, useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps, useTitlebarOverlay } from "../../app/frame.js";
 import { isTurnFinalizing } from "../../model/fold.js";
-import { basename, displayTitle, formatElapsed, relativeTime } from "../../model/format.js";
+import { basename, displayTitle, formatElapsed, relativeTime, renameInitial } from "../../model/format.js";
 import { statusLabel } from "../../model/goal.js";
 import { PlanPill } from "../usage/PlanMeter.js";
 import { SettingsNav } from "./SettingsNav.js";
@@ -626,7 +626,7 @@ export const ThreadRow = memo(
           )}
           {renaming ? (
             <RenameField
-              initial={session.title}
+              initial={renameInitial(session)}
               onDone={(title) => {
                 setRenaming(false);
                 if (title !== null) {
@@ -713,6 +713,7 @@ function RenameField(props: { initial: string; onDone: (title: string | null) =>
     <input
       autoFocus
       defaultValue={props.initial}
+      placeholder="Nova conversa"
       aria-label="Título da conversa"
       onFocus={(e) => e.currentTarget.select()}
       onBlur={(e) => finish(e.currentTarget.value)}
