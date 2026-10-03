@@ -10,6 +10,9 @@ C4 sobre `cad7a8c`. O rascunho da caixa de mensagem já sobrevive em `helicon.dr
 | Abas abertas | `AppState.filePanels` por `sessionId` | Não |
 | Preferência de painel aberto | `prefs.filesOpen` → `helicon.prefs.v1` | Sim |
 | Rascunho da mensagem | `localStorage` `helicon.draft.<sessionId ou new:cwd>` | Sim |
+| Anexos do rascunho da mensagem | `localStorage` `helicon.draftFiles.<mesma chave>` | Sim, até 1 milhão de caracteres por rascunho e 2 milhões somando todos |
+
+Os anexos do rascunho acima desses tetos, ou com a cota da origem esgotada, ficam só na memória e a cópia guardada sai (nunca volta uma versão velha). Excluir uma conversa apaga o texto e os anexos guardados do seu rascunho; arquivar não apaga, porque a conversa pode ser restaurada. No desktop, o cofre `file-drafts.json` é gravado antes do espelho no `localStorage`: uma cota esgotada não impede a cópia durável, e o espelho que não coube é retirado.
 
 ## O que já funciona (preservar)
 
