@@ -911,25 +911,52 @@ export function abandonTurn(fold: ThreadFold, turnId: string): ThreadFold {
   return applyEvent(fold, { method: "turn/completed", params: { turnId, terminal: "cancelled" } });
 }
 
-/** Um turno ativo cujo trabalho visível terminou: algo do agente concluído, nada em andamento, `turn/completed` ainda por chegar. */
+/**
+ * Itens de um turno que terminam numa resposta concluída: o último visível é uma mensagem do agente concluída e nada
+ * roda. Uma ferramenta concluída no fim não basta: o modelo pode levar dezenas de segundos para pedir a próxima sem
+ * transmitir nada, e o agente ainda está trabalhando.
+ */
+export function endsInFinalAnswer(entries: readonly MspItem[]): boolean {
+  const last = entries[entries.length - 1];
+  if (!last || last.kind !== "agentMessage" || last.status !== "completed") {
+    return false;
+  }
+  return !entries.some((item) => item.status === "inProgress");
+}
+
+/**
+ * Um turno ativo cuja resposta final já chegou, com `turn/completed` ainda por chegar. Percorre só a cauda de
+ * `order` que pertence ao turno: a barra lateral pergunta isto a cada mudança do store.
+ */
 export function isTurnFinalizing(fold: ThreadFold, turnId: string | null): boolean {
   if (!turnId || fold.activeTurnId !== turnId) {
     return false;
   }
-  let done = false;
-  for (const id of fold.order) {
-    const item = fold.items[id];
-    if (!item || item.turnId !== turnId || HIDDEN_KINDS.has(item.kind)) {
+  let last: MspItem | null = null;
+  let seen = false;
+  for (let i = fold.order.length - 1; i >= 0; i -= 1) {
+    const item = fold.items[fold.order[i] as string];
+    if (!item || HIDDEN_KINDS.has(item.kind)) {
       continue;
     }
+    if (item.turnId !== turnId) {
+      if (seen) {
+        // Os itens de um turno ficam juntos; passar para o anterior encerra a busca.
+        break;
+      }
+      continue;
+    }
+    seen = true;
     if (item.status === "inProgress") {
       return false;
     }
-    if (item.kind !== "userMessage") {
-      done = true;
+    last ??= item;
+    if (item.kind === "userMessage" && last !== item) {
+      // Chegou ao pedido: nada antes dele é deste trabalho.
+      break;
     }
   }
-  return done;
+  return last !== null && last.kind === "agentMessage" && last.status === "completed";
 }
 
 /** One turn as the transcript renders it. */

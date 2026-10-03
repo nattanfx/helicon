@@ -10,6 +10,22 @@ export interface ForkPoint {
   editUnavailable: string | null;
 }
 
+/** Two fork points offer the same actions; `forkPoints` rebuilds them on every turns change, so compare by value. */
+export function sameForkPoint(a: ForkPoint | null, b: ForkPoint | null): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    a.lastTurnId === b.lastTurnId &&
+    a.beforeTurnId === b.beforeTurnId &&
+    a.editText === b.editText &&
+    a.editUnavailable === b.editUnavailable
+  );
+}
+
 /** Only offer host-valid completed boundaries; never guess a predecessor across missing history. */
 export function forkPoints(
   turns: readonly TurnView[],

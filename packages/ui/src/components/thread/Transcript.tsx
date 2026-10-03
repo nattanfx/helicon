@@ -3,8 +3,8 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { useSampled } from "../../app/sampled.js";
-import { buildTurns, type EchoAttachment, type LocalEcho, type ThreadFold, type TurnView } from "../../model/fold.js";
-import { forkPoints, type ForkPoint } from "../../model/fork.js";
+import { buildTurns, endsInFinalAnswer, type EchoAttachment, type LocalEcho, type ThreadFold, type TurnView } from "../../model/fold.js";
+import { forkPoints, sameForkPoint, type ForkPoint } from "../../model/fork.js";
 import {
   describeTool,
   formatClock,
@@ -174,7 +174,7 @@ export function Transcript(props: { sessionId: string; thread: ThreadState }) {
                   gates={gates}
                   answers={answers}
                   attachments={attachmentsByTurn}
-                  ambiguousAttachments={ambiguousAttachmentTurns}
+                  ambiguousFiles={Boolean(entry.turn.turnId && ambiguousAttachmentTurns.has(entry.turn.turnId))}
                   sessionId={props.sessionId}
                   isLast={entry.index === turns.length - 1}
                   readOnly={thread.readOnly}
@@ -221,20 +221,49 @@ function sameEntries(a: MspItem[], b: MspItem[]): boolean {
   return true;
 }
 
+interface TurnBlockProps {
+  turn: TurnView;
+  gates: GateMap;
+  answers: AnswerMap;
+  attachments: Record<string, AttachmentView[]>;
+  /** Anexos guardados neste turno sem saber a qual mensagem pertencem. */
+  ambiguousFiles: boolean;
+  sessionId: string;
+  isLast: boolean;
+  readOnly: boolean;
+  fork: ForkPoint | null;
+  speed: TurnSpeed | null;
+  cost: TurnCost | null;
+}
+
+/**
+ * Se um turno pode pular a renderização. Pontos de bifurcação e o conjunto de anexos ambíguos são recriados a cada
+ * descarga do streaming, então comparam por valor: por referência, todo turno concluído (markdown, diffs)
+ * renderizaria de novo várias vezes por segundo.
+ */
+export function sameTurnBlockProps(a: TurnBlockProps, b: TurnBlockProps): boolean {
+  return (
+    a.turn.prompt === b.turn.prompt &&
+    a.turn.final === b.turn.final &&
+    a.turn.info === b.turn.info &&
+    a.turn.running === b.turn.running &&
+    sameEntries(a.turn.entries, b.turn.entries) &&
+    a.gates === b.gates &&
+    a.answers === b.answers &&
+    a.isLast === b.isLast &&
+    a.readOnly === b.readOnly &&
+    a.sessionId === b.sessionId &&
+    a.ambiguousFiles === b.ambiguousFiles &&
+    sameForkPoint(a.fork, b.fork) &&
+    a.attachments === b.attachments &&
+    // Preços chegam após o catálogo carregar, então o custo de uma mensagem pode mudar sem nada mais sobre ela mudar.
+    a.cost?.cost === b.cost?.cost &&
+    a.speed?.tokensPerSecond === b.speed?.tokensPerSecond
+  );
+}
+
 const TurnBlock = memo(
-  function TurnBlock(props: {
-    turn: TurnView;
-    gates: GateMap;
-    answers: AnswerMap;
-    attachments: Record<string, AttachmentView[]>;
-    ambiguousAttachments: ReadonlySet<string>;
-    sessionId: string;
-    isLast: boolean;
-    readOnly: boolean;
-    fork: ForkPoint | null;
-    speed: TurnSpeed | null;
-    cost: TurnCost | null;
-  }) {
+  function TurnBlock(props: TurnBlockProps) {
     const { turn } = props;
     const info = turn.info;
     const errorCopy = info?.error
@@ -249,7 +278,7 @@ const TurnBlock = memo(
     const hasWork = turn.entries.length > 0;
     // Itens fora de qualquer mensagem são os próprios comandos `!` do usuário: mostrados como são, nunca dobrados num registro de trabalho.
     const standalone = !turn.turnId && !turn.prompt;
-    const ambiguousFiles = Boolean(turn.turnId && props.ambiguousAttachments.has(turn.turnId));
+    const ambiguousFiles = props.ambiguousFiles;
     const files = props.attachments[turn.turnId ?? ""] ?? [];
     return (
       <article className="flex flex-col gap-3" aria-label="Mensagem">
@@ -317,21 +346,7 @@ const TurnBlock = memo(
       </article>
     );
   },
-  (a, b) =>
-    a.turn.prompt === b.turn.prompt &&
-    a.turn.final === b.turn.final &&
-    a.turn.info === b.turn.info &&
-    a.turn.running === b.turn.running &&
-    sameEntries(a.turn.entries, b.turn.entries) &&
-    a.gates === b.gates &&
-    a.answers === b.answers &&
-    a.isLast === b.isLast &&
-    a.readOnly === b.readOnly &&
-    a.fork === b.fork &&
-    a.attachments === b.attachments &&
-    // Preços chegam após o catálogo carregar, então o custo de uma mensagem pode mudar sem nada mais sobre ela mudar.
-    a.cost?.cost === b.cost?.cost &&
-    a.speed?.tokensPerSecond === b.speed?.tokensPerSecond,
+  sameTurnBlockProps,
 );
 
 function parseTime(iso: string | undefined): number | null {
@@ -507,8 +522,8 @@ function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
     label = "Pensando";
   } else if (last?.kind === "agentMessage" && last.status === "inProgress") {
     label = "Escrevendo";
-  } else if (turn.entries.length > 0 && !turn.entries.some((e) => e.status === "inProgress")) {
-    // Texto e ferramentas terminaram; o turno segue aberto por trabalho que a UI não mostra.
+  } else if (endsInFinalAnswer(turn.entries)) {
+    // A resposta final chegou; o turno segue aberto por trabalho que a UI não mostra.
     label = "Finalizando…";
   }
   return (

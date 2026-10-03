@@ -7,6 +7,7 @@ import {
   applyEvents,
   buildTurns,
   emptyFold,
+  endsInFinalAnswer,
   foldFromLoad,
   gateFor,
   isTurnFinalizing,
@@ -678,6 +679,48 @@ describe("turno finalizando", () => {
       { method: "turn/completed", params: { turnId: "t1", terminal: "completed" }, at: 200 },
     ]);
     assert.equal(isTurnFinalizing(closed, "t1"), false);
+  });
+
+  it("ferramenta concluída no fim é trabalho: o modelo ainda pode pedir a próxima", () => {
+    const toolDone: ViewEvent = {
+      method: "item/completed",
+      params: { item: { itemId: "x1", kind: "toolCall", status: "completed", revision: 2, turnId: "t1", tool: "bash" } },
+      at: 150,
+    };
+    const fold = applyEvents(emptyFold(), [started, doneText, toolDone]);
+    assert.equal(isTurnFinalizing(fold, "t1"), false);
+    assert.equal(endsInFinalAnswer(buildTurns(fold).at(-1)?.entries ?? []), false);
+  });
+
+  it("olha só a cauda do turno ativo, sem percorrer a conversa inteira", () => {
+    // Um item corrompido no começo da ordem nunca é lido: a busca para no pedido do turno ativo.
+    let fold = applyEvents(emptyFold(), [
+      started,
+      {
+        method: "item/completed",
+        params: { item: { itemId: "u1", kind: "userMessage", status: "completed", revision: 1, turnId: "t1", text: "oi" } },
+        at: 10,
+      },
+      doneText,
+    ]);
+    fold = { ...fold, order: ["antigo", ...fold.order], items: { ...fold.items } };
+    Object.defineProperty(fold.items, "antigo", {
+      get() {
+        throw new Error("percorreu a conversa inteira");
+      },
+      enumerable: true,
+    });
+    assert.equal(isTurnFinalizing(fold, "t1"), true);
+  });
+
+  it("a resposta final concluída no fim, sem nada rodando, é o que finaliza", () => {
+    const agent = { itemId: "a", kind: "agentMessage", status: "completed", revision: 1, turnId: "t1", text: "ok" } as const;
+    const tool = { itemId: "x", kind: "toolCall", status: "completed", revision: 1, turnId: "t1" } as const;
+    assert.equal(endsInFinalAnswer([tool, agent]), true);
+    assert.equal(endsInFinalAnswer([agent, tool]), false);
+    assert.equal(endsInFinalAnswer([{ ...tool, status: "inProgress" }, agent]), false);
+    assert.equal(endsInFinalAnswer([{ ...agent, status: "inProgress" }]), false);
+    assert.equal(endsInFinalAnswer([]), false);
   });
 
   it("ignora filhos-lembrete, que a UI nunca mostra", () => {
