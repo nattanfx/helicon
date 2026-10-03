@@ -352,6 +352,8 @@ export class HeliconController {
   /** Carregamentos simultâneos da mesma conversa compartilham a leitura e o buffer. */
   private readonly inflightLoads = new Map<string, Promise<void>>();
   private readonly gapReloads = new Set<string>();
+  /** Conversas já carregadas que perderam eventos enquanto o stream esteve fora; recarregam ao abrir. */
+  private readonly missedWhileLost = new Set<string>();
   /** Chaves de entregas de prompt ainda esperando o servidor, para um rascunho enviado duas vezes virar uma. */
   private readonly inflightSends = new Set<string>();
   private readonly disposers: (() => void)[] = [];
@@ -865,7 +867,7 @@ export class HeliconController {
     if (route.kind === "thread") {
       this.markSeen(route.sessionId, true);
       const thread = this.state.threads[route.sessionId];
-      if (!thread || thread.load === "idle" || thread.load === "error" || thread.fold.closed) {
+      if (!thread || thread.load === "idle" || thread.load === "error" || thread.fold.closed || this.missedWhileLost.has(route.sessionId)) {
         void this.loadThread(route.sessionId);
       }
     } else if (route.kind === "new" && route.cwd) {
@@ -964,6 +966,8 @@ export class HeliconController {
 
   private async reloadThread(sessionId: string): Promise<void> {
     const existing = this.state.threads[sessionId];
+    // O retrato pedido agora já inclui o que passou durante a queda.
+    this.missedWhileLost.delete(sessionId);
     this.loading.set(sessionId, []);
     this.setThread(sessionId, { ...(existing ?? blankThread()), load: "loading", error: null });
     try {
@@ -1029,8 +1033,15 @@ export class HeliconController {
           }
           void this.refresh();
           const route = this.state.route;
-          if (route.kind === "thread") {
-            void this.loadThread(route.sessionId);
+          const open = route.kind === "thread" ? route.sessionId : null;
+          // As outras conversas já carregadas seguem "prontas" sem os eventos da queda: recarregam quando abertas.
+          for (const id of Object.keys(this.state.threads)) {
+            if (id !== open) {
+              this.missedWhileLost.add(id);
+            }
+          }
+          if (open) {
+            void this.loadThread(open);
           }
         }
         break;

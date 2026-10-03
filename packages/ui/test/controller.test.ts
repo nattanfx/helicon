@@ -2715,6 +2715,40 @@ describe("HeliconController", () => {
   });
 });
 
+describe("reconnect", () => {
+  it("reloads, when opened, every loaded thread that missed events during the outage", async () => {
+    const client = new FakeClient();
+    client.listSessions = async () => [SESSION, { ...SESSION, sessionId: "s2" }];
+    const loads: string[] = [];
+    const transcript = client.transcript;
+    client.loadTranscript = (sessionId?: string) => {
+      loads.push(sessionId ?? "?");
+      return transcript();
+    };
+    const { controller, stop } = await started(client);
+    controller.navigate({ kind: "thread", sessionId: "s2" });
+    await settle();
+    controller.navigate({ kind: "thread", sessionId: "s1" });
+    await settle();
+    assert.deepEqual(loads, ["s1", "s2"], "an already loaded thread opens from memory");
+
+    client.handler?.({ type: "connection", state: "lost" });
+    client.handler?.({ type: "hello", version: "1" });
+    await settle();
+    assert.deepEqual(loads, ["s1", "s2", "s1"], "the open thread reloads right away");
+
+    controller.navigate({ kind: "thread", sessionId: "s2" });
+    await settle();
+    assert.deepEqual(loads, ["s1", "s2", "s1", "s2"], "the other one reloads when opened");
+    controller.navigate({ kind: "thread", sessionId: "s1" });
+    await settle();
+    controller.navigate({ kind: "thread", sessionId: "s2" });
+    await settle();
+    assert.equal(loads.length, 4, "and only once");
+    stop();
+  });
+});
+
 describe("archived threads", () => {
   const S9: SessionSummary = { ...SESSION, sessionId: "s9", title: "Old probe", archived: true };
 
