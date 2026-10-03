@@ -1,10 +1,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  DRAFT_FILES_PREFIX,
+  DRAFT_TEXT_PREFIX,
   MAX_DRAFT_FILES_CHARS,
+  MAX_DRAFT_FILES_TOTAL_CHARS,
+  forgetStoredDraft,
   parseDraftFiles,
+  storeDraftFiles,
   restoreDraftFiles,
   serializeDraftFiles,
+  type DraftStorage,
 } from "../src/model/draftFiles.js";
 import type { PendingFile } from "../src/components/composer/attachments.js";
 
@@ -86,5 +92,84 @@ describe("anexos do rascunho", () => {
 
   it("serializa lista vazia como JSON vazio", () => {
     assert.equal(serializeDraftFiles([]), "[]");
+  });
+
+  it("o teto por rascunho cabe folgado na cota de uns 5 milhões do WebView2", () => {
+    assert.ok(MAX_DRAFT_FILES_CHARS <= 1_000_000);
+    assert.ok(MAX_DRAFT_FILES_TOTAL_CHARS <= 2_000_000);
+  });
+});
+
+function memoryStorage(quota = Infinity): DraftStorage & { map: Map<string, string> } {
+  const map = new Map<string, string>();
+  return {
+    map,
+    get length() {
+      return map.size;
+    },
+    key: (index) => [...map.keys()][index] ?? null,
+    getItem: (key) => map.get(key) ?? null,
+    setItem: (key, value) => {
+      let used = value.length;
+      for (const [k, v] of map) {
+        if (k !== key) {
+          used += v.length;
+        }
+      }
+      if (used > quota) {
+        throw new Error("QuotaExceededError");
+      }
+      map.set(key, value);
+    },
+    removeItem: (key) => {
+      map.delete(key);
+    },
+  };
+}
+
+describe("gravação dos anexos do rascunho", () => {
+  it("grava, e apaga quando a bandeja esvazia", () => {
+    const storage = memoryStorage();
+    assert.equal(storeDraftFiles(storage, "s1", [pending()]), "stored");
+    assert.ok(storage.map.has(DRAFT_FILES_PREFIX + "s1"));
+    assert.equal(storeDraftFiles(storage, "s1", []), "removed");
+    assert.equal(storage.map.size, 0);
+  });
+
+  it("acima do teto somado com outros rascunhos, tira a cópia e não grava", () => {
+    const storage = memoryStorage();
+    const half = Math.floor(MAX_DRAFT_FILES_TOTAL_CHARS / 2);
+    assert.equal(storeDraftFiles(storage, "a", [pending({ base64: "x".repeat(Math.min(half, MAX_DRAFT_FILES_CHARS)) })]), "stored");
+    assert.equal(storeDraftFiles(storage, "b", [pending({ base64: "y".repeat(Math.min(half, MAX_DRAFT_FILES_CHARS) - 1000) })]), "stored");
+    storage.map.set(DRAFT_FILES_PREFIX + "c", "velho");
+    assert.equal(storeDraftFiles(storage, "c", [pending({ base64: "z".repeat(5000) })]), "skipped");
+    assert.equal(storage.map.has(DRAFT_FILES_PREFIX + "c"), false, "uma cópia velha não volta no lugar da atual");
+    assert.ok(storage.map.has(DRAFT_FILES_PREFIX + "a"), "os outros rascunhos ficam");
+  });
+
+  it("cota esgotada não lança e tira a cópia velha", () => {
+    const storage = memoryStorage(100);
+    storage.map.set(DRAFT_FILES_PREFIX + "s1", "[]");
+    assert.equal(storeDraftFiles(storage, "s1", [pending({ base64: "x".repeat(500) })]), "skipped");
+    assert.equal(storage.map.has(DRAFT_FILES_PREFIX + "s1"), false);
+  });
+
+  it("esquece texto e anexos de uma conversa excluída, sem tocar nas outras", () => {
+    const storage = memoryStorage();
+    storage.map.set(DRAFT_TEXT_PREFIX + "s1", "olá");
+    storage.map.set(DRAFT_FILES_PREFIX + "s1", "[]");
+    storage.map.set(DRAFT_TEXT_PREFIX + "s2", "outra");
+    forgetStoredDraft(storage, "s1");
+    assert.deepEqual([...storage.map.keys()], [DRAFT_TEXT_PREFIX + "s2"]);
+    assert.doesNotThrow(() =>
+      forgetStoredDraft(
+        {
+          removeItem: () => {
+            throw new Error("indisponível");
+          },
+        },
+        "s1",
+      ),
+    );
   });
 });

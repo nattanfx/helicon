@@ -116,6 +116,34 @@ describe("cofre estável de rascunhos", () => {
     assert.deepEqual(JSON.parse(writes[1]?.args?.["content"] as string), DRAFTS, "grande demais não entra no cofre");
   });
 
+  it("cota esgotada no local não impede o cofre e tira o espelho velho", async () => {
+    tauriWindow();
+    const writes: Record<string, unknown>[] = [];
+    const base = {
+      ...basePlatform(null, { count: 0 }),
+      saveFileDrafts: (drafts: Record<string, unknown>) => {
+        writes.push(drafts);
+        if (Object.keys(drafts).length > 0) {
+          throw new Error("QuotaExceededError");
+        }
+      },
+    } as Platform;
+    const invoker = fakeInvoker(() => null);
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      const { platform, flushStable } = await prepareStableFileDrafts(base, { invoker });
+      assert.doesNotThrow(() => platform.saveFileDrafts?.(DRAFTS), "o cofre guardou: nada de aviso de falha");
+      await flushStable();
+      const saved = invoker.calls.filter((call) => call.cmd === "helicon_save_file_drafts");
+      assert.equal(saved.length, 1);
+      assert.deepEqual(JSON.parse(saved[0]?.args?.["content"] as string), DRAFTS);
+      assert.deepEqual(writes.at(-1), {}, "o espelho local sai para não voltar uma versão velha");
+    } finally {
+      console.warn = original;
+    }
+  });
+
   it("falha do cofre não derruba o app e vai ao console", async () => {
     const errors: unknown[][] = [];
     const original = console.warn;

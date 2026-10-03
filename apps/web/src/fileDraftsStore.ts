@@ -111,8 +111,19 @@ export async function prepareStableFileDrafts(
       ...base,
       loadFileDrafts: () => frozen,
       saveFileDrafts: (drafts) => {
-        base.saveFileDrafts?.(drafts);
+        // O cofre vem primeiro: uma cota esgotada no `localStorage` não pode impedir a cópia durável.
         saver.save(drafts);
+        try {
+          base.saveFileDrafts?.(drafts);
+        } catch (error) {
+          // O espelho local é só passagem; sem espaço, sai inteiro para não sobrar uma versão velha.
+          console.warn("Helicon: cópia local de edições não coube; o cofre do desktop segue valendo", error);
+          try {
+            base.saveFileDrafts?.({});
+          } catch {
+            /* nada a liberar */
+          }
+        }
       },
     },
     flushStable: () => saver.flush(),

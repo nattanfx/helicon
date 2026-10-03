@@ -2753,6 +2753,27 @@ describe("archived threads", () => {
     stop();
   });
 
+  it("forgets the stored composer draft only of threads actually deleted", async () => {
+    const client = new FakeClient();
+    client.archivedSessions = [S9, { ...S9, sessionId: "a" }, { ...S9, sessionId: "b" }];
+    const forgotten: string[] = [];
+    const deleteSession = client.deleteSession.bind(client);
+    client.deleteSession = async (sessionId: string) => {
+      if (sessionId === "b") {
+        throw new Error("nope");
+      }
+      return deleteSession(sessionId);
+    };
+    const controller = new HeliconController(client, { ...platform(""), forgetDraft: (key: string) => forgotten.push(key) });
+    const stop = controller.start();
+    await settle();
+    await controller.loadArchived();
+    await controller.deleteArchived("s9");
+    await controller.deleteArchivedMany(["a", "b"]);
+    assert.deepEqual(forgotten, ["s9", "a"]);
+    stop();
+  });
+
   it("keeps the archived thread when restoring fails", async () => {
     const client = new FakeClient();
     client.archivedSessions = [S9];

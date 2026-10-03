@@ -80,6 +80,7 @@ import {
   type ThreadState,
   type Toast,
 } from "./store.js";
+import { forgetStoredDraft } from "./draftFiles.js";
 import {
   FILE_DRAFTS_KEY,
   FILE_DRAFTS_LEAVE_MESSAGE,
@@ -116,6 +117,8 @@ export interface Platform {
    * (só o aviso genérico). True = deixar fechar.
    */
   onBeforeClose?(handler: (options: { dialog: boolean }) => boolean): () => void;
+  /** Apaga o rascunho guardado da caixa de mensagem (texto e anexos) de uma conversa excluída. */
+  forgetDraft?(key: string): void;
 }
 
 const PREFS_KEY = "helicon.prefs.v1";
@@ -172,6 +175,13 @@ export function browserPlatform(): Platform {
         window.localStorage.removeItem(FILE_DRAFTS_KEY);
       } else {
         window.localStorage.setItem(FILE_DRAFTS_KEY, JSON.stringify(payload));
+      }
+    },
+    forgetDraft: (key) => {
+      try {
+        forgetStoredDraft(window.localStorage, key);
+      } catch {
+        /* armazenamento indisponível: nada a apagar */
       }
     },
     confirmLeave: (message) => (typeof window.confirm === "function" ? window.confirm(message) : true),
@@ -2257,6 +2267,7 @@ export class HeliconController {
     this.setBusy(`delete:${sessionId}`, true);
     try {
       await this.client.deleteSession(sessionId);
+      this.platform.forgetDraft?.(sessionId);
       this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== sessionId) }));
       this.toast("info", "Conversa excluída", current.title);
     } catch (error) {
@@ -2359,6 +2370,7 @@ export class HeliconController {
     for (const current of targets) {
       try {
         await this.client.deleteSession(current.sessionId);
+        this.platform.forgetDraft?.(current.sessionId);
         this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== current.sessionId) }));
       } catch {
         failed += 1;

@@ -29,7 +29,7 @@ import {
   type ReactNode,
 } from "react";
 import { AttachButton, AttachmentTray, readFiles, restoreFiles, toOutgoing, toPreview, type PendingFile } from "./attachments.js";
-import { DRAFT_FILES_PREFIX, parseDraftFiles, restoreDraftFiles, serializeDraftFiles } from "../../model/draftFiles.js";
+import { DRAFT_FILES_PREFIX, DRAFT_TEXT_PREFIX, parseDraftFiles, restoreDraftFiles, storeDraftFiles } from "../../model/draftFiles.js";
 import { CostMeter } from "./CostPanel.js";
 import { Popover, Slider, Switch } from "radix-ui";
 import { shallowEqual, useApp, useController } from "../../app/context.js";
@@ -46,7 +46,7 @@ import { ContextMeter } from "./ContextPanel.js";
 import { SlashMenu, slashOptionId, type SlashMenuState } from "./SlashMenu.js";
 import { SwapIcon } from "../ui/sourced.js";
 
-const DRAFT_PREFIX = "helicon.draft.";
+const DRAFT_PREFIX = DRAFT_TEXT_PREFIX;
 
 function readDraft(key: string): string {
   try {
@@ -99,16 +99,7 @@ function useDraftFiles(key: string): [PendingFile[], (action: PendingFile[] | ((
   }
   useEffect(() => {
     try {
-      if (files.length === 0) {
-        window.localStorage.removeItem(DRAFT_FILES_PREFIX + key);
-      } else {
-        const raw = serializeDraftFiles(files);
-        if (raw === null) {
-          window.localStorage.removeItem(DRAFT_FILES_PREFIX + key);
-        } else {
-          window.localStorage.setItem(DRAFT_FILES_PREFIX + key, raw);
-        }
-      }
+      storeDraftFiles(window.localStorage, key, files);
     } catch {
       /* rascunhos são melhor-esforço */
     }

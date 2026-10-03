@@ -1,10 +1,28 @@
 import type { PendingFile } from "../components/composer/attachments.js";
 
+/** Texto do rascunho da caixa de mensagem, por chave de conversa (`sessionId` ou `new:<cwd>`). */
+export const DRAFT_TEXT_PREFIX = "helicon.draft.";
+
 /** Anexos de um rascunho da caixa de mensagem, por chave de conversa; o texto mora em `helicon.draft.*`. */
 export const DRAFT_FILES_PREFIX = "helicon.draftFiles.";
 
-/** Teto de base64 por rascunho (cerca de 2,2 MB binários); acima disso o anexo fica só na memória. */
-export const MAX_DRAFT_FILES_CHARS = 3_000_000;
+/**
+ * Teto de base64 por rascunho (cerca de 730 KB binários); acima disso o anexo fica só na memória.
+ * A cota do WebView2 é de uns 5 milhões de caracteres por origem, dividida com prefs e edições de arquivo.
+ */
+export const MAX_DRAFT_FILES_CHARS = 1_000_000;
+
+/** Teto somado de todos os anexos de rascunho guardados, para sobrar cota às prefs e às edições de arquivo. */
+export const MAX_DRAFT_FILES_TOTAL_CHARS = 2_000_000;
+
+/** O pedaço do `localStorage` que a gravação dos anexos usa; injetável nos testes. */
+export interface DraftStorage {
+  readonly length: number;
+  key(index: number): string | null;
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
 
 /** Um anexo guardado no armazenamento local: bytes e metadados, sem id efêmero nem URL de objeto. */
 export interface StoredDraftFile {
@@ -116,4 +134,58 @@ export function restoreDraftFiles(stored: readonly StoredDraftFile[]): PendingFi
       size: file.size,
     };
   });
+}
+
+/**
+ * Grava (ou apaga) os anexos do rascunho `key`. Acima do teto do rascunho, acima do teto somado com os
+ * outros rascunhos, ou com a cota esgotada, a cópia guardada sai e o anexo fica só na memória: uma cópia
+ * velha não volta no lugar da atual, e a cota sobra para prefs e edições de arquivo. Nunca lança.
+ */
+export function storeDraftFiles(storage: DraftStorage, key: string, files: readonly PendingFile[]): "stored" | "removed" | "skipped" {
+  const storageKey = DRAFT_FILES_PREFIX + key;
+  const drop = (): void => {
+    try {
+      storage.removeItem(storageKey);
+    } catch {
+      /* armazenamento indisponível: nada a liberar */
+    }
+  };
+  if (files.length === 0) {
+    drop();
+    return "removed";
+  }
+  const raw = serializeDraftFiles(files);
+  if (raw === null) {
+    drop();
+    return "skipped";
+  }
+  try {
+    let others = 0;
+    for (let i = 0; i < storage.length; i++) {
+      const other = storage.key(i);
+      if (other && other !== storageKey && other.startsWith(DRAFT_FILES_PREFIX)) {
+        others += storage.getItem(other)?.length ?? 0;
+      }
+    }
+    if (others + raw.length > MAX_DRAFT_FILES_TOTAL_CHARS) {
+      drop();
+      return "skipped";
+    }
+    storage.setItem(storageKey, raw);
+    return "stored";
+  } catch {
+    drop();
+    return "skipped";
+  }
+}
+
+/** Apaga texto e anexos guardados do rascunho de uma conversa excluída. Nunca lança. */
+export function forgetStoredDraft(storage: Pick<DraftStorage, "removeItem">, key: string): void {
+  for (const storageKey of [DRAFT_TEXT_PREFIX + key, DRAFT_FILES_PREFIX + key]) {
+    try {
+      storage.removeItem(storageKey);
+    } catch {
+      /* armazenamento indisponível: nada a apagar */
+    }
+  }
 }
