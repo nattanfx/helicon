@@ -150,8 +150,10 @@ fn stable_port(data_dir: Option<&Path>) -> u16 {
 /// pasta de dados do app — separada entre normal e Teste pelo identificador — então sobrevive à troca
 /// de porta. O conteúdo é texto opaco aqui; a interface valida ao carregar.
 const DRAFTS_FILE: &str = "file-drafts.json";
-/// A versão anterior a cada escrita, para restauração manual se o arquivo corromper.
+/// A última versão válida antes de cada escrita; a leitura recorre a ela se o arquivo principal corromper.
 const DRAFTS_BACKUP_FILE: &str = "file-drafts.json.bak";
+/// Escrita em andamento: só substitui o arquivo principal (rename) depois de completa.
+const DRAFTS_TEMP_FILE: &str = "file-drafts.json.tmp";
 
 fn drafts_paths(data_dir: Option<&Path>) -> Option<(PathBuf, PathBuf)> {
     let dir = data_dir?;
@@ -163,9 +165,18 @@ fn read_drafts_file(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok().filter(|text| !text.trim().is_empty())
 }
 
+/// Lido e com JSON válido; um arquivo truncado por queda no meio da escrita não passa.
+fn read_valid_drafts_file(path: &Path) -> Option<String> {
+    read_drafts_file(path).filter(|text| serde_json::from_str::<serde_json::Value>(text).is_ok())
+}
+
 fn load_drafts_from(data_dir: &Path) -> Option<String> {
-    let (path, _) = drafts_paths(Some(data_dir))?;
-    read_drafts_file(&path)
+    let (path, backup) = drafts_paths(Some(data_dir))?;
+    // Sem arquivo principal = cópia descartada; o `.bak` não ressuscita o descarte.
+    if !path.exists() {
+        return None;
+    }
+    read_valid_drafts_file(&path).or_else(|| read_valid_drafts_file(&backup))
 }
 
 fn save_drafts_to(data_dir: &Path, content: &str) -> Result<(), String> {
@@ -174,10 +185,19 @@ fn save_drafts_to(data_dir: &Path, content: &str) -> Result<(), String> {
         let _ = std::fs::remove_file(&path);
         return Ok(());
     }
-    if path.exists() {
+    // Só uma versão válida vira `.bak`: copiar um principal corrompido apagaria a última cópia boa.
+    if read_valid_drafts_file(&path).is_some() {
         let _ = std::fs::copy(&path, &backup);
     }
-    std::fs::write(&path, content).map_err(|error| format!("não foi possível guardar a cópia: {error}"))?;
+    // Escreve ao lado e troca por rename (no Windows substitui o destino): uma queda no meio deixa o
+    // principal anterior intacto em vez de truncado.
+    let temp = plain_path(&data_dir.join(DRAFTS_TEMP_FILE));
+    let fail = |error: std::io::Error| format!("não foi possível guardar a cópia: {error}");
+    std::fs::write(&temp, content).map_err(fail)?;
+    if let Err(error) = std::fs::rename(&temp, &path) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(fail(error));
+    }
     Ok(())
 }
 
@@ -524,8 +544,7 @@ fn spawn_server(
         .app_log_dir()
         .ok()
         .map(|dir| plain_path(&dir))
-        .and_then(|dir| std::fs::create_dir_all(&dir).ok().map(|_| dir.join("server.log")))
-        .and_then(|path| OpenOptions::new().create(true).append(true).open(path).ok());
+        .and_then(|dir| open_server_log(&dir));
     cmd.stdout(Stdio::piped())
         .stderr(log.map(Stdio::from).unwrap_or_else(Stdio::null));
     let mut child = cmd.spawn().map_err(|_| StartFailure::Failed)?;
@@ -543,6 +562,24 @@ fn spawn_server(
     let _ = child.kill();
     let _ = child.wait();
     Err(if exited { StartFailure::Exited } else { StartFailure::Failed })
+}
+
+/// Acima disso o server.log é girado ao abrir: o servidor só acrescenta, então sem giro cresceria para sempre.
+const SERVER_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
+const SERVER_LOG_FILE: &str = "server.log";
+
+/// Abre o server.log para acréscimo. Se passou do limite, vira `.1` (e o `.1` anterior vira `.2`): duas
+/// gerações bastam para diagnosticar a última sessão sem encher o disco.
+fn open_server_log(dir: &Path) -> Option<std::fs::File> {
+    std::fs::create_dir_all(dir).ok()?;
+    let path = dir.join(SERVER_LOG_FILE);
+    let oversized = std::fs::metadata(&path).map(|meta| meta.len() > SERVER_LOG_MAX_BYTES).unwrap_or(false);
+    if oversized {
+        let older = dir.join(format!("{SERVER_LOG_FILE}.1"));
+        let _ = std::fs::rename(&older, dir.join(format!("{SERVER_LOG_FILE}.2")));
+        let _ = std::fs::rename(&path, &older);
+    }
+    OpenOptions::new().create(true).append(true).open(path).ok()
 }
 
 fn boot_server(app: &tauri::AppHandle) -> Result<String, BootError> {
@@ -748,8 +785,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_node_in, find_resource, fresh_port, load_drafts_from, parse_listening_url, plain_path, save_drafts_to, stable_port,
-        start_with_retry, BootError, StartFailure, PORT_FILE, SPLASH_PAGE,
+        bundled_node_in, find_resource, fresh_port, load_drafts_from, open_server_log, parse_listening_url, plain_path, save_drafts_to,
+        stable_port, start_with_retry, BootError, StartFailure, PORT_FILE, SERVER_LOG_MAX_BYTES, SPLASH_PAGE,
     };
     #[cfg(unix)]
     use super::{latest_nvm_node, prepend_to_path, select_probe_path, well_known_nodes_in};
@@ -872,6 +909,51 @@ mod tests {
         save_drafts_to(&dir, "{}").unwrap();
         assert_eq!(load_drafts_from(&dir), None, "descartar limpa a cópia");
         assert!(dir.join(super::DRAFTS_BACKUP_FILE).exists(), "o backup sobrevive ao descarte");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn truncated_file_drafts_fall_back_to_the_last_valid_backup() {
+        // Cópia descartável: nunca toca nos dados reais do app.
+        let dir = std::env::temp_dir().join(format!("helicon-drafts-torn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = r##"{"proj\nREADME.md":{"content":"# um","baseMtimeMs":1}}"##;
+        let second = r##"{"proj\nREADME.md":{"content":"# dois","baseMtimeMs":2}}"##;
+        save_drafts_to(&dir, first).unwrap();
+        save_drafts_to(&dir, second).unwrap();
+        assert!(!dir.join(super::DRAFTS_TEMP_FILE).exists(), "o temporário vira o principal");
+        // Queda no meio de uma escrita antiga: principal truncado.
+        std::fs::write(dir.join(super::DRAFTS_FILE), &second[..20]).unwrap();
+        assert_eq!(load_drafts_from(&dir).as_deref(), Some(first), "recorre ao .bak válido");
+        // A próxima escrita não troca o .bak bom pelo principal corrompido.
+        let third = r##"{"proj\nREADME.md":{"content":"# três","baseMtimeMs":3}}"##;
+        save_drafts_to(&dir, third).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join(super::DRAFTS_BACKUP_FILE)).unwrap(), first);
+        assert_eq!(load_drafts_from(&dir).as_deref(), Some(third));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn server_log_rotates_past_the_limit_keeping_two_generations() {
+        // Pasta descartável: nunca toca no log real do app.
+        let dir = std::env::temp_dir().join(format!("helicon-server-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("server.log");
+        std::fs::write(&log, "pequeno\n").unwrap();
+        drop(open_server_log(&dir).unwrap());
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), "pequeno\n", "abaixo do limite só acrescenta");
+        std::fs::write(dir.join("server.log.1"), "geração anterior").unwrap();
+        std::fs::write(&log, vec![b'x'; SERVER_LOG_MAX_BYTES as usize + 1]).unwrap();
+        {
+            use std::io::Write;
+            let mut file = open_server_log(&dir).unwrap();
+            file.write_all(b"novo\n").unwrap();
+        }
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), "novo\n");
+        assert_eq!(std::fs::metadata(dir.join("server.log.1")).unwrap().len(), SERVER_LOG_MAX_BYTES + 1);
+        assert_eq!(std::fs::read_to_string(dir.join("server.log.2")).unwrap(), "geração anterior");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
