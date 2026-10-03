@@ -47,6 +47,32 @@ const OVERLAY_SCRIPT: &str = "window.__HELICON_TITLEBAR__ = 'overlay';";
 /// Onde a porta do servidor é lembrada entre aberturas, dentro da pasta de dados do app.
 const PORT_FILE: &str = "server-port";
 
+/// A URL do servidor local deste Helicon, conhecida assim que ele sobe. Outro servidor local, em outra porta,
+/// não é o Helicon: não fica na janela nem chama os comandos do app.
+static SERVER_URL: Mutex<Option<Url>> = Mutex::new(None);
+
+fn server_url() -> Option<Url> {
+    SERVER_URL.lock().ok().and_then(|guard| guard.clone())
+}
+
+fn is_loopback(url: &Url) -> bool {
+    matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))
+}
+
+/// A página é servida pelo servidor do próprio Helicon: loopback, mesmo esquema e mesma porta.
+fn is_helicon_server(url: &Url, server: &Url) -> bool {
+    url.scheme() == server.scheme() && is_loopback(url) && url.port_or_known_default() == server.port_or_known_default()
+}
+
+/// Comandos que leem ou gravam dados do app só respondem à página do servidor do Helicon.
+fn require_helicon_page(webview: &tauri::Webview) -> Result<(), String> {
+    let page = webview.url().map_err(|_| "página desconhecida".to_string())?;
+    match server_url() {
+        Some(server) if is_helicon_server(&page, &server) => Ok(()),
+        _ => Err("recusado: esta página não é o Helicon".to_string()),
+    }
+}
+
 /// Mostrado no instante em que a janela abre, enquanto o servidor local inicia. As cores do sistema seguem o tema do SO.
 const SPLASH_PAGE: &str = "data:text/html,<!doctype html><meta charset=utf-8><title>Helicon</title><style>html{color-scheme:light dark;background:Canvas;color:GrayText;font:13px system-ui,sans-serif}body{margin:0;height:100vh;display:grid;place-items:center}</style><body>Iniciando o Helicon</body>";
 
@@ -157,14 +183,16 @@ fn save_drafts_to(data_dir: &Path, content: &str) -> Result<(), String> {
 
 /// Lê a cópia estável de edições; `None` = sem cópia (a interface usa o `localStorage` da origem atual).
 #[tauri::command]
-fn helicon_load_file_drafts(app: tauri::AppHandle) -> Option<String> {
+fn helicon_load_file_drafts(app: tauri::AppHandle, webview: tauri::Webview) -> Option<String> {
+    require_helicon_page(&webview).ok()?;
     let dir = app.path().app_data_dir().ok().map(|dir| plain_path(&dir))?;
     load_drafts_from(&dir)
 }
 
 /// Guarda a cópia estável de edições; vazio remove o arquivo. Guarda a versão anterior em `.bak`.
 #[tauri::command]
-fn helicon_save_file_drafts(app: tauri::AppHandle, content: String) -> Result<(), String> {
+fn helicon_save_file_drafts(app: tauri::AppHandle, webview: tauri::Webview, content: String) -> Result<(), String> {
+    require_helicon_page(&webview)?;
     let dir = app
         .path()
         .app_data_dir()
@@ -540,6 +568,10 @@ fn boot_server(app: &tauri::AppHandle) -> Result<String, BootError> {
         }
         app.resources_table().add(ServerGuard(state.0.clone()));
     }
+    // Lembrada antes de a janela navegar para ela, para a regra de navegação já reconhecer o servidor.
+    if let (Ok(parsed), Ok(mut guard)) = (url.parse::<Url>(), SERVER_URL.lock()) {
+        *guard = Some(parsed);
+    }
     Ok(url)
 }
 
@@ -606,11 +638,17 @@ fn install_zoom_menu(app: &tauri::App) -> tauri::Result<()> {
 }
 
 /// Links web e de e-mail que pertencem ao navegador ou app de e-mail do usuário. O servidor local do próprio Helicon, as páginas
-/// de splash e de erro embutidas e os esquemas internos do Tauri ficam na janela.
-fn is_external_link(url: &Url) -> bool {
+/// de splash e de erro embutidas e os esquemas internos do Tauri ficam na janela. Outro servidor local (um servidor de
+/// desenvolvimento, outro app) vai para o navegador: na janela, ele ganharia o acesso aos comandos do Helicon.
+/// Antes de o servidor subir, `server` é `None` e só a splash está na janela.
+fn is_external_link(url: &Url, server: Option<&Url>) -> bool {
     match url.scheme() {
         "mailto" => true,
-        "http" | "https" => !matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]" | "ipc.localhost" | "tauri.localhost")),
+        "http" | "https" => match url.host_str() {
+            Some("ipc.localhost" | "tauri.localhost") => false,
+            Some("127.0.0.1" | "localhost" | "[::1]") => server.is_some_and(|server| !is_helicon_server(url, server)),
+            _ => true,
+        },
         _ => false,
     }
 }
@@ -646,13 +684,13 @@ fn main() {
                 // Um link destinado ao navegador (`target="_blank"`, ou um que levaria o app para longe)
                 // abre no navegador padrão do usuário em vez de não fazer nada ou substituir o Helicon.
                 .on_new_window(|url, _features| {
-                    if is_external_link(&url) {
+                    if is_external_link(&url, server_url().as_ref()) {
                         let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
                     }
                     tauri::webview::NewWindowResponse::Deny
                 })
                 .on_navigation(|url| {
-                    if is_external_link(url) {
+                    if is_external_link(url, server_url().as_ref()) {
                         let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
                         return false;
                     }
@@ -720,14 +758,31 @@ mod tests {
 
     #[test]
     fn sends_only_outside_links_to_the_browser() {
-        let external = |u: &str| super::is_external_link(&u.parse::<tauri::Url>().unwrap());
+        let server = "http://127.0.0.1:52314/api/desktop-auth?key=k".parse::<tauri::Url>().unwrap();
+        let external = |u: &str| super::is_external_link(&u.parse::<tauri::Url>().unwrap(), Some(&server));
         assert!(external("https://github.com/HarjjotSinghh/helicon/pull/90"));
         assert!(external("mailto:hi@helicon.sh"));
         assert!(!external("http://127.0.0.1:52314/threads/abc"));
-        assert!(!external("http://localhost:5173/"));
+        assert!(!external("http://localhost:52314/"));
+        assert!(external("http://localhost:5173/"), "another local server is not Helicon");
+        assert!(external("http://127.0.0.1:52315/"));
+        assert!(external("http://[::1]:8080/"));
         assert!(!external("http://ipc.localhost/plugin"));
         assert!(!external("tauri://localhost/"));
         assert!(!external("data:text/html,hi"));
+        // Antes de o servidor subir, só a splash está na janela; a primeira navegação até ele não pode ser barrada.
+        assert!(!super::is_external_link(&"http://127.0.0.1:52314/".parse::<tauri::Url>().unwrap(), None));
+    }
+
+    #[test]
+    fn recognizes_only_the_helicon_server_origin() {
+        let server = "http://127.0.0.1:52314/api/desktop-auth?key=k".parse::<tauri::Url>().unwrap();
+        let same = |u: &str| super::is_helicon_server(&u.parse::<tauri::Url>().unwrap(), &server);
+        assert!(same("http://127.0.0.1:52314/"));
+        assert!(same("http://localhost:52314/#/t/s1"));
+        assert!(!same("http://127.0.0.1:5173/"));
+        assert!(!same("https://127.0.0.1:52314/"));
+        assert!(!same("http://evil.example:52314/"));
     }
 
     #[test]
