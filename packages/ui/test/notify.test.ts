@@ -123,6 +123,22 @@ describe("notificações", () => {
     assert.ok(manager.remembered <= 2, `guardou ${manager.remembered} reservas`);
   });
 
+  it("avisa o diagnóstico aberto a cada tentativa, até cancelar a inscrição", async () => {
+    const { fake } = notifier();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false }));
+    let calls = 0;
+    const stop = manager.onTrace(() => {
+      calls += 1;
+    });
+    await manager.announce({ kind: "approval", sessionId: "s1", thread: "a" });
+    await manager.preview("balloon");
+    assert.equal(calls, 2);
+    assert.equal(manager.recent().length, 2);
+    stop();
+    await manager.announce({ kind: "approval", sessionId: "s2", thread: "b" });
+    assert.equal(calls, 2);
+  });
+
   it("forget alcança as reservas de fim de turno, e só da conversa pedida", async () => {
     const { fake, shown } = notifier();
     const time = clock();

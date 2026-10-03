@@ -147,7 +147,12 @@ type FailuresView = { status: "loading" } | { status: "error" } | { status: "rea
 
 function Diagnostico() {
   const controller = useController();
-  const traces = controller.notificationTrace();
+  // Um aviso de teste feito com esta tela aberta tem de aparecer sem sair e voltar.
+  const [traces, setTraces] = useState(() => controller.notificationTrace());
+  useEffect(() => {
+    setTraces(controller.notificationTrace());
+    return controller.subscribeNotificationTrace(() => setTraces(controller.notificationTrace()));
+  }, [controller]);
   const userAgent = typeof navigator === "undefined" ? "desconhecido" : navigator.userAgent;
   const [failures, setFailures] = useState<FailuresView>({ status: "loading" });
   const [reload, setReload] = useState(0);

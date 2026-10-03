@@ -505,6 +505,11 @@ export class HeliconController {
     return this.notifications?.recent() ?? [];
   }
 
+  /** Chamado a cada nova tentativa de aviso; devolve o cancelamento da inscrição. */
+  subscribeNotificationTrace(listener: () => void): () => void {
+    return this.notifications?.onTrace(listener) ?? (() => {});
+  }
+
   /** O que o sistema diz sobre os avisos, sem perguntar: as Configurações mostram com honestidade. */
   async notifyPermission(): Promise<NotifyPermission> {
     try {

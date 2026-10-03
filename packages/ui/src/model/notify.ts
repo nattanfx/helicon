@@ -115,6 +115,7 @@ function copy(event: NotifyEvent): { title: string; body: string } {
 export class NotificationManager {
   private readonly shown = new Map<string, number>();
   private readonly traces: NotifyTrace[] = [];
+  private readonly traceListeners = new Set<() => void>();
 
   constructor(
     private readonly notifier: Notifier,
@@ -126,6 +127,14 @@ export class NotificationManager {
   /** Tentativas recentes, da mais antiga à mais nova, para o diagnóstico temporário. */
   recent(): NotifyTrace[] {
     return [...this.traces];
+  }
+
+  /** Avisa a cada tentativa registrada, para o diagnóstico aberto se atualizar sozinho. */
+  onTrace(listener: () => void): () => void {
+    this.traceListeners.add(listener);
+    return () => {
+      this.traceListeners.delete(listener);
+    };
   }
 
   async announce(event: NotifyEvent): Promise<void> {
@@ -288,6 +297,9 @@ export class NotificationManager {
     this.traces.push(trace);
     while (this.traces.length > TRACE_KEEP) {
       this.traces.shift();
+    }
+    for (const listener of [...this.traceListeners]) {
+      listener();
     }
   }
 
