@@ -91,10 +91,11 @@ const QUOTA_KIND = "rateLimit";
 
 /**
  * Evidência específica de cota esgotada. "429" ou "rate limit" sozinhos não bastam:
- * indicam apenas limitação, que pode ser temporária.
+ * indicam apenas limitação, que pode ser temporária. "billing" sozinho também não
+ * ("billing service unavailable" é uma falha passageira): precisa de limite, cota ou saldo.
  */
 const QUOTA_EVIDENCE =
-  /quota\s*(exhausted|exceeded)|exhaust\w*[^a-z0-9_]+.*quota|exceed\w*[^a-z0-9_]+.*quota|quota\s+.*exhaust|quota\s+.*exceed|subscription\s+quota|plan\s+quota|out\s+of\s+(quota|credits)|billing/i;
+  /quota\s*(exhausted|exceeded)|exhaust\w*[^a-z0-9_]+.*quota|exceed\w*[^a-z0-9_]+.*quota|quota\s+.*exhaust|quota\s+.*exceed|subscription\s+quota|plan\s+quota|out\s+of\s+(quota|credits)|billing[\s_-]+(hard[\s_-]+)?(limit|quota|cap)|insufficient[\s_-]+(quota|credits?|balance|funds)|(credits?|balance)\s+(exhausted|depleted|exceeded)/i;
 
 /** Sinais de limitação temporária ou indeterminada, sem afirmar que a cota acabou. */
 const RATE_EVIDENCE = /\b429\b|rate[\s_-]?limit|too many requests|retry\s*after|throttl|slow\s*down/i;

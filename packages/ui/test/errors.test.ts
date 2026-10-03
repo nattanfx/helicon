@@ -89,6 +89,15 @@ describe("limite temporário (REV4)", () => {
     assert.equal(waiting.offerRetry, false);
   });
 
+  it("needs a limit, quota or balance next to billing before calling the quota exhausted", () => {
+    const outage = turnErrorCopy(null, "billing service unavailable", true);
+    assert.notEqual(outage.title, "A cota do plano acabou");
+    assert.equal(outage.offerRetry, true);
+    for (const message of ["Billing hard limit reached", "billing_limit exceeded", "insufficient_quota", "Insufficient credits", "credit balance exhausted"]) {
+      assert.equal(turnErrorCopy(null, message, true).title, "A cota do plano acabou", message);
+    }
+  });
+
   it("treats rateLimit without quota evidence as a temporary limit, not quota", () => {
     const bare = turnErrorCopy("rateLimit", "quota", true);
     assert.equal(bare.title, "Limite temporário atingido");
