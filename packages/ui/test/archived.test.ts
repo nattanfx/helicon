@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { filterArchived, groupArchivedByProject, olderThan } from "../src/model/archived.js";
+import { filterArchived, groupArchivedByProject, olderThan, visibleSelection } from "../src/model/archived.js";
 import type { ProjectView, SessionSummary } from "../src/types.js";
 
 function project(cwd: string, displayName: string): ProjectView {
@@ -91,6 +91,20 @@ describe("filterArchived", () => {
       ["s2"],
     );
     assert.deepEqual(filterArchived(sessions, "sidebar", "/work/b"), []);
+  });
+});
+
+describe("visibleSelection", () => {
+  it("acts only on selected threads the current filter shows, and keeps the order", () => {
+    const sessions = [
+      session("s1", "/work/a", "Fix the sidebar", "2026-09-25T00:00:00.000Z"),
+      session("s2", "/work/b", "Write docs", "2026-09-25T00:00:00.000Z"),
+      session("s3", "/work/a", "Fix docs", "2026-09-25T00:00:00.000Z"),
+    ];
+    const visible = filterArchived(sessions, "fix", null);
+    assert.deepEqual(visibleSelection(["s3", "s2", "s1", "gone"], visible), ["s3", "s1"]);
+    assert.deepEqual(visibleSelection(["s2"], visible), [], "a hidden selection is never deleted");
+    assert.deepEqual(visibleSelection(["s2"], filterArchived(sessions, "", null)), ["s2"], "and comes back with the filter");
   });
 });
 

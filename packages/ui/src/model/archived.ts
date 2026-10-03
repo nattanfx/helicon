@@ -47,6 +47,15 @@ export function filterArchived(sessions: SessionSummary[], query: string, cwd: s
   );
 }
 
+/**
+ * A seleção sobre a qual as ações em massa agem: só as conversas que o filtro atual mostra. Uma marcada e depois
+ * escondida pela busca não pode ser excluída sem estar à vista; ela volta marcada quando o filtro a mostra de novo.
+ */
+export function visibleSelection(selectedIds: readonly string[], visible: readonly SessionSummary[]): string[] {
+  const shown = new Set(visible.map((session) => session.sessionId));
+  return selectedIds.filter((id) => shown.has(id));
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Conversas com atividade anterior a `days` dias atrás; datas inválidas ficam de fora, nunca arquivam sem querer. */

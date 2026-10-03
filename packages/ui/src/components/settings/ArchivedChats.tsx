@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Ellipsis, Folder, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
-import { filterArchived, groupArchivedByProject, olderThan, type ArchivedGroup } from "../../model/archived.js";
+import { filterArchived, groupArchivedByProject, olderThan, visibleSelection, type ArchivedGroup } from "../../model/archived.js";
 import { displayTitle, formatClock, shortenPath } from "../../model/format.js";
 import type { SessionSummary } from "../../types.js";
 import { Menu, MenuContent, MenuItem, MenuOption, MenuRadioGroup, MenuTrigger, Modal, Tip } from "../ui/overlays.js";
@@ -185,8 +185,9 @@ export function ArchivedChats() {
 
   const filtered = useMemo(() => filterArchived(archived, query, project), [archived, query, project]);
   const groups = useMemo(() => groupArchivedByProject(projects, filtered), [projects, filtered]);
-  // A seleção acompanha a lista: restauradas e excluídas saem sozinhas; as que falharam continuam marcadas.
-  const selected = useMemo(() => selectedIds.filter((id) => archived.some((s) => s.sessionId === id)), [selectedIds, archived]);
+  // A seleção acompanha a lista visível: restauradas e excluídas saem sozinhas, as que falharam continuam marcadas
+  // e as que o filtro esconde ficam fora das contagens e das ações até reaparecerem.
+  const selected = useMemo(() => visibleSelection(selectedIds, filtered), [selectedIds, filtered]);
   const toggle = (sessionId: string) =>
     setSelectedIds((ids) => (ids.includes(sessionId) ? ids.filter((id) => id !== sessionId) : [...ids, sessionId]));
   const bulkBusy = Boolean(busyMap["restore-many"]) || Boolean(busyMap["delete-many"]);
