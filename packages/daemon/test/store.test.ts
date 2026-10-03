@@ -224,6 +224,30 @@ describe("HeliconStore", () => {
     assert.equal(store.listSessionsByProject(project.id)[0]?.turnCount, 0);
   });
 
+  it("deletes a session all-or-nothing: a failed tombstone keeps every row", () => {
+    const folder = mkdtempSync(join(tmpdir(), "helicon-delete-atomic-"));
+    const path = join(folder, "synthetic.db");
+    after(() => rmSync(folder, { recursive: true, force: true }));
+    const store = new HeliconStore(path);
+    const project = store.upsertProject("/work/p");
+    store.recordSession({ id: "s1", projectId: project.id });
+    store.recordTurn("t1", "s1");
+    // Simula a queda entre os DELETEs e a lápide: a lápide falha depois que as linhas já saíram.
+    const side = new DatabaseSync(path);
+    side.exec(`CREATE TRIGGER fail_tombstone BEFORE INSERT ON deleted_sessions BEGIN SELECT RAISE(ABORT, 'queda'); END;`);
+    assert.throws(() => store.deleteSession("s1"), /queda/);
+    assert.notEqual(store.getSession("s1"), null, "a sessão volta inteira com o rollback");
+    assert.equal(store.isDeleted("s1"), false);
+    side.exec(`DROP TRIGGER fail_tombstone`);
+    side.close();
+    assert.equal(store.deleteSession("s1"), true);
+    assert.equal(store.isDeleted("s1"), true);
+    // Depois de um rollback o armazenamento segue aceitando transações.
+    store.transaction(() => store.transaction(() => store.tombstone("other")));
+    assert.equal(store.isDeleted("other"), true);
+    store.close();
+  });
+
   it("archives sessions and hides projects without deleting them", () => {
     const store = new HeliconStore();
     after(() => store.close());

@@ -2628,6 +2628,7 @@ describe("HeliconController", () => {
     client.forkError = new HeliconError("cut ignored", 409, "forkCutUnconfirmed");
     assert.equal(await controller.fork("s1", "t1"), false);
     assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /não confirmou o corte/);
+    assert.match(controller.store.get().toasts.at(-1)?.detail ?? "", /tirada da lista do Helicon/);
     stop();
   });
 

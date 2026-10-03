@@ -334,6 +334,7 @@ function toAttachment(row: Row): AttachmentRecord {
 
 export class HeliconStore {
   private readonly db: DatabaseSync;
+  private transactionDepth = 0;
 
   constructor(path = ":memory:") {
     this.db = new DatabaseSync(path);
@@ -352,6 +353,28 @@ export class HeliconStore {
     // YOLO and sandbox-off used to be one global switch. Spreading it to every project would lift the sandbox in
     // workspaces nobody chose, so the old rows are dropped and every project starts protected. Idempotent.
     this.db.exec("DELETE FROM settings WHERE key IN ('sandbox', 'yolo')");
+  }
+
+  /**
+   * Runs `work` atomically: every write lands or none does (a throw rolls back). A call inside another
+   * joins the outer transaction instead of opening a second one, which SQLite would refuse.
+   */
+  transaction<T>(work: () => T): T {
+    if (this.transactionDepth > 0) {
+      return work();
+    }
+    this.db.exec("BEGIN");
+    this.transactionDepth++;
+    try {
+      const result = work();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    } finally {
+      this.transactionDepth--;
+    }
   }
 
   /** Malformed rows fall back to defaults rather than breaking the worker that reads them. */
@@ -758,18 +781,26 @@ export class HeliconStore {
   /**
    * Removes a session and its local rows, and tombstones the id so the next discovery does not
    * re-adopt the host session. Usage rows stay: deleting a thread must not rewrite its spending
-   * history. The host session itself is left alone.
+   * history. The host session itself is left alone. One transaction: a crash between the deletes and
+   * the tombstone would otherwise let discovery resurrect a half-deleted conversation.
    */
   deleteSession(id: string): boolean {
     if (!this.getSession(id)) {
       return false;
     }
-    for (const table of ["shell_runs", "attachments", "turns", "title_attempts"]) {
-      this.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(id);
-    }
-    this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
-    this.db.prepare(`INSERT OR REPLACE INTO deleted_sessions (session_id, deleted_at) VALUES (?, ?)`).run(id, nowIso());
+    this.transaction(() => {
+      for (const table of ["shell_runs", "attachments", "turns", "title_attempts"]) {
+        this.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(id);
+      }
+      this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+      this.tombstone(id);
+    });
     return true;
+  }
+
+  /** Marks an id deleted without a local row to remove (e.g. a host session never adopted). */
+  tombstone(id: string): void {
+    this.db.prepare(`INSERT OR REPLACE INTO deleted_sessions (session_id, deleted_at) VALUES (?, ?)`).run(id, nowIso());
   }
 
   /** True once deleted; discovery skips these ids instead of re-adopting them. */

@@ -202,6 +202,12 @@ const MAX_USAGE_PAGES = 100;
 /** Older pages scanned for the latest route transition beyond the transcript window. */
 const ROUTE_HISTORY_SCAN_PAGES = 8;
 const HISTORY_PAGE_SIZE = 1000;
+/** Rows a full session/list refresh reads (newest first). Older history stays on the host instead of flooding the
+ * sidebar; an incremental refresh still reads every page, since its marker must not skip unread changes. */
+const DISCOVER_LIMIT = 300;
+const DISCOVER_PAGE_SIZE = 100;
+/** Rows adopted per store transaction before yielding, so a long refresh never blocks requests and streams. */
+const DISCOVER_CHUNK = 100;
 /** `history.noneReason` values that answer the request rather than report a fault (MSP 1.4.2 `HistoryNoneReason`). */
 const HISTORY_NONE_EXPECTED = new Set(["excluded", "cursorSuffix", "historyBudget"]);
 /** Echo-titled threads one discovery may hand to the titler. Each is a model call on the user's plan, so it is a
@@ -792,6 +798,8 @@ export class HeliconServer {
   private readonly historyNoneSeen = new Map<string, string>();
   /** Last view cursor seen per session, so resumes and reattaches continue gaplessly after it. */
   private readonly viewCursors = new Map<string, string>();
+  /** Sessions whose route-history scan already logged "inconclusive": a long thread would log it on every open. */
+  private readonly routeInconclusiveLogged = new Set<string>();
   private protocolErrors = 0;
   private lastProtocolError: string | null = null;
   private forwardFailures = 0;
@@ -1426,6 +1434,7 @@ export class HeliconServer {
           throw new HttpError(409, "Stop the running turn and answer its requests before deleting this thread.");
         }
         this.store.deleteSession(sessionId);
+        this.forgetSession(sessionId);
         this.sessionsChanged();
         this.json(res, 200, { ok: true });
         return true;
@@ -2348,7 +2357,13 @@ export class HeliconServer {
     if (!found) {
       throw new HttpError(404, "Unknown session.");
     }
-    const forked = await manager.forkSession(sessionId, lastTurnId);
+    let forked: Awaited<ReturnType<SessionManager["forkSession"]>>;
+    try {
+      forked = await manager.forkSession(sessionId, lastTurnId);
+    } catch (error) {
+      this.discardUnconfirmedFork(error);
+      throw error;
+    }
     const raw = asRecord(asRecord(forked.raw)?.["session"]);
     const record = this.store.recordSession({
       id: forked.sessionId,
@@ -2372,6 +2387,23 @@ export class HeliconServer {
     this.liveFor(forked.sessionId);
     this.sessionsChanged();
     return this.summary(record, found.cwd);
+  }
+
+  /**
+   * A cut the host did not confirm still created a session: without this, session/started (or the next
+   * discovery) would list a branch carrying the whole conversation. It goes the way of a user deletion,
+   * tombstoned here and left on the host, so it never shows up as if it were the requested cut.
+   */
+  private discardUnconfirmedFork(error: unknown): void {
+    const forkedId = (error as { forkedSessionId?: unknown } | null)?.forkedSessionId;
+    if (errorInfo(error).kind !== "forkCutUnconfirmed" || typeof forkedId !== "string" || !forkedId) {
+      return;
+    }
+    if (!this.store.deleteSession(forkedId)) {
+      this.store.tombstone(forkedId);
+    }
+    this.forgetSession(forkedId);
+    this.sessionsChanged();
   }
 
   private async startSession(cwd: string, approvalMode?: ApprovalMode, modelId?: string): Promise<Record<string, unknown>> {
@@ -2876,7 +2908,8 @@ export class HeliconServer {
       scanned += 1;
       if (page.events.length === 0) break;
     }
-    if (route === undefined && cursor) {
+    if (route === undefined && cursor && !this.routeInconclusiveLogged.has(sessionId)) {
+      this.routeInconclusiveLogged.add(sessionId);
       this.log(`route history(${sessionId}) inconclusive after ${scanned} older pages; treating as no warning`);
     }
     return route ?? null;
@@ -2943,6 +2976,27 @@ export class HeliconServer {
     }
   }
 
+  /**
+   * Resumes after the last view cursor seen. A cursor from an earlier host process may mean nothing to the
+   * current one; rather than failing every open until the server restarts, drop it and resume once from scratch.
+   * Another host holding the session is an answer, not a cursor problem, so it is not retried.
+   */
+  private async resumeFromCursor(manager: SessionManager, sessionId: string): Promise<unknown> {
+    const cursor = this.viewCursors.get(sessionId);
+    try {
+      return await manager.resumeSession(sessionId, true, cursor);
+    } catch (error) {
+      if (cursor === undefined || errorInfo(error).kind === "sessionInUse") {
+        throw error;
+      }
+      this.log(`resume(${sessionId}) failed after cursor; retrying without it: ${error instanceof Error ? error.message : String(error)}`);
+      if (this.viewCursors.get(sessionId) === cursor) {
+        this.viewCursors.delete(sessionId);
+      }
+      return manager.resumeSession(sessionId, true, undefined);
+    }
+  }
+
   private async loadTranscript(sessionId: string): Promise<Record<string, unknown>> {
     // A goal change can land while this load is in flight; history must not then write the older goal back.
     const goalSeqAtStart = this.liveFor(sessionId).goalSeq;
@@ -2956,7 +3010,7 @@ export class HeliconServer {
     let readOnlyReason: string | null = null;
     let msp: Record<string, unknown> | null = null;
     try {
-      const resumed = asRecord(await manager.resumeSession(sessionId, true, this.viewCursors.get(sessionId)));
+      const resumed = asRecord(await this.resumeFromCursor(manager, sessionId));
       this.noteHistoryHealth(sessionId, host.key, resumed);
       msp = asRecord(resumed?.["session"]);
       const head = str(resumed?.["viewCursor"]);
@@ -3106,15 +3160,27 @@ export class HeliconServer {
     }
     const views: Record<string, unknown>[] = [];
     const titles = { backfill: 0 };
-    for (const item of remote) {
-      const row = asRecord(item);
-      const session = (row && asRecord(row["session"])) ?? row;
-      const id = session ? str(session["sessionId"]) : null;
-      if (id && (this.rowStreamSeen.get(id) ?? 0) > rowSequenceAtStart) continue;
-      const view = this.adoptRemoteRow(item, { cwd, hostKey: host.key, titles, statusSequenceAtStart });
-      if (view) {
-        views.push(view);
+    // One transaction per chunk turns hundreds of synchronous writes into one commit; the pause between chunks
+    // lets streamed rows and requests through (a row streamed meanwhile is newer and skipped below).
+    for (let start = 0; start < remote.length; start += DISCOVER_CHUNK) {
+      if (start > 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
+      if (this.closed) {
+        return views;
+      }
+      this.store.transaction(() => {
+        for (const item of remote.slice(start, start + DISCOVER_CHUNK)) {
+          const row = asRecord(item);
+          const session = (row && asRecord(row["session"])) ?? row;
+          const id = session ? str(session["sessionId"]) : null;
+          if (id && (this.rowStreamSeen.get(id) ?? 0) > rowSequenceAtStart) continue;
+          const view = this.adoptRemoteRow(item, { cwd, hostKey: host.key, titles, statusSequenceAtStart });
+          if (view) {
+            views.push(view);
+          }
+        }
+      });
     }
     // `updatedAfter` compares host log times; a local wall clock can be ahead of that host.
     // Overlap one second because timestamps may be rounded to milliseconds at the boundary.
@@ -3132,7 +3198,11 @@ export class HeliconServer {
     return views;
   }
 
-  /** Every page of session/list for a refresh, narrowed to recent activity when incremental. */
+  /**
+   * session/list for a refresh. Incremental: every page, narrowed to recent activity, since the host-time marker
+   * advances past whatever this returns. Full: the newest DISCOVER_LIMIT rows (the host orders by `updatedAt`
+   * descending), so thousands of old sessions do not all land in the store and sidebar at once.
+   */
   private async listRemote(host: ManagedHost, cwd: string | undefined, updatedAfter: string | undefined): Promise<unknown[]> {
     const remote: unknown[] = [];
     let cursor: string | null = null;
@@ -3140,7 +3210,7 @@ export class HeliconServer {
     do {
       const page = await host.manager.listSessionsPage({
         workspaceRoot: cwd ? this.hostPathFor(cwd) : undefined,
-        limit: 100,
+        limit: DISCOVER_PAGE_SIZE,
         cursor,
         ...(updatedAfter ? { updatedAfter } : {}),
       });
@@ -3148,8 +3218,8 @@ export class HeliconServer {
       cursor = page.nextCursor;
       if (cursor && seen.has(cursor)) throw new Error("session/list repeated a page cursor");
       if (cursor) seen.add(cursor);
-    } while (cursor);
-    return remote;
+    } while (cursor && (updatedAfter !== undefined || remote.length < DISCOVER_LIMIT));
+    return updatedAfter !== undefined ? remote : remote.slice(0, DISCOVER_LIMIT);
   }
 
   /**
@@ -3494,6 +3564,8 @@ export class HeliconServer {
       }
       this.sessionHosts.delete(sessionId);
       this.effortApplied.delete(sessionId);
+      // View cursors belong to that host process; a new one replays from its own head instead.
+      this.viewCursors.delete(sessionId);
       const live = this.live.get(sessionId);
       if (live && (live.activeTurnId || live.pendingApprovals.size || live.pendingInputs.size)) {
         live.activeTurnId = null;
@@ -3505,6 +3577,23 @@ export class HeliconServer {
         this.emitStatus(sessionId);
       }
     }
+  }
+
+  /** Drops everything kept in memory for a session that is gone here (deleted, or a discarded fork). */
+  private forgetSession(sessionId: string): void {
+    this.live.delete(sessionId);
+    this.sessionHosts.delete(sessionId);
+    this.effortApplied.delete(sessionId);
+    this.notifyStats.delete(sessionId);
+    this.rowStreamSeen.delete(sessionId);
+    this.statusSeen.delete(sessionId);
+    this.routeSequence.delete(sessionId);
+    this.notificationSequence.delete(sessionId);
+    this.liveSequence.delete(sessionId);
+    this.historyNoneSeen.delete(sessionId);
+    this.viewCursors.delete(sessionId);
+    this.routeInconclusiveLogged.delete(sessionId);
+    this.titleUpgradePending.delete(sessionId);
   }
 
   /** The project a posture switch names, by folder; unknown folders get nothing. */
@@ -3659,7 +3748,11 @@ export class HeliconServer {
   /** Registra que o feed de uma sessão está vivo, para um silêncio depois se distinguir de sessão parada. */
   private noteNotification(sessionId: string, method: string): void {
     let stats = this.notifyStats.get(sessionId);
-    if (!stats) {
+    if (stats) {
+      // Reinserida no fim: o despejo abaixo tira a menos recente, não a primeira registrada.
+      this.notifyStats.delete(sessionId);
+      this.notifyStats.set(sessionId, stats);
+    } else {
       if (this.notifyStats.size >= NOTIFY_STATS_LIMIT) {
         const oldest = this.notifyStats.keys().next();
         if (!oldest.done) {

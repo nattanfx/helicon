@@ -68,7 +68,13 @@ describe("SessionManager", () => {
     await assert.rejects(manager.forkSession("source", "missing"), /Unknown boundary/);
     assert.deepEqual(lastCall(conn).params?.["cutPoint"], { lastTurnId: "missing" });
     conn.reply("session/fork", { session: { sessionId: "branch", forkedFrom: { sessionId: "source", cutExplicit: false } } });
-    await assert.rejects(manager.forkSession("source", "turn-2"), /did not confirm/);
+    await assert.rejects(manager.forkSession("source", "turn-2"), (error: { message: string; kind?: string; forkedSessionId?: string }) => {
+      assert.match(error.message, /did not confirm/);
+      assert.equal(error.kind, "forkCutUnconfirmed");
+      // The branch the host made anyway, so the caller can discard it.
+      assert.equal(error.forkedSessionId, "branch");
+      return true;
+    });
   });
 
   it("lists sessions scoped to a workspace", async () => {

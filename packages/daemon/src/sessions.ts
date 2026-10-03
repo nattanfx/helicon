@@ -416,7 +416,9 @@ export class SessionManager {
     if (lastTurnId !== undefined) {
       const source = asRecord(asRecord(asRecord(result)?.["session"])?.["forkedFrom"]);
       if (source?.["cutExplicit"] !== true || source["sessionId"] !== sessionId) {
-        throw Object.assign(new Error("Muse did not confirm the requested fork boundary."), { kind: "forkCutUnconfirmed" });
+        // The host already created the branch; its id lets the caller discard it instead of leaving an orphan.
+        const forkedSessionId = nestedString(result, ["session", "sessionId"]);
+        throw Object.assign(new Error("Muse did not confirm the requested fork boundary."), { kind: "forkCutUnconfirmed", forkedSessionId });
       }
     }
     return { sessionId: sessionIdOf(result), raw: result };

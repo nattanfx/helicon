@@ -3305,3 +3305,155 @@ describe("wire helpers", () => {
     assert.equal(normalizeIso(42), undefined);
   });
 });
+
+describe("server robustness: bounds and cleanup", () => {
+  const internals = (server: HeliconServer) => server as unknown as Record<string, Map<string, unknown>>;
+
+  it("bounds a full discovery to the newest rows and yields between write batches", async () => {
+    const connection = new FakeConnection();
+    let pages = 0;
+    connection.replies.set("session/list", (params: Record<string, unknown>) => {
+      pages += 1;
+      const index = Number(params["cursor"] ?? 0);
+      const rows = Array.from({ length: 100 }, (_, offset) => ({
+        sessionId: `old${index + offset}`, workspaceRoot: "/work/proj", name: "Antigo", updatedAt: "2026-09-28T00:00:00Z",
+      }));
+      // Um histórico sem fim: sem limite, a descoberta nunca terminaria.
+      return { sessions: rows, nextCursor: String(index + 100) };
+    });
+    const { server, base } = await start(connection);
+    const store = (server as unknown as { store: { transaction: <T>(work: () => T) => T } }).store;
+    const order: string[] = [];
+    const transaction = store.transaction.bind(store);
+    store.transaction = <T>(work: () => T): T => {
+      if (order.length === 0) setImmediate(() => order.push("tick"));
+      order.push("batch");
+      return transaction(work);
+    };
+    const discovered = await send(base, "/api/discover", { cwd: "/work/proj" });
+    assert.equal(discovered.status, 200);
+    assert.equal(pages, 3, "a full listing stops at DISCOVER_LIMIT rows");
+    assert.equal((await get(base, "/api/sessions")).sessions.length, 300);
+    assert.deepEqual(order, ["batch", "tick", "batch", "batch"], "other work runs between batches");
+  });
+
+  it("discards the branch a fork with an unconfirmed cut created, even after the host announced it", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.replies.set("session/fork", () => {
+      // The stream adopts the new branch before the fork reply arrives.
+      connection.notify("session/started", { session: { sessionId: "orphan", workspaceRoot: "/work/proj", status: "idle" } });
+      return { session: { sessionId: "orphan", forkedFrom: { sessionId: "s1", cutExplicit: false } } };
+    });
+    const ids = () => get(base, "/api/sessions").then((body) => body.sessions.map((s: { sessionId: string }) => s.sessionId));
+    const ignored = await send(base, "/api/sessions/s1/fork", { cutPoint: { lastTurnId: "turn-2" } });
+    assert.equal(ignored.status, 409);
+    assert.equal(ignored.json.kind, "forkCutUnconfirmed");
+    assert.deepEqual(await ids(), ["s1"]);
+    // Discovery does not bring it back either: it is tombstoned like a user deletion.
+    connection.replies.set("session/list", {
+      sessions: [{ sessionId: "orphan", workspaceRoot: "/work/proj" }, { sessionId: "s1", workspaceRoot: "/work/proj" }],
+      nextCursor: null,
+    });
+    assert.equal((await send(base, "/api/discover", { cwd: "/work/proj" })).status, 200);
+    assert.deepEqual(await ids(), ["s1"]);
+  });
+
+  it("forgets a deleted thread's in-memory state", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { server, base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", viewCursor: "v1" });
+    const maps = ["viewCursors", "notificationSequence", "liveSequence", "statusSeen", "notifyStats", "live"];
+    for (const name of maps) {
+      assert.equal(internals(server)[name]!.has("s1"), true, `${name} records the thread`);
+    }
+    assert.equal((await send(base, "/api/sessions/s1", undefined, "DELETE")).status, 200);
+    for (const name of maps) {
+      assert.equal(internals(server)[name]!.has("s1"), false, `${name} keeps a deleted thread`);
+    }
+  });
+
+  it("evicts the least recently active feed stats, not the first one seen", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    for (let index = 0; index < 200; index += 1) {
+      connection.notify("session/statusChanged", { sessionId: `n${index}`, status: "idle" });
+    }
+    connection.notify("session/statusChanged", { sessionId: "n0", status: "idle" });
+    connection.notify("session/statusChanged", { sessionId: "n200", status: "idle" });
+    const sessions = (await get(base, "/api/health")).diagnostics.sessions as Record<string, unknown>;
+    assert.equal(Object.keys(sessions).length, 200);
+    assert.ok("n0" in sessions, "the recently active feed stays");
+    assert.ok(!("n1" in sessions), "the least recent one goes");
+  });
+
+  it("resumes once without a view cursor the host no longer accepts", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("view/page", { events: [], nextCursor: null });
+    connection.replies.set("session/resume", (params: Record<string, unknown>) => {
+      if (params["cursor"]) throw new MspTestError("unknown view cursor", "invalidParams");
+      return { session: { sessionId: "s1" }, viewCursor: "fresh" };
+    });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", viewCursor: "stale" });
+    assert.equal((await send(base, "/api/sessions/s1/resume", {})).status, 200);
+    const resumes = connection.calls.filter((c) => c.method === "session/resume");
+    assert.equal(resumes.length, 2);
+    assert.equal(resumes[0]?.params?.["cursor"], "stale");
+    assert.ok(!("cursor" in (resumes[1]?.params ?? {})));
+    // A real failure still surfaces after the single retry.
+    connection.replies.set("session/resume", new MspTestError("boom", "internal"));
+    assert.notEqual((await send(base, "/api/sessions/s1/resume", {})).status, 200);
+  });
+
+  it("drops a host's view cursors when that host goes away", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    connection.replies.set("view/page", { events: [], nextCursor: null });
+    const probe: FactoryProbe = { targets: [], exits: [] };
+    const { base } = await start(connection, { hostFactory: fakeFactory(connection, probe) });
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    await send(base, "/api/sessions/s1/resume", {});
+    connection.notify("session/statusChanged", { sessionId: "s1", status: "idle", viewCursor: "old-process" });
+    probe.exits[0]!({ code: 1, signal: null });
+    await send(base, "/api/sessions/s1/resume", {});
+    const last = connection.calls.filter((c) => c.method === "session/resume").at(-1);
+    assert.ok(!("cursor" in (last?.params ?? {})), "the new host process resumes from its own head");
+  });
+
+  it("logs an inconclusive route history once per thread", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => {
+      const index = Number(String(params["cursor"] ?? "0"));
+      return { events: [{ method: "turn/started", params: { sessionId: "s1", turnId: `t${index}` } }], nextCursor: String(index + 1) };
+    });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    const lines: string[] = [];
+    const write = process.stderr.write;
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      lines.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      assert.equal((await send(base, "/api/sessions/s1/resume", {})).status, 200);
+      assert.equal((await send(base, "/api/sessions/s1/resume", {})).status, 200);
+    } finally {
+      process.stderr.write = write;
+    }
+    assert.equal(lines.filter((line) => line.includes("inconclusive")).length, 1);
+  });
+});
