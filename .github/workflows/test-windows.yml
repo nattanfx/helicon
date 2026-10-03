@@ -16,12 +16,14 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
       - run: npm ci
       - run: npm run build --workspace @helicon/daemon --workspace @helicon/ui --workspace @helicon/server
       - name: Build isolated test installer
@@ -47,7 +49,7 @@ jobs:
             'Muse account and CLI are shared. Use only a disposable project for validation.'
           ) | Set-Content -LiteralPath "$bundleDir/BUILD.txt" -Encoding utf8
           Copy-Item -LiteralPath 'docs/TESTE-WINDOWS.md' -Destination "$bundleDir/TESTE-WINDOWS.md"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: Helicon-Teste-Windows-${{ github.run_number }}
           path: |
