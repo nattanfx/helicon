@@ -72,12 +72,11 @@ export class HeliconMspHost {
       args: this.target.args,
       cwd: this.target.cwd,
       env: this.target.env,
-      onStderr: (chunk: unknown) => {
-        const text = String(chunk);
-        this.rememberStderr(text);
-        onStderr(text);
+      onStderr: (chunk) => {
+        this.rememberStderr(chunk);
+        onStderr(chunk);
       },
-    } as Parameters<SpawnMspConnection>[0]);
+    });
     try {
       this.msp = await this.handshake.initialize({
         clientInfo: { name: HELICON_CLIENT_NAME, version: clientVersion },

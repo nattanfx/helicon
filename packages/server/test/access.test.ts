@@ -74,7 +74,13 @@ it("bootstraps desktop once and authenticates pages, assets, API and events with
   const staticDir = await mkdtemp(join(tmpdir(), "helicon-access-"));
   await writeFile(join(staticDir, "index.html"), "desktop-page");
   await writeFile(join(staticDir, "app.js"), "desktop-asset");
-  const server = new HeliconServer({ port: 0, dataDir: ":memory:", desktopAuth: true, staticDir });
+  const server = new HeliconServer({
+    port: 0, dataDir: ":memory:", desktopAuth: true, staticDir, runtime: "native",
+    // Adding a folder discovers sessions. Authentication tests must not start
+    // the installed Muse or inspect its profile; an unavailable host is enough.
+    hostFactory: () => { throw new Error("Muse host disabled in authentication test"); },
+    exec: async () => ({ stdout: "", exitCode: 127 }),
+  });
   let next: HeliconServer | null = null;
   t.after(async () => {
     await next?.close();

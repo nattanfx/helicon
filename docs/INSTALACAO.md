@@ -25,6 +25,16 @@ Confira a [página de releases](https://github.com/nattanfx/helicon/releases) an
 
 O instalador já inclui Node.js. Não há atualização automática depois da instalação.
 
+## Compatibilidade com o Muse
+
+O daemon em `prod` usa `@muse-code/sdk` **1.4.2**, fixado no manifesto e no lockfile. Use Muse **1.4.2** no Windows e também no WSL quando essa rota estiver selecionada. Confira cada instalação com `muse --version`; no Ubuntu, `wsl -d Ubuntu -e sh -lc 'muse --version'`.
+
+Para atualizar o Muse, execute o [instalador oficial](https://dev.meta.ai/docs/muse-code) sobre a instalação existente: no Windows, `irm https://dev.meta.ai/install.ps1 | iex`; no Linux/WSL, `curl -fsSL https://dev.meta.ai/install.sh | sh`. O SDK faz parte do build do Helicon; atualizar somente o Muse não altera o SDK de um Helicon já instalado.
+
+O fingerprint identifica o schema do protocolo. Um host com schema diferente continua acessível e seu aviso permanece no Diagnóstico. Não ocultar o aviso nem substituir o fingerprint do SDK manualmente. A [compatibilidade oficial](https://meta-models.github.io/muse-code-sdk/next/compatibility/) suporta SDK antigo com host novo; SDK novo com host antigo não tem garantia oficial, mesmo que o handshake funcione. Atualize também o Muse do WSL antes de usar um build com SDK novo.
+
+O Helicon mantém seu gerenciador de sessões e sua dobra de mensagens. A troca do SDK não habilita novos recursos automaticamente nem elimina limitações do host em operações específicas.
+
 A mesma release no GitHub também lista um DMG e um `.app.tar.gz`. Este fork **não** oferece suporte a macOS nem a Linux; não use esses anexos como caminho suportado.
 
 Para a edição pt5, use o [roteiro de validação do upgrade](VALIDACAO-UPGRADE-PT5.md) antes de atualizar o perfil principal. O instalador Teste não valida a atualização da instalação normal.
