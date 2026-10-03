@@ -38,7 +38,7 @@ class FakeConnection {
   calls: Call[] = [];
   requests: Call[] = [];
   replies = new Map<string, Reply>();
-  handler: ((n: { method: string; params?: unknown }) => void) | null = null;
+  handler: ((n: { method: string; params?: unknown; emittedAtMs?: number }) => void) | null = null;
 
   private answer(method: string, params: Record<string, unknown>): unknown {
     const reply = this.replies.get(method);
@@ -61,12 +61,12 @@ class FakeConnection {
     return this.answer(method, params);
   }
 
-  onNotification(handler: (n: { method: string; params?: unknown }) => void): void {
+  onNotification(handler: (n: { method: string; params?: unknown; emittedAtMs?: number }) => void): void {
     this.handler = handler;
   }
 
-  notify(method: string, params: Record<string, unknown>): void {
-    this.handler?.({ method, params });
+  notify(method: string, params: Record<string, unknown>, emittedAtMs?: number): void {
+    this.handler?.({ method, params, ...(emittedAtMs === undefined ? {} : { emittedAtMs }) });
   }
 }
 
@@ -168,15 +168,83 @@ describe("HeliconServer", () => {
     assert.equal(resumed.json.events[0].params.sourceRange, undefined);
     assert.equal((await backfill(base)).calls, 2); // Two distinct calls from s2, independent of s1's identical cursors/ranges.
     const report = await get(base, "/api/usage?days=1");
-    assert.equal(report.buckets.length, 0);
-    assert.equal(report.threads.length, 0);
+    // The live call is dated on receipt (no emittedAtMs here); its replay keeps that date.
+    assert.equal(report.buckets.length, 1);
+    assert.equal(report.buckets[0].calls, 1);
+    assert.equal(report.threads.length, 1);
+    assert.ok(report.threads[0].lastAt);
     assert.equal(report.undated.buckets[0].day, null);
-    assert.equal(report.undated.buckets[0].calls, 4);
-    assert.equal(report.undated.buckets[0].promptTokens, 40);
+    assert.equal(report.undated.buckets[0].calls, 3);
+    assert.equal(report.undated.buckets[0].promptTokens, 30);
     assert.equal(report.undated.threads.length, 2);
     assert.ok(report.undated.threads.every((row: { lastAt: unknown }) => row.lastAt === null));
     assert.equal((await backfill(base)).calls, 0);
-    assert.equal((await get(base, "/api/usage?days=90")).undated.buckets[0].calls, 4);
+    const quarter = await get(base, "/api/usage?days=90");
+    assert.equal(quarter.buckets[0].calls, 1);
+    assert.equal(quarter.undated.buckets[0].calls, 3);
+  });
+
+  it("dates live calls by their emission time and keeps that date when history replays them", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", { events: [usageEvent("r1", "replayed"), usageEvent("r2", "history-only")], nextCursor: null });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/p" });
+    const emitted = Date.now() - 3 * 86_400_000;
+    connection.notify("session/tokenUsage", usageEvent("r1", "live").params, emitted);
+    await send(base, "/api/sessions/s1/resume", {});
+    await backfill(base);
+    const week = await get(base, "/api/usage?days=7");
+    assert.equal(week.buckets.length, 1);
+    assert.equal(week.buckets[0].calls, 1);
+    assert.equal(week.threads[0].lastAt, new Date(emitted).toISOString());
+    assert.equal(week.undated.buckets[0].calls, 1, "a call only seen in history has no date");
+    assert.equal((await get(base, "/api/usage?days=1")).buckets.length, 0, "an emission three days ago is outside 24h");
+  });
+
+  it("groups usage by the browser's calendar day and falls back to UTC", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/p" });
+    // 01:30 UTC is 22:30 of the previous day in São Paulo (UTC−3).
+    const instant = new Date(Date.now() - 2 * 86_400_000);
+    instant.setUTCHours(1, 30, 0, 0);
+    connection.notify("session/tokenUsage", usageEvent("late", "late").params, instant.getTime());
+    const utcDay = instant.toISOString().slice(0, 10);
+    const previousDay = new Date(instant.getTime() - 86_400_000).toISOString().slice(0, 10);
+    const local = await get(base, "/api/usage?days=7&tz=America%2FSao_Paulo");
+    assert.equal(local.timeZone, "America/Sao_Paulo");
+    assert.equal(local.buckets[0].day, previousDay);
+    const plain = await get(base, "/api/usage?days=7");
+    assert.equal(plain.timeZone, "UTC");
+    assert.equal(plain.buckets[0].day, utcDay);
+    const bogus = await get(base, "/api/usage?days=7&tz=Nao%2FExiste");
+    assert.equal(bogus.timeZone, "UTC");
+    assert.equal(bogus.buckets[0].day, utcDay);
+  });
+
+  it("never lets a thread's partial opening undo a complete usage recovery", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    connection.replies.set("view/page", (params: Record<string, unknown>) => {
+      const page = Number(params["cursor"] ?? 0);
+      return { events: [usageEvent(`r${page}`)], nextCursor: page < 5 ? String(page + 1) : null };
+    });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/p" });
+    assert.equal((await send(base, "/api/sessions/s1/resume", {})).status, 200);
+    const opened = (await get(base, "/api/usage")).recovery;
+    assert.equal(opened.length, 1, "an opening that saw only part of the history says so");
+    assert.match(opened[0].reason, /apenas parte do histórico/);
+    assert.equal((await backfill(base)).incomplete, 0);
+    assert.equal((await get(base, "/api/usage")).recovery.length, 0);
+    assert.equal((await send(base, "/api/sessions/s1/resume", {})).status, 200);
+    assert.equal((await get(base, "/api/usage")).recovery.length, 0);
   });
 
   it("records cursorless raw ranges once and discloses unidentified events instead of creating random calls", async () => {
@@ -2531,6 +2599,33 @@ describe("session list stream", () => {
     assert.equal(sessions.find((s: { sessionId: string }) => s.sessionId === "s9")?.title, "muse-name");
   });
 
+  it("keeps a new thread's creation posture when session/started arrives before the response", async () => {
+    const connection = new FakeConnection();
+    const created = (id: string) => () => {
+      // The SDK runs notification handlers in its read loop, before the awaiting caller resumes.
+      connection.notify("session/started", { session: { sessionId: id, workspaceRoot: "/work/proj" } });
+      return { session: { sessionId: id } };
+    };
+    connection.replies.set("session/start", created("s1"));
+    connection.replies.set("session/fork", created("s2"));
+    const { base } = await start(connection, {
+      hostFactory: fakeFactory(connection, undefined, { grantedCapabilities: ["sessionListStream"] }),
+    });
+    await send(base, "/api/sandbox-settings", { disabled: true }, "PATCH");
+    const started = await send(base, "/api/sessions", { cwd: "/work/proj" });
+    assert.equal(started.json.session.sandboxDisabled, true);
+    assert.equal(started.json.session.origin, "helicon");
+    const fork = await send(base, "/api/sessions/s1/fork", {});
+    assert.equal(fork.json.session.sandboxDisabled, true);
+    assert.equal(fork.json.session.origin, "helicon");
+    const sessions = (await get(base, "/api/sessions")).sessions as { sessionId: string; sandboxDisabled: boolean | null; origin: string }[];
+    for (const id of ["s1", "s2"]) {
+      const row = sessions.find((s) => s.sessionId === id);
+      assert.equal(row?.sandboxDisabled, true, `${id} keeps the sandbox-off badge`);
+      assert.equal(row?.origin, "helicon");
+    }
+  });
+
   it("keeps unloaded sessions listed after session/closed", async () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
@@ -2919,6 +3014,25 @@ describe("view reattach", () => {
     await send(base, "/api/sessions/s1/resume", {});
     const log = (await get(base, "/api/failures")) as { recent: { message: string }[] };
     assert.ok(log.recent.some((row) => row.message.includes("history.noneReason: projectionUnavailable")));
+  });
+
+  it("leaves history the request itself excluded out of the failure log", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("view/page", { events: [], nextCursor: null });
+    const { base } = await start(connection);
+    await send(base, "/api/sessions", { cwd: "/work/proj" });
+    for (const noneReason of ["excluded", "cursorSuffix", "historyBudget"]) {
+      connection.replies.set("session/resume", { session: { sessionId: "s1" }, history: { mode: "none", noneReason } });
+      await send(base, "/api/sessions/s1/resume", {});
+    }
+    assert.equal(((await get(base, "/api/failures")) as { count: number }).count, 0);
+    connection.replies.set("session/resume", { session: { sessionId: "s1" }, history: { mode: "none", noneReason: "projectionReadLimit" } });
+    await send(base, "/api/sessions/s1/resume", {});
+    connection.replies.set("session/resume", { session: { sessionId: "s1" }, history: { mode: "none" } });
+    await send(base, "/api/sessions/s1/resume", {});
+    const log = (await get(base, "/api/failures")) as { recent: { kind: string; message: string }[] };
+    assert.deepEqual(log.recent.map((row) => row.message), ["history.noneReason: projectionReadLimit", "history.noneReason: unknown"]);
   });
 
   it("reconciles a gap for a thread absent from the UI and reads history.noneReason", async () => {

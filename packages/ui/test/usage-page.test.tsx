@@ -33,6 +33,14 @@ it("renders unknown dates separately from the period and never prices snapshot-o
   assert.doesNotMatch(html.slice(partialStart), /\$9\.00/);
 });
 
+it("names calls without a model in Portuguese and labels chart days as dia/mês", () => {
+  const html = render({ ...report, buckets: [{ ...bucket, modelId: "unknown" }], undated: undefined, recovery: [] });
+  assert.match(html, /Modelo desconhecido/);
+  assert.doesNotMatch(html, />unknown</);
+  assert.match(html, /<span>01\/10<\/span>/);
+  assert.doesNotMatch(html, /2026-10-01/);
+});
+
 it("shows preserved undated usage and incomplete evidence even with an empty selected period", () => {
   const html = render({ ...report, buckets: [] });
   assert.match(html, /Nenhuma chamada com data conhecida neste período/);

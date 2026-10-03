@@ -383,6 +383,8 @@ export interface UsageThread {
 export interface UsageReport {
   since: string;
   days: number;
+  /** Fuso em que o servidor agrupou os dias; ausente num servidor antigo, que agrupa em UTC. */
+  timeZone?: string;
   buckets: UsageBucket[];
   threads: UsageThread[];
   undated?: { buckets: UsageBucket[]; threads: UsageThread[] };

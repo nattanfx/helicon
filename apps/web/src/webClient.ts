@@ -205,8 +205,12 @@ export class WebHeliconClient implements HeliconClient {
     await call("PATCH", "/api/projects/order", { cwds });
   }
 
-  usage(days?: number): Promise<UsageReport> {
-    return call<UsageReport>("GET", `/api/usage${days ? `?days=${days}` : ""}`);
+  usage(days?: number, timeZone?: string): Promise<UsageReport> {
+    const query = new URLSearchParams();
+    if (days) query.set("days", String(days));
+    if (timeZone) query.set("tz", timeZone);
+    const search = query.toString();
+    return call<UsageReport>("GET", `/api/usage${search ? `?${search}` : ""}`);
   }
   startUsageBackfill(): Promise<UsageBackfillStatus> {
     return call<UsageBackfillStatus>("POST", "/api/usage/backfill");

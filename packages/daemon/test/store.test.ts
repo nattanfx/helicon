@@ -47,6 +47,19 @@ describe("HeliconStore", () => {
     assert.equal(store.listUsage().length, 0);
   });
 
+  it("keeps a complete recovery when a partial read finds less, while a full read can still downgrade it", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    store.recordUsageRecovery("s1", false, "partial opening", null, null, { partial: true });
+    assert.equal(store.listUsageRecovery()[0]?.complete, false, "a partial read still reports a gap nobody closed");
+    store.recordUsageRecovery("s1", true, null);
+    store.recordUsageRecovery("s1", false, "partial opening", null, null, { partial: true });
+    assert.deepEqual(store.listUsageRecovery()[0], { sessionId: "s1", complete: true, reason: null, promptTokens: null, outputTokens: null, recordedPromptTokens: 0, recordedOutputTokens: 0 });
+    store.recordUsageRecovery("s1", false, "full read found a gap");
+    assert.equal(store.listUsageRecovery()[0]?.complete, false);
+    assert.equal(store.listUsageRecovery()[0]?.reason, "full read found a gap");
+  });
+
   it("does not discard a different raw completion whose regenerated cursor collides with a legacy row", () => {
     const store = new HeliconStore();
     after(() => store.close());
@@ -347,5 +360,19 @@ describe("HeliconStore", () => {
     assert.equal(touched.sandboxDisabled, true, "a later touch keeps the creation posture");
     const unknown = store.recordSession({ id: "s2", projectId: project.id });
     assert.equal(unknown.sandboxDisabled, null, "sessions recorded before tracking stay unknown");
+  });
+
+  it("lets the creating call set origin and posture on a row a notification adopted first", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    const project = store.upsertProject("/work/p");
+    store.recordSession({ id: "s1", projectId: project.id, origin: "tui", title: "muse-name", titleSource: "auto" });
+    const touched = store.recordSession({ id: "s1", projectId: project.id, origin: "helicon", sandboxDisabled: true });
+    assert.equal(touched.origin, "tui", "an ordinary touch never rewrites creation facts");
+    assert.equal(touched.sandboxDisabled, null);
+    const created = store.recordSession({ id: "s1", projectId: project.id, origin: "helicon", sandboxDisabled: true, creation: true });
+    assert.equal(created.origin, "helicon");
+    assert.equal(created.sandboxDisabled, true);
+    assert.equal(created.title, "muse-name");
   });
 });

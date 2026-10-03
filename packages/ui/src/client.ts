@@ -86,7 +86,7 @@ export interface HeliconClient {
   /** A ordem em que o usuário arrastou os projetos da lateral. */
   setProjectOrder(cwds: string[]): Promise<void>;
   /** Uso de tokens em toda conversa que o servidor viu, para a página de uso. */
-  usage(days?: number): Promise<import("./types.js").UsageReport>;
+  usage(days?: number, timeZone?: string): Promise<import("./types.js").UsageReport>;
   /** Começa a releitura do uso em todas as sessões do host. */
   startUsageBackfill(): Promise<import("./types.js").UsageBackfillStatus>;
   /** Progresso da releitura de uso. */

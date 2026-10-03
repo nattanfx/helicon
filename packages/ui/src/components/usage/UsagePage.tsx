@@ -4,7 +4,7 @@ import { useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
 import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, relativeTime } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
-import { fillUsageDays, USAGE_RANGES } from "../../model/usage-range.js";
+import { fillUsageDays, formatUsageDay, USAGE_RANGES } from "../../model/usage-range.js";
 import { recoveryGap } from "../../model/usage-recovery.js";
 import type { ModelOption, UsageBucket, UsageReport, UsageThread } from "../../types.js";
 import { Button, Spinner, cn } from "../ui/primitives.js";
@@ -21,6 +21,11 @@ const SERIES = [
   "color-mix(in oklch, var(--warn) 70%, var(--fg-muted))",
   "var(--fg-subtle)",
 ];
+
+/** O servidor marca chamadas sem modelo informado como "unknown". */
+function usageModelName(modelId: string): string {
+  return modelId === "unknown" ? "Modelo desconhecido" : modelDisplayName(modelId);
+}
 
 function priceFor(modelId: string, models: readonly ModelOption[]): TokenPrice | null {
   const catalog = models.find((m) => m.modelId === modelId)?.cost;
@@ -335,7 +340,7 @@ function DailyChart(props: { view: UsageView }) {
       <div className="flex h-40 min-w-0 items-end gap-px overflow-hidden">
         {view.days.map((day) => (
           <div key={day.day} className="flex h-full min-w-0 flex-1 flex-col justify-end">
-            <Tip label={`${day.day}: ${formatCost(day.cost, view.currency)}`}>
+            <Tip label={`${formatUsageDay(day.day)}: ${formatCost(day.cost, view.currency)}`}>
               <div tabIndex={0} className="group/bar flex h-full w-full min-w-0 flex-col justify-end rounded-t-[3px]">
                 {day.byModel
                   .slice()
@@ -356,8 +361,8 @@ function DailyChart(props: { view: UsageView }) {
         ))}
       </div>
       <div className="mt-2 flex items-center justify-between text-2xs text-subtle tabular-nums">
-        <span>{view.days[0]?.day ?? ""}</span>
-        <span>{view.days[view.days.length - 1]?.day ?? ""}</span>
+        <span>{formatUsageDay(view.days[0]?.day ?? "")}</span>
+        <span>{formatUsageDay(view.days[view.days.length - 1]?.day ?? "")}</span>
       </div>
     </section>
   );
@@ -375,7 +380,7 @@ function Models(props: { view: UsageView }) {
             <div className="flex items-baseline justify-between gap-3">
               <div className="flex min-w-0 items-baseline gap-1.5">
                 <span className="size-2 shrink-0 rounded-[3px]" style={{ background: SERIES[index % SERIES.length] }} aria-hidden="true" />
-                <span className="truncate text-sm text-fg">{modelDisplayName(model.modelId)}</span>
+                <span className="truncate text-sm text-fg">{usageModelName(model.modelId)}</span>
                 {model.contributor ? (
                   <span className="shrink-0 rounded bg-active px-1 py-px text-2xs font-medium text-muted">{CONTRIBUTOR_LABEL}</span>
                 ) : null}

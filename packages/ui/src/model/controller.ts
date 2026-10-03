@@ -31,6 +31,7 @@ import {
 } from "./format.js";
 import { fileKey, fileTarget, type LineRange } from "./files.js";
 import { goalPrompt } from "./goal.js";
+import { browserTimeZone } from "./usage-range.js";
 import {
   INIT_PROMPT,
   findModel,
@@ -2380,7 +2381,8 @@ export class HeliconController {
 
   /** Uso de tokens em todas as conversas que o servidor conhece, para a página de uso. */
   usageReport(days: number): Promise<import("../types.js").UsageReport> {
-    return this.client.usage(days);
+    // Os dias do gráfico são os do relógio do usuário, não os de UTC.
+    return this.client.usage(days, browserTimeZone());
   }
 
   /** Releitura do uso: começa e acompanha até terminar. */

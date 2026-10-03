@@ -60,6 +60,11 @@ export interface RecordSessionInput {
   activityAt?: string;
   /** Creation posture; later touches never overwrite it. */
   sandboxDisabled?: boolean | null;
+  /**
+   * This call is the session's creation here (start or fork). A `session/started` notification can
+   * adopt the row before the creating response returns, so origin and posture still win over that row.
+   */
+  creation?: boolean;
 }
 
 export interface SessionPatch {
@@ -551,13 +556,19 @@ export class HeliconStore {
     return Number(inserted.changes) > 0;
   }
 
-  /** Snapshots are independent evidence, never synthetic calls added to the detailed ledger. */
-  recordUsageRecovery(sessionId: string, complete: boolean, reason: string | null, promptTokens: number | null = null, outputTokens: number | null = null): void {
+  /**
+   * Snapshots are independent evidence, never synthetic calls added to the detailed ledger.
+   * A `partial` read (opening a thread pages only its newest history) cannot see what a full recovery
+   * saw, so it never downgrades a session already marked complete; a full read still can.
+   */
+  recordUsageRecovery(sessionId: string, complete: boolean, reason: string | null, promptTokens: number | null = null, outputTokens: number | null = null, options: { partial?: boolean } = {}): void {
     this.db.prepare(`INSERT INTO usage_recovery (session_id, complete, reason, prompt_tokens, output_tokens) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(session_id) DO UPDATE SET complete = excluded.complete, reason = excluded.reason,
+      ON CONFLICT(session_id) DO UPDATE SET
+      complete = CASE WHEN ? = 1 THEN MAX(complete, excluded.complete) ELSE excluded.complete END,
+      reason = CASE WHEN ? = 1 AND complete = 1 THEN reason ELSE excluded.reason END,
       prompt_tokens = CASE WHEN excluded.prompt_tokens IS NULL THEN prompt_tokens ELSE MAX(COALESCE(prompt_tokens, 0), excluded.prompt_tokens) END,
       output_tokens = CASE WHEN excluded.output_tokens IS NULL THEN output_tokens ELSE MAX(COALESCE(output_tokens, 0), excluded.output_tokens) END`)
-      .run(sessionId, complete ? 1 : 0, reason, promptTokens, outputTokens);
+      .run(sessionId, complete ? 1 : 0, reason, promptTokens, outputTokens, options.partial ? 1 : 0, options.partial ? 1 : 0);
   }
 
   listUsageRecovery(): { sessionId: string; complete: boolean; reason: string | null; promptTokens: number | null; outputTokens: number | null; recordedPromptTokens: number; recordedOutputTokens: number }[] {
@@ -727,6 +738,12 @@ export class HeliconStore {
     }
     if (existing.projectId !== input.projectId) {
       this.db.prepare(`UPDATE sessions SET project_id = ? WHERE id = ?`).run(input.projectId, input.id);
+    }
+    if (input.creation && input.origin !== undefined) {
+      this.db.prepare(`UPDATE sessions SET origin = ? WHERE id = ?`).run(input.origin, input.id);
+    }
+    if (input.creation && input.sandboxDisabled !== undefined) {
+      this.db.prepare(`UPDATE sessions SET sandbox_disabled = ? WHERE id = ?`).run(input.sandboxDisabled === null ? null : input.sandboxDisabled ? 1 : 0, input.id);
     }
     return this.updateSession(input.id, patch) ?? existing;
   }

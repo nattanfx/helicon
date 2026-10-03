@@ -201,6 +201,8 @@ const MAX_USAGE_PAGES = 100;
 /** Older pages scanned for the latest route transition beyond the transcript window. */
 const ROUTE_HISTORY_SCAN_PAGES = 8;
 const HISTORY_PAGE_SIZE = 1000;
+/** `history.noneReason` values that answer the request rather than report a fault (MSP 1.4.2 `HistoryNoneReason`). */
+const HISTORY_NONE_EXPECTED = new Set(["excluded", "cursorSuffix", "historyBudget"]);
 /** Echo-titled threads one discovery may hand to the titler. Each is a model call on the user's plan, so it is a
  * handful of recent threads rather than a whole history. */
 const TITLE_BACKFILL_LIMIT = 30;
@@ -365,6 +367,28 @@ export function normalizeIso(value: unknown): string | undefined {
   }
   const time = Date.parse(value);
   return Number.isNaN(time) ? undefined : new Date(time).toISOString();
+}
+
+/**
+ * Calendar days (YYYY-MM-DD) in the browser's time zone, so usage from 21h in Brazil stays on its
+ * own day. An unknown or missing zone falls back to UTC; `timeZone` is the one actually used.
+ */
+export function usageDays(timeZone: string | null): { timeZone: string; dayOf: (iso: string) => string } {
+  const options = { year: "numeric", month: "2-digit", day: "2-digit" } as const;
+  let format: Intl.DateTimeFormat;
+  try {
+    format = new Intl.DateTimeFormat("en-CA", { ...options, timeZone: timeZone || "UTC" });
+  } catch {
+    format = new Intl.DateTimeFormat("en-CA", { ...options, timeZone: "UTC" });
+  }
+  return {
+    timeZone: format.resolvedOptions().timeZone,
+    dayOf: (iso) => {
+      const parts = format.formatToParts(new Date(iso));
+      const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
+      return `${part("year")}-${part("month")}-${part("day")}`;
+    },
+  };
 }
 
 function normalizeCwd(value: string): string {
@@ -1603,7 +1627,7 @@ export class HeliconServer {
     if (method === "GET" && path === "/api/usage") {
       const requested = Number.parseInt(url.searchParams.get("days") ?? "30", 10);
       const days = Number.isFinite(requested) ? Math.min(365, Math.max(1, requested)) : 30;
-      this.json(res, 200, this.usageReport(days));
+      this.json(res, 200, this.usageReport(days, url.searchParams.get("tz")));
       return true;
     }
     if (path === "/api/usage/backfill") {
@@ -2260,6 +2284,8 @@ export class HeliconServer {
       createdAt: normalizeIso(raw?.["createdAt"]),
       // A fork branches its source session, so it inherits the source's posture.
       sandboxDisabled: found.session.sandboxDisabled,
+      // session/started may have adopted the row as a TUI session before this response arrived.
+      creation: true,
     });
     const hostKey = this.sessionHosts.get(sessionId);
     if (hostKey) {
@@ -2288,6 +2314,8 @@ export class HeliconServer {
       createdAt: normalizeIso(raw?.["createdAt"]),
       // The creating host's own flags, not the live switch: a flip's restart may still be closing the old host.
       sandboxDisabled: host.target.args.includes("--disable-sandbox"),
+      // session/started may have adopted the row as a TUI session before this response arrived.
+      creation: true,
     });
     this.sessionHosts.set(started.sessionId, host.key);
     if (this.store.getTitleSettings().enabled) {
@@ -2378,8 +2406,10 @@ export class HeliconServer {
   /**
    * One model call's tokens, kept so the usage page can look across every thread rather than only the ones
    * open in the UI. Durable source ranges identify replays even when the view cursor changes.
+   * `emittedAtMs` dates a live call (the envelope's emission time); replayed history carries none,
+   * so its calls stay undated until a live copy of the same call supplies the date.
    */
-  private recordUsage(sessionId: string, params: Record<string, unknown>): boolean {
+  private recordUsage(sessionId: string, params: Record<string, unknown>, emittedAtMs?: number): boolean {
     const usage = asRecord(params["usage"]) ?? {};
     const promptTokens = num(params["promptTokens"]) ?? num(usage["inputTokens"]) ?? 0;
     const outputTokens = num(usage["outputTokens"]) ?? Math.max(0, (num(params["totalTokens"]) ?? 0) - promptTokens);
@@ -2405,7 +2435,7 @@ export class HeliconServer {
       cacheWriteTokens: num(usage["cacheWriteTokens"]) ?? 0,
       reasoningTokens: num(usage["reasoningTokens"]) ?? 0,
       durationMs: num(params["durationMs"]) ?? null,
-      at: normalizeIso(params["at"]) ?? null,
+      at: normalizeIso(params["at"]) ?? (emittedAtMs !== undefined && Number.isFinite(emittedAtMs) ? new Date(emittedAtMs).toISOString() : null),
     });
   }
 
@@ -2556,15 +2586,16 @@ export class HeliconServer {
     return calls;
   }
 
-  private usageReport(days: number): Record<string, unknown> {
+  private usageReport(days: number, timeZone: string | null = null): Record<string, unknown> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const { timeZone: zone, dayOf } = usageDays(timeZone);
     const rows = this.store.listUsage(since);
     const buckets = new Map<string, Record<string, unknown>>();
     const threads = new Map<string, Record<string, unknown>>();
     const undatedBuckets = new Map<string, Record<string, unknown>>();
     const undatedThreads = new Map<string, Record<string, unknown>>();
     for (const row of rows) {
-      const day = row.at?.slice(0, 10) ?? null;
+      const day = row.at ? dayOf(row.at) : null;
       const rowBuckets = day ? buckets : undatedBuckets;
       const rowThreads = day ? threads : undatedThreads;
       const modelId = row.modelId ?? "unknown";
@@ -2636,6 +2667,7 @@ export class HeliconServer {
     return {
       since,
       days,
+      timeZone: zone,
       buckets: [...buckets.values()],
       threads: [...threads.values()].sort((a, b) => ((a["lastAt"] as string) < (b["lastAt"] as string) ? 1 : -1)),
       undated: { buckets: [...undatedBuckets.values()], threads: [...undatedThreads.values()] },
@@ -2748,10 +2780,15 @@ export class HeliconServer {
     return route ?? null;
   }
 
+  /**
+   * Records a history the host could not serve. `excluded` (we asked for no items), `cursorSuffix`
+   * (we passed a cursor) and `historyBudget` (page it yourself) are answers to the request, not faults.
+   */
   private noteHistoryHealth(sessionId: string, hostKey: string, payload: Record<string, unknown> | null): void {
     const history = asRecord(payload?.["history"]);
     if (history?.["mode"] !== "none") return;
     const reason = str(history["noneReason"]) ?? "unknown";
+    if (HISTORY_NONE_EXPECTED.has(reason)) return;
     if (this.historyNoneSeen.get(sessionId) === reason) return;
     this.historyNoneSeen.set(sessionId, reason);
     this.failures.record({
@@ -2863,7 +2900,7 @@ export class HeliconServer {
       events = eventsFromHistory(payload);
       const snapshot = usageSnapshot(payload);
       const emptySnapshot = snapshot !== null && num(snapshot["promptTokens"]) === 0 && num(snapshot["outputTokens"]) === 0 && events.length === 0;
-      this.store.recordUsageRecovery(sessionId, emptySnapshot, emptySnapshot ? null : "O histórico disponível não detalha as chamadas ao modelo.", num(snapshot?.["promptTokens"]) ?? null, num(snapshot?.["outputTokens"]) ?? null);
+      this.store.recordUsageRecovery(sessionId, emptySnapshot, emptySnapshot ? null : "O histórico disponível não detalha as chamadas ao modelo.", num(snapshot?.["promptTokens"]) ?? null, num(snapshot?.["outputTokens"]) ?? null, { partial: true });
     }
 
     const pending = await manager.listPending(sessionId).catch(() => ({ approvals: [], userInputs: [] }));
@@ -2889,8 +2926,9 @@ export class HeliconServer {
       live.pendingInputs = new Set(userInputs.map((u) => str(u["userInputId"])).filter((id): id is string => id !== null));
     }
     // Opening a thread backfills the usage page with the calls it made before this server ever ran.
+    // Its few pages never undo a complete Recuperar uso, which read the whole history.
     this.recordUsageFromEvents(sessionId, events);
-    if (truncated) this.store.recordUsageRecovery(sessionId, false, "A abertura mostrou apenas parte do histórico; use Recuperar uso para ampliar a leitura.");
+    if (truncated) this.store.recordUsageRecovery(sessionId, false, "A abertura mostrou apenas parte do histórico; use Recuperar uso para ampliar a leitura.", null, null, { partial: true });
     // The history's last goal change is the goal as of now, unless a live one arrived while this load ran.
     for (let index = events.length - 1; live.goalSeq === goalSeqAtStart && index >= 0; index -= 1) {
       const event = events[index];
@@ -3465,7 +3503,7 @@ export class HeliconServer {
         this.viewCursors.set(event.sessionId, viewCursor);
       }
       this.noteNotification(event.sessionId, notification.method);
-      this.track(event.sessionId, notification.method, params, hostKey);
+      this.track(event.sessionId, notification.method, params, hostKey, event.at);
       this.emit("helicon", event);
     } catch (error) {
       this.forwardFailures += 1;
@@ -3570,7 +3608,8 @@ export class HeliconServer {
     this.gapReconciles.set(sessionId, run);
   }
 
-  private track(sessionId: string, method: string, params: Record<string, unknown>, hostKey: string): void {
+  /** `at` is the notification's emission time, or its receipt time when the host sent none. */
+  private track(sessionId: string, method: string, params: Record<string, unknown>, hostKey: string, at: number): void {
     const live = this.liveFor(sessionId);
     let changed = false;
     switch (method) {
@@ -3743,7 +3782,7 @@ export class HeliconServer {
         break;
       }
       case "session/tokenUsage": {
-        this.recordUsage(sessionId, params);
+        this.recordUsage(sessionId, params, at);
         break;
       }
       case "session/goalChanged": {
