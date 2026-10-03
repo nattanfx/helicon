@@ -168,6 +168,12 @@ export class NotificationManager {
       this.pushTrace(trace);
       return;
     }
+    // Uma reserva mais velha que a janela não cala mais nada: sai, para o mapa não crescer a cada turno.
+    for (const [old, at] of this.shown) {
+      if (trace.at - at >= REPEAT_MS) {
+        this.shown.delete(old);
+      }
+    }
     this.shown.set(key, trace.at);
     // O som do balão segue o canal do som: balão com som ligado sai sonando, com som
     // desligado sai mudo. Quando o próprio balão já sonou, dispensa o som separado.
@@ -285,12 +291,19 @@ export class NotificationManager {
     }
   }
 
-  /** Deixa uma conversa se anunciar de novo, quando o usuário resolver o que ela disse. */
+  /** Deixa uma conversa se anunciar de novo, quando o usuário resolver o que ela disse ou ela for excluída. */
   forget(sessionId: string): void {
+    // Chaves: `tipo:conversa` ou, no fim de turno, `tipo:conversa:turno`.
     for (const key of [...this.shown.keys()]) {
-      if (key.endsWith(`:${sessionId}`)) {
+      const rest = key.slice(key.indexOf(":") + 1);
+      if (rest === sessionId || rest.startsWith(`${sessionId}:`)) {
         this.shown.delete(key);
       }
     }
+  }
+
+  /** Quantas reservas de repetição estão guardadas; o teste vigia que o mapa não cresce sem fim. */
+  get remembered(): number {
+    return this.shown.size;
   }
 }

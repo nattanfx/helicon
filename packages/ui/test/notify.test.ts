@@ -111,6 +111,30 @@ describe("notificações", () => {
     assert.equal(shown.length, 3, "e pode falar de novo depois");
   });
 
+  it("esquece reservas vencidas, sem crescer um item por turno terminado", async () => {
+    const { fake, shown } = notifier();
+    const time = clock();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false }), time.now);
+    for (let turn = 0; turn < 50; turn += 1) {
+      await manager.announce({ kind: "finished", sessionId: "s1", thread: "notes-app", failed: false, turnId: `t${turn}` });
+      time.pass(30_000);
+    }
+    assert.equal(shown.length, 50);
+    assert.ok(manager.remembered <= 2, `guardou ${manager.remembered} reservas`);
+  });
+
+  it("forget alcança as reservas de fim de turno, e só da conversa pedida", async () => {
+    const { fake, shown } = notifier();
+    const time = clock();
+    const manager = new NotificationManager(fake, () => ({ enabled: true, focused: false }), time.now);
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "a", failed: false, turnId: "t1" });
+    await manager.announce({ kind: "finished", sessionId: "s11", thread: "b", failed: false, turnId: "t1" });
+    manager.forget("s1");
+    await manager.announce({ kind: "finished", sessionId: "s1", thread: "a", failed: false, turnId: "t1" });
+    await manager.announce({ kind: "finished", sessionId: "s11", thread: "b", failed: false, turnId: "t1" });
+    assert.equal(shown.length, 3, "s1 fala de novo; s11 continua na janela de repetição");
+  });
+
   it("deixa uma conversa falar de novo quando seu pedido for resolvido", async () => {
     const { fake, shown } = notifier();
     const time = clock();

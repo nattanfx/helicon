@@ -2280,6 +2280,7 @@ export class HeliconController {
     try {
       await this.client.deleteSession(sessionId);
       this.platform.forgetDraft?.(sessionId);
+      this.notifications?.forget(sessionId);
       this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== sessionId) }));
       this.toast("info", "Conversa excluída", displayTitle(current));
     } catch (error) {
@@ -2383,6 +2384,7 @@ export class HeliconController {
       try {
         await this.client.deleteSession(current.sessionId);
         this.platform.forgetDraft?.(current.sessionId);
+        this.notifications?.forget(current.sessionId);
         this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== current.sessionId) }));
       } catch {
         failed += 1;
