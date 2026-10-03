@@ -14,7 +14,6 @@ import { Toasts } from "../components/ui/Toasts.js";
 import { HeliconController, type Platform } from "../model/controller.js";
 import type { Notifier } from "../model/notify.js";
 import type { AppIdentity } from "../model/identity.js";
-import type { AppUpdater } from "../model/updates.js";
 import { zoomStepFromKey, type ZoomStep } from "../model/zoom-shortcut.js";
 import { ControllerProvider, useApp, useController } from "./context.js";
 import { FrameProvider, FrameStrip, WindowControls, type WindowFrame } from "./frame.js";
@@ -34,8 +33,6 @@ export interface HeliconAppProps {
   titlebarOverlay?: boolean;
   /** Presente quando o shell informa versão, canal e compilação. */
   identity?: AppIdentity;
-  /** Presente quando o shell pode se atualizar. Este fork não passa um. */
-  updater?: AppUpdater;
   /** Como este shell mostra uma notificação de sistema; ausente onde não pode. */
   notifier?: Notifier;
 }
@@ -46,9 +43,6 @@ export function HeliconApp(props: HeliconAppProps) {
     const created = new HeliconController(props.client, props.platform);
     if (props.identity) {
       created.attachIdentity(props.identity);
-    }
-    if (props.updater) {
-      created.attachUpdater(props.updater);
     }
     if (props.notifier) {
       created.attachNotifier(props.notifier);

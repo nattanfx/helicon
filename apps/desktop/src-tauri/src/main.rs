@@ -132,7 +132,7 @@ fn port_free(port: u16) -> bool {
 
 /// A porta que o servidor local tinha da última vez, enquanto ainda estiver livre. A origem da janela inclui a
 /// porta e a interface guarda suas configurações no armazenamento dessa origem, então uma porta nova a cada abertura as esqueceria,
-/// inclusive atualizações automáticas desligadas.
+/// como tema e zoom.
 fn stable_port(data_dir: Option<&Path>) -> u16 {
     let saved = data_dir
         .and_then(|dir| std::fs::read_to_string(dir.join(PORT_FILE)).ok())

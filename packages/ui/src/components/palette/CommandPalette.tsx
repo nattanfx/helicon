@@ -1,5 +1,5 @@
 import { Command } from "cmdk";
-import { FolderPlus, Folder, Layers, Monitor, Moon, PanelLeft, RefreshCw, RotateCcw, RotateCw, Search, ShieldOff, SquarePen, Sun, ZoomIn, ZoomOut } from "lucide-react";
+import { FolderPlus, Folder, Layers, Monitor, Moon, PanelLeft, RefreshCw, RotateCcw, Search, ShieldOff, SquarePen, Sun, ZoomIn, ZoomOut } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { basename, displayTitle, relativeTime } from "../../model/format.js";
@@ -32,7 +32,6 @@ export function CommandPalette() {
   const baseline = useApp((s) => s.prefs.baseline);
   const lastSeen = useApp((s) => s.prefs.lastSeen);
   const groupBy = useApp((s) => s.prefs.groupBy);
-  const updates = useApp((s) => s.updates);
   const now = useNow(60_000, open);
 
   const sorted = useMemo(
@@ -102,16 +101,6 @@ export function CommandPalette() {
             <Item value="Redefinir zoom" keywords={["aparência", "100%"]} icon={<RotateCcw size={15} />} onSelect={() => run(() => controller.resetZoom())} hint={<Shortcut keys={[MOD, "0"]} />}>
               Redefinir zoom
             </Item>
-            {updates?.status === "ready" ? (
-              <Item value="Reiniciar para atualizar" keywords={["atualização", "atualizar", "instalar", "versão"]} icon={<RotateCw size={15} />} onSelect={() => run(() => controller.restartToUpdate())}>
-                Reiniciar para instalar o Helicon {updates.update?.version ?? ""}
-              </Item>
-            ) : null}
-            {updates ? (
-              <Item value="Verificar atualizações" keywords={["atualização", "atualizar", "versão"]} icon={<RefreshCw size={15} />} onSelect={() => run(() => controller.checkForUpdates())}>
-                Verificar atualizações
-              </Item>
-            ) : null}
           </Command.Group>
           {sorted.length > 0 ? (
             <Command.Group heading="Conversas" className={GROUP}>

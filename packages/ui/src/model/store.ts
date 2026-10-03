@@ -17,7 +17,6 @@ import type {
 } from "../types.js";
 import type { EchoAttachment, ThreadFold } from "./fold.js";
 import type { AppIdentity } from "./identity.js";
-import type { UpdateState } from "./updates.js";
 
 /** Um store externo minúsculo: snapshots imutáveis mais ouvintes de mudança, lidos via hooks estilo useSyncExternalStore. */
 export class Store<T> {
@@ -100,10 +99,6 @@ export interface Prefs {
   lastProject: string | null;
   /** O uso de dados do nível de contribuidor foi reconhecido. */
   contributorAck: boolean;
-  /** App desktop: baixar novas versões conforme aparecem e instalá-las ao fechar. Este fork deixa desligado. */
-  autoUpdate: boolean;
-  /** App desktop: sem checar, baixar ou instalar atualizações até retomar. */
-  updatesPaused: boolean;
   /** Zoom da interface como fator de 1; o shell desktop não tem chrome de navegador para isso. */
   zoom: number;
   /** O visualizador de arquivos ao lado de uma conversa está aberto. */
@@ -164,8 +159,6 @@ export function defaultPrefs(now = new Date().toISOString()): Prefs {
     effort: null,
     lastProject: null,
     contributorAck: false,
-    autoUpdate: false,
-    updatesPaused: false,
     zoom: 1,
     filesOpen: false,
     filesWidth: DEFAULT_FILES_WIDTH,
@@ -245,8 +238,6 @@ export interface AppState {
   hostError: string | null;
   /** Um prompt que não pôde ser enviado, esperando o composer que mostra `key` recebê-lo de volta, arquivos e tudo. */
   draftHandoff: { key: string; text: string; attachments?: OutgoingAttachment[]; previews?: EchoAttachment[] } | null;
-  /** Atualizações do app; nulo quando o shell não se atualiza sozinho, como neste fork e no navegador. */
-  updates: UpdateState | null;
   /** Versão, canal e compilação deste pacote; nulo até o shell informar. */
   identity: AppIdentity | null;
   /** As skills de cada pasta de projeto para o menu de barra do composer, carregadas quando preciso pela primeira vez. */
@@ -330,7 +321,6 @@ export function initialState(prefs: Prefs): AppState {
     fileVersions: {},
     fileTreeOpen: {},
     draftHandoff: null,
-    updates: null,
     identity: null,
     skills: {},
     picker: null,
@@ -389,8 +379,6 @@ export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
     effort: pick("effort", (v) => v === null || ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(v as string)),
     lastProject: pick("lastProject", (v) => v === null || typeof v === "string"),
     contributorAck: pick("contributorAck", (v) => typeof v === "boolean"),
-    autoUpdate: pick("autoUpdate", (v) => typeof v === "boolean"),
-    updatesPaused: pick("updatesPaused", (v) => typeof v === "boolean"),
     zoom: pick("zoom", (v) => typeof v === "number" && Number.isFinite(v) && v >= ZOOM_MIN && v <= ZOOM_MAX),
     filesOpen: pick("filesOpen", (v) => typeof v === "boolean"),
     filesWidth: pick("filesWidth", (v) => typeof v === "number" && v >= FILES_WIDTH_MIN && v <= FILES_WIDTH_MAX),

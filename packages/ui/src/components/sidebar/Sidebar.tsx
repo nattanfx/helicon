@@ -1,12 +1,10 @@
 import {
   Archive,
-  ArrowDownToLine,
   ArrowLeft,
   Check,
   ChevronRight,
   Code,
   Copy,
-  Download,
   Ellipsis,
   Folder,
   FolderOpen,
@@ -15,13 +13,10 @@ import {
   Layers,
   ListFilter,
   PanelLeftClose,
-  Pause,
   Pencil,
   Pin,
   PinOff,
-  Play,
   RefreshCw,
-  RotateCw,
   Search,
   Settings,
   ShieldOff,
@@ -50,9 +45,8 @@ import {
 } from "../../model/status.js";
 import { identityHeading } from "../../model/identity.js";
 import { DEFAULT_SIDEBAR_WIDTH, type CodeTheme } from "../../model/store.js";
-import type { UpdateState } from "../../model/updates.js";
 import type { ProjectView, SessionSummary } from "../../types.js";
-import { Menu, MenuCheck, MenuContent, MenuItem, MenuOption, MenuRadioGroup, MenuSeparator, MenuTrigger, Tip } from "../ui/overlays.js";
+import { Menu, MenuContent, MenuItem, MenuOption, MenuRadioGroup, MenuSeparator, MenuTrigger, Tip } from "../ui/overlays.js";
 import { IconButton, Logo, MOD, Shortcut, Spinner, cn, isMac } from "../ui/primitives.js";
 import { StatusGlyph } from "../ui/StatusGlyph.js";
 
@@ -865,102 +859,7 @@ function SidebarFooter() {
           {inSettings ? <ArrowLeft size={14} /> : <Settings size={14} />}
         </IconButton>
       </Tip>
-      {!identity ? <UpdatesMenu /> : null}
     </div>
-  );
-}
-
-export function updateSummary(updates: UpdateState, autoUpdate: boolean, paused: boolean, now: number): string {
-  const version = updates.update?.version ?? "";
-  switch (updates.status) {
-    case "checking":
-      return "Verificando atualizações";
-    case "available":
-      return paused ? `A versão ${version} está disponível. Atualizações pausadas.` : `A versão ${version} está disponível`;
-    case "downloading":
-      return `Baixando a versão ${version}${updates.progress !== null ? `, ${Math.round(updates.progress * 100)}%` : ""}`;
-    case "ready":
-      return autoUpdate && !paused ? `A versão ${version} instala quando você fechar o Helicon` : `A versão ${version} está pronta para instalar`;
-    case "installing":
-      return "Instalando a atualização";
-    case "error":
-      return "Não foi possível verificar atualizações";
-    case "upToDate": {
-      const ago = updates.checkedAt ? relativeTime(new Date(updates.checkedAt).toISOString(), now) : "";
-      return paused ? "Em dia. Atualizações pausadas." : ago && ago !== "agora" ? `Em dia, verificado há ${ago}` : "Em dia";
-    }
-    default:
-      return paused ? "Atualizações pausadas" : autoUpdate ? "O Helicon se atualiza sozinho" : "Atualizações automáticas desligadas";
-  }
-}
-
-/** Atualizações do app desktop. O ícone do rodapé mostra um ponto enquanto uma nova versão espera. */
-function UpdatesMenu() {
-  const controller = useController();
-  const updates = useApp((s) => s.updates);
-  const autoUpdate = useApp((s) => s.prefs.autoUpdate);
-  const paused = useApp((s) => s.prefs.updatesPaused);
-  const now = useNow(60_000);
-  if (!updates) {
-    return null;
-  }
-  const { status } = updates;
-  const version = updates.update?.version ?? "";
-  const waiting = status === "available" || status === "downloading" || status === "ready";
-  const busy = status === "checking" || status === "downloading" || status === "installing";
-  return (
-    <Menu>
-      <Tip label={status === "ready" ? `Helicon ${version} está pronto para instalar` : waiting ? `Helicon ${version} está disponível` : "Atualizações"} side="top">
-        <MenuTrigger asChild>
-          <IconButton label="Atualizações" className="relative">
-            <Download size={15} />
-            {waiting ? (
-              <span
-                aria-hidden="true"
-                className={cn("absolute top-1.5 right-1.5 size-1.5 rounded-full", status === "ready" ? "bg-accent" : "bg-accent/50")}
-              />
-            ) : null}
-          </IconButton>
-        </MenuTrigger>
-      </Tip>
-      <MenuContent side="top" align="start" className="w-[290px]">
-        <div className="px-2 pt-1.5 pb-2">
-          <p className="text-sm font-medium text-fg">Helicon {updates.currentVersion ?? ""}</p>
-          <p className="mt-0.5 text-xs text-muted">{updateSummary(updates, autoUpdate, paused, now)}</p>
-          {status === "downloading" && updates.progress !== null ? (
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-active" role="progressbar" aria-valuenow={Math.round(updates.progress * 100)}>
-              <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${updates.progress * 100}%` }} />
-            </div>
-          ) : null}
-          {updates.error ? <p className="mt-1.5 text-xs break-words text-danger-text">{updates.error}</p> : null}
-        </div>
-        <MenuSeparator />
-        {status === "ready" ? (
-          <MenuItem icon={<RotateCw size={14} />} onSelect={() => controller.restartToUpdate()}>
-            Reiniciar para atualizar
-          </MenuItem>
-        ) : null}
-        {status === "available" ? (
-          <MenuItem icon={<ArrowDownToLine size={14} />} onSelect={() => controller.downloadUpdate()}>
-            Baixar a versão {version}
-          </MenuItem>
-        ) : null}
-        <MenuItem icon={<RefreshCw size={14} />} disabled={busy} onSelect={() => controller.checkForUpdates()}>
-          Verificar atualizações
-        </MenuItem>
-        <MenuSeparator />
-        <MenuCheck
-          checked={autoUpdate}
-          onChange={(on) => controller.setAutoUpdate(on)}
-          description="Baixar novas versões em segundo plano e instalá-las quando o Helicon fechar"
-        >
-          Atualizações automáticas
-        </MenuCheck>
-        <MenuItem icon={paused ? <Play size={14} /> : <Pause size={14} />} onSelect={() => controller.setUpdatesPaused(!paused)}>
-          {paused ? "Retomar atualizações" : "Pausar atualizações"}
-        </MenuItem>
-      </MenuContent>
-    </Menu>
   );
 }
 

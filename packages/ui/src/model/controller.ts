@@ -94,7 +94,6 @@ import {
 import type { AppIdentity } from "./identity.js";
 import { NotificationManager, type Notifier, type NotifyPermission, type NotifyTrace } from "./notify.js";
 import { playNotifySound } from "./notifySound.js";
-import { UpdateManager, type AppUpdater } from "./updates.js";
 
 /** O ambiente em que o controller roda; injetável para a lógica continuar testável sem DOM. */
 export interface Platform {
@@ -397,7 +396,6 @@ export class HeliconController {
   /** A rota principal para a qual o Voltar sai das páginas de configurações/uso; limpa ao voltar para uma rota principal. */
   private returnRoute: Route | null = null;
 
-  private updates: UpdateManager | null = null;
   private notifications: NotificationManager | null = null;
   /** Guardado junto com o manager, porque pedir permissão é trabalho do shell, não do manager. */
   private notifier: Notifier | null = null;
@@ -439,10 +437,6 @@ export class HeliconController {
         }
       }),
     );
-    if (this.updates) {
-      this.updates.start();
-      this.disposers.push(() => this.updates?.stop());
-    }
     if (this.platform.onBeforeClose) {
       this.disposers.push(this.platform.onBeforeClose((options) => this.allowClose(options.dialog)));
     }
@@ -554,54 +548,6 @@ export class HeliconController {
   /** Versão e canal informados pelo shell, sem consultar um atualizador. */
   attachIdentity(identity: AppIdentity): void {
     this.update((s) => ({ ...s, identity }));
-  }
-
-  /** O atualizador do shell desktop. Chame antes de `start`; um navegador nunca tem um. */
-  attachUpdater(updater: AppUpdater): void {
-    this.updates = new UpdateManager(
-      updater,
-      () => ({ autoUpdate: this.state.prefs.autoUpdate, paused: this.state.prefs.updatesPaused }),
-      (next) => {
-        const previous = this.state.updates?.status;
-        this.update((s) => ({ ...s, updates: next }));
-        if (next.status === "ready" && previous !== "ready") {
-          this.toast(
-            "info",
-            `Helicon ${next.update?.version ?? ""} está pronto`,
-            this.state.prefs.autoUpdate && !this.state.prefs.updatesPaused ? "Instala quando você fechar o Helicon." : "Reinicie o Helicon para instalá-lo.",
-            { label: "Reiniciar agora", run: () => this.restartToUpdate() },
-          );
-        }
-      },
-      () => this.platform.now(),
-    );
-    this.update((s) => ({ ...s, updates: this.updates?.current ?? null }));
-  }
-
-  checkForUpdates(): void {
-    void this.updates?.check(true);
-  }
-
-  downloadUpdate(): void {
-    void this.updates?.download();
-  }
-
-  restartToUpdate(): void {
-    void this.updates?.restart();
-  }
-
-  setAutoUpdate(autoUpdate: boolean): void {
-    this.setPrefs({ autoUpdate });
-    if (autoUpdate && !this.state.prefs.updatesPaused) {
-      void this.updates?.download();
-    }
-  }
-
-  setUpdatesPaused(updatesPaused: boolean): void {
-    this.setPrefs({ updatesPaused });
-    if (!updatesPaused) {
-      void this.updates?.check();
-    }
   }
 
   dispose(): void {

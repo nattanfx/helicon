@@ -7,7 +7,6 @@ export * from "./model/store.js";
 export { HeliconController, browserPlatform, hashToRoute, routeToHash, type Platform } from "./model/controller.js";
 export { HeliconApp, type HeliconAppProps } from "./app/HeliconApp.js";
 export type { WindowFrame } from "./app/frame.js";
-export * from "./model/updates.js";
 export * from "./model/identity.js";
 export * from "./model/approvals.js";
 export * from "./model/fileDrafts.js";

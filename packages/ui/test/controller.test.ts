@@ -3295,11 +3295,13 @@ describe("stale thread watchdog", () => {
     stop();
   });
 
-  it("records shell identity without attaching an updater", () => {
+  it("records shell identity and has no app updater", () => {
     const controller = new HeliconController(new FakeClient(), platform());
     assert.equal(controller.store.get().identity, null);
-    assert.equal(controller.store.get().updates, null);
-    assert.equal(controller.store.get().prefs.autoUpdate, false);
+    // Este fork não se atualiza sozinho: nem estado, nem preferência, nem forma de anexar um atualizador.
+    assert.equal("updates" in controller.store.get(), false);
+    assert.equal("autoUpdate" in controller.store.get().prefs, false);
+    assert.equal("attachUpdater" in controller, false);
     controller.attachIdentity({
       version: "0.12.4",
       channel: "teste",
@@ -3310,7 +3312,6 @@ describe("stale thread watchdog", () => {
     });
     assert.equal(controller.store.get().identity?.channel, "teste");
     assert.equal(controller.store.get().identity?.version, "0.12.4");
-    assert.equal(controller.store.get().updates, null);
   });
 
   it("abandons a stalled turn on request, asking the host to cancel it", async () => {

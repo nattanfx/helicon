@@ -1,6 +1,6 @@
-import { ArrowDownToLine, RefreshCw, RotateCw, ScrollText, SquareArrowOutUpRight, Trash2 } from "lucide-react";
+import { RefreshCw, ScrollText, SquareArrowOutUpRight, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useApp, useController, useNow } from "../../app/context.js";
+import { useApp, useController } from "../../app/context.js";
 import { formatFailureEntry } from "../../model/failures.js";
 import {
   channelDescription,
@@ -11,11 +11,10 @@ import {
 } from "../../model/identity.js";
 import type { NotifyTrace } from "../../model/notify.js";
 import type { FailureEntry } from "../../types.js";
-import { updateSummary } from "../sidebar/Sidebar.js";
 import { NotasDaEdicao } from "../app/NotasDaEdicao.js";
 import { Button, cn } from "../ui/primitives.js";
 import { Modal } from "../ui/overlays.js";
-import { Card, Fact, Row, Subhead, Toggle } from "./rows.js";
+import { Card, Fact, Row, Subhead } from "./rows.js";
 
 const TRACE_KIND_LABEL: Record<NotifyTrace["kind"], string> = {
   approval: "aprovação",
@@ -74,48 +73,6 @@ function Versao() {
           >
             <SquareArrowOutUpRight size={13} /> Abrir página de atualização
           </a>
-        </Row>
-      </Card>
-    </>
-  );
-}
-
-function AtualizacoesAutomaticas() {
-  const controller = useController();
-  const prefs = useApp((s) => s.prefs);
-  const updates = useApp((s) => s.updates);
-  const now = useNow(60_000);
-  if (!updates) {
-    return null;
-  }
-  const busy = updates.status === "checking" || updates.status === "downloading" || updates.status === "installing";
-  return (
-    <>
-      <Subhead>Atualizações automáticas</Subhead>
-      <Card>
-        <Row label={`Helicon ${updates.currentVersion ?? ""}`} description={updateSummary(updates, prefs.autoUpdate, prefs.updatesPaused, now)}>
-          <div className="flex flex-wrap items-center gap-2">
-            {updates.status === "ready" ? (
-              <Button size="sm" variant="primary" onClick={() => controller.restartToUpdate()}>
-                <RotateCw size={13} /> Reiniciar para atualizar
-              </Button>
-            ) : null}
-            {updates.status === "available" ? (
-              <Button size="sm" variant="secondary" onClick={() => controller.downloadUpdate()}>
-                <ArrowDownToLine size={13} /> Baixar
-              </Button>
-            ) : null}
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => controller.checkForUpdates()}>
-              <RefreshCw size={13} className={cn(updates.status === "checking" && "animate-spin")} /> Verificar agora
-            </Button>
-          </div>
-        </Row>
-        {updates.error ? <Row label="Último erro" description={updates.error} /> : null}
-        <Row label="Atualizações automáticas" description="Baixar novas versões em segundo plano e instalá-las quando o Helicon fechar.">
-          <Toggle checked={prefs.autoUpdate} label="Atualizações automáticas" onChange={(on) => controller.setAutoUpdate(on)} />
-        </Row>
-        <Row label="Pausar atualizações" description="Sem verificar, baixar ou instalar até você retomar.">
-          <Toggle checked={prefs.updatesPaused} label="Pausar atualizações" onChange={(on) => controller.setUpdatesPaused(on)} />
         </Row>
       </Card>
     </>
@@ -294,12 +251,11 @@ function Diagnostico() {
   );
 }
 
-/** Versão, atualizações automáticas quando o shell oferece, ambiente e diagnóstico. */
+/** Versão, ambiente e diagnóstico. Este fork não se atualiza sozinho. */
 export function Sobre() {
   return (
     <>
       <Versao />
-      <AtualizacoesAutomaticas />
       <Ambiente />
       <Diagnostico />
     </>

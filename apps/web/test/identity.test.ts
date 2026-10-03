@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveAppIdentity } from "../src/identity.js";
-import { desktopUpdater } from "../src/updater.js";
 
 describe("desktop identity resolver", () => {
   it("reads version, test channel and injected SHA from the bundle, without a feed check", async () => {
@@ -55,10 +54,6 @@ describe("desktop identity resolver", () => {
     assert.equal(identity.channel, "web");
     assert.equal(identity.version, "");
     assert.equal(identity.build, null);
-  });
-
-  it("does not expose a Tauri updater adapter", () => {
-    assert.equal(desktopUpdater(), undefined);
   });
 
   it("falls back to the browser identity when the desktop APIs fail", async () => {
