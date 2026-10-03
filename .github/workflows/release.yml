@@ -3,9 +3,13 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Rebuilds an existing tag: `gh workflow run release.yml --ref vX.Y.Z`. It runs the workflow file as
-  # it is at that tag. This fork publishes a draft; publishing the release is a separate decision.
+  # Rebuilds an existing tag: `gh workflow run release.yml --ref vX.Y.Z-ptN`. It runs the workflow file as
+  # it is at that tag. Dispatched from a branch, it stops before building anything. This fork publishes a
+  # draft; publishing the release is a separate decision.
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   desktop-windows:
@@ -13,16 +17,44 @@ jobs:
       contents: write
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      # A release is always named after the tag it was built from, never after a branch.
+      - name: Require a tag
+        if: github.ref_type != 'tag'
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          echo "::error::A release builds only from a tag (vX.Y.Z-ptN), not from '$REF_NAME'. Use: gh workflow run release.yml --ref <tag>"
+          exit 1
+      # Actions are pinned to a commit: a moved tag must not change what runs.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Check the tag against tauri.conf.json
+        id: version
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::The tag $TAG does not match the version in tauri.conf.json ($version); expected v$version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
       - run: npm ci
+      # The same checks as CI, so a release is never packaged from code whose tests fail.
       - run: npm run build --workspace @helicon/daemon --workspace @helicon/ui --workspace @helicon/server
-      # Pinned to a commit: a moved tag must not change what runs.
-      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+      - run: npm run test --workspace @helicon/daemon --workspace @helicon/ui --workspace @helicon/server
+      - run: npm run build --workspace @helicon/web
+      - run: npm run test --workspace @helicon/web
+      - id: tauri
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           # Which Node.js sidecar beforeBuildCommand bundles (apps/desktop/scripts/fetch-node.mjs).
           HELICON_NODE_TARGET: x86_64-pc-windows-msvc
@@ -35,7 +67,9 @@ jobs:
           releaseBody: |
             Pacote pessoal deste fork para Windows. Não é o Helicon original e o aplicativo não se atualiza sozinho.
 
-            A versão na interface é a de tauri.conf.json (0.12.5-pt5 neste pacote). Feche o Helicon antes de instalar. Faça backup das pastas de dados, como em docs/BACKUP.md, antes de atualizar a instalação normal. No instalador, não marque apagar os dados do aplicativo.
+            A versão na interface é a de tauri.conf.json (${{ steps.version.outputs.version }} neste pacote). Feche o Helicon antes de instalar. Faça backup das pastas de dados, como em docs/BACKUP.md, antes de atualizar a instalação normal. No instalador, não marque apagar os dados do aplicativo.
+
+            Confira o instalador antes de abrir: o arquivo `.sha256` anexado traz o SHA256 dele (no PowerShell, `Get-FileHash <instalador> -Algorithm SHA256`).
 
             Em relação à v0.12.4-pt4: credencial no servidor local; no máximo uma tentativa de título por conversa nova; navegação e silêncio de conversa; rótulos conhecidos em português; edição de Markdown recuperável sem gravar o original até salvar.
 
@@ -44,3 +78,35 @@ jobs:
           prerelease: false
           retryAttempts: 3
           args: --target x86_64-pc-windows-msvc
+      - name: Attach the installer SHA256 to the draft
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+          ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
+        run: |
+          $installers = @($env:ARTIFACT_PATHS | ConvertFrom-Json | Where-Object { $_ -match '\.(exe|msi)$' })
+          if ($installers.Count -lt 1) { throw 'The build produced no installer.' }
+          if (-not $env:RELEASE_ID) { throw 'tauri-action reported no release.' }
+          $headers = @{
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $api = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID"
+          $existing = @(Invoke-RestMethod -Uri "$api/assets?per_page=100" -Headers $headers)
+          '## SHA256' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          foreach ($installer in $installers) {
+            $name = Split-Path -Leaf $installer
+            $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+            # The format sha256sum -c reads: hash, two spaces, file name.
+            $file = Join-Path $env:RUNNER_TEMP "$name.sha256"
+            [IO.File]::WriteAllText($file, "$hash  $name`n")
+            # A rebuild of the same tag replaces the checksum rather than failing on a duplicate name.
+            foreach ($old in $existing | Where-Object { $_.name -eq "$name.sha256" }) {
+              Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$($old.id)" -Headers $headers
+            }
+            $upload = "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID/assets?name=$([uri]::EscapeDataString("$name.sha256"))"
+            Invoke-RestMethod -Method Post -Uri $upload -Headers $headers -ContentType 'text/plain' -InFile $file | Out-Null
+            "- ``$name``: ``$hash``" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }

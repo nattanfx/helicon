@@ -19,6 +19,8 @@ Thanks for contributing! Helicon is an open-source desktop + web ADE for Meta's 
 ## Versioning
 
 - Semver. Every release gets a git tag and a GitHub Release with binaries.
+- One version everywhere: `apps/desktop/src-tauri/tauri.conf.json`, `Cargo.toml`, every `package.json`, `HELICON_VERSION` and the newest in-app note. A server test fails when they differ.
+- `.github/workflows/release.yml` builds only from a tag named `v` plus that version (for example `v0.12.5-pt5`), runs the tests first and leaves a draft release with the Windows installer and its `.sha256`.
 - Merged PRs with considerable work bump at least the patch version, never major for routine work.
 
 ## Dev (once app code lands)
