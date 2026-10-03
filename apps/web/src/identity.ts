@@ -16,9 +16,11 @@ export interface IdentitySource {
   build?: string | null;
 }
 
+/** O SHA que o Vite injeta no build (ver `define` em vite.config.ts); ausente fora do Vite, como nos testes. */
+declare const __HELICON_BUILD__: string | undefined;
+
 function readInjectedBuild(): string | null {
-  const env = (import.meta as ImportMeta & { env?: { HELICON_BUILD?: string } }).env;
-  return sanitizeBuild(env?.HELICON_BUILD);
+  return sanitizeBuild(typeof __HELICON_BUILD__ === "string" ? __HELICON_BUILD__ : null);
 }
 
 function desktopSource(): IdentitySource {

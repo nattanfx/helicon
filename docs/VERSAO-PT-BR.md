@@ -33,8 +33,8 @@ Os manifests npm ainda declaram `0.12.4`; eles não são a fonte do campo **Vers
 
 1. Os workflows **Windows Teste** e **Release** definem `HELICON_BUILD` como `${{ github.sha }}` na compilação Tauri.
 2. `beforeBuildCommand` roda `npm run build --workspace @helicon/web`.
-3. O Vite expõe variáveis com prefixo `HELICON_` em `import.meta.env`.
-4. `apps/web/src/identity.ts` lê `import.meta.env.HELICON_BUILD` e só aceita um SHA.
+3. O `define` de `apps/web/vite.config.ts` injeta só `HELICON_BUILD`, como a constante `__HELICON_BUILD__`. O prefixo `HELICON_` não é exposto: outras variáveis `HELICON_*` da máquina de build não entram no pacote público.
+4. `apps/web/src/identity.ts` lê `__HELICON_BUILD__` e só aceita um SHA.
 5. O Windows Teste também grava o commit em `BUILD.txt` ao lado do instalador de teste. O workflow Release não grava esse arquivo; o SHA aparece na interface quando a variável foi injetada.
 
 O frontend compilado é o mesmo código para os dois canais; Teste e normal distinguem-se em tempo de execução pelo identificador Tauri, não por um canal gravado no JavaScript.
