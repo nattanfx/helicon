@@ -1,9 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FailureLog } from "../src/failureLog.js";
+import { FAILURE_KINDS, FailureLog } from "../src/failureLog.js";
 
 const row = (turnId: string) => ({
   kind: "turn-failed" as const,
@@ -46,6 +46,51 @@ describe("FailureLog.clear", () => {
       );
       assert.match(text, /"turnId":"t2"/);
       assert.equal(log.count, 1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("FailureLog no disco", () => {
+  it("relê do arquivo todos os tipos que sabe gravar", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "helicon-failures-"));
+    try {
+      const file = join(dir, "failure-log.jsonl");
+      const first = new FailureLog(file);
+      await first.ready();
+      for (const kind of FAILURE_KINDS) {
+        first.record({ ...row(kind), kind });
+      }
+      await first.close();
+      const second = new FailureLog(file);
+      await second.ready();
+      assert.deepEqual(second.recent(200).map((entry) => entry.kind), [...FAILURE_KINDS]);
+      await second.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("compacta uma rajada sem duplicar linhas ainda na fila nem deixar arquivo temporário", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "helicon-failures-"));
+    try {
+      const file = join(dir, "failure-log.jsonl");
+      const log = new FailureLog(file);
+      await log.ready();
+      for (let i = 0; i < 700; i += 1) {
+        log.record(row(`t${i}`));
+      }
+      await log.close();
+      const ids = (await readFile(file, "utf8")).split("\n").filter((line) => line.length > 0).map((line) => (JSON.parse(line) as { turnId: string }).turnId);
+      assert.equal(new Set(ids).size, ids.length, "nenhuma linha repetida");
+      assert.equal(ids.at(-1), "t699");
+      assert.ok(ids.includes("t500") && ids.includes("t501"));
+      assert.deepEqual(await readdir(dir), ["failure-log.jsonl"]);
+      const reloaded = new FailureLog(file);
+      await reloaded.ready();
+      assert.deepEqual(reloaded.recent(200).map((entry) => entry.turnId), Array.from({ length: 200 }, (_, i) => `t${i + 500}`));
+      await reloaded.close();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

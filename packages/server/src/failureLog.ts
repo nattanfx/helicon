@@ -1,7 +1,11 @@
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, rename, rm, writeFile } from "node:fs/promises";
 
-/** Why a failure record exists. Turn rows come from the host; host rows come from the server. */
-export type FailureKind = "turn-failed" | "turn-view-failed" | "turn-view-recovered" | "host-exited" | "host-start-failed" | "host-restarted" | "view-gap" | "view-unhealthy";
+/**
+ * Why a failure record exists. Turn rows come from the host; host rows come from the server.
+ * One list feeds both the type and the reload parser, so a new kind cannot vanish on restart.
+ */
+export const FAILURE_KINDS = ["turn-failed", "turn-view-failed", "turn-view-recovered", "host-exited", "host-start-failed", "host-restarted", "view-gap", "view-unhealthy"] as const;
+export type FailureKind = (typeof FAILURE_KINDS)[number];
 
 /**
  * One black-box row: enough to diagnose a failure after its conversation is archived or gone.
@@ -39,12 +43,12 @@ function asString(value: unknown): string | null {
 function parseRecord(line: string): FailureRecord {
   const raw = JSON.parse(line) as Record<string, unknown>;
   const kind = asString(raw["kind"]);
-  if (kind !== "turn-failed" && kind !== "turn-view-failed" && kind !== "turn-view-recovered" && kind !== "host-exited" && kind !== "host-start-failed" && kind !== "host-restarted") {
+  if (!kind || !(FAILURE_KINDS as readonly string[]).includes(kind)) {
     throw new Error("unknown failure kind");
   }
   return {
     at: asString(raw["at"]) ?? new Date(0).toISOString(),
-    kind,
+    kind: kind as FailureKind,
     sessionId: asString(raw["sessionId"]),
     turnId: asString(raw["turnId"]),
     hostKey: asString(raw["hostKey"]),
@@ -64,6 +68,8 @@ export class FailureLog {
   private readonly file: string | null;
   private readonly ring: FailureRecord[] = [];
   private readonly pending: FailureRecord[] = [];
+  /** Rows already on disk. A rewrite keeps only these; rows still queued arrive by their own append. */
+  private readonly persisted = new WeakSet<FailureRecord>();
   private loaded = false;
   private chain: Promise<void> = Promise.resolve();
   private loadDone: Promise<void> = Promise.resolve();
@@ -104,6 +110,7 @@ export class FailureLog {
       this.chain = this.chain
         .then(() => appendFile(file, `${JSON.stringify(entry)}\n`, "utf8"))
         .then(() => {
+          this.persisted.add(entry);
           this.fileLines += 1;
           if (this.fileLines > FILE_REWRITE_LINES && generation === this.generation) {
             return this.rewrite();
@@ -183,7 +190,9 @@ export class FailureLog {
           if (generation !== this.generation) {
             break;
           }
-          this.push(parseRecord(line));
+          const entry = parseRecord(line);
+          this.persisted.add(entry);
+          this.push(entry);
         } catch {
           /* a corrupt row never blocks the rest */
         }
@@ -198,11 +207,24 @@ export class FailureLog {
     }
   }
 
+  /**
+   * Compacts the file to the ring. It runs on the write chain, so appends queued behind it land
+   * after it; writing only rows already on disk keeps those from appearing twice. A temp file and
+   * a rename keep the old log whole if the process dies mid-write.
+   */
   private async rewrite(): Promise<void> {
     if (!this.file) {
       return;
     }
-    await writeFile(this.file, `${this.ring.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
-    this.fileLines = this.ring.length;
+    const kept = this.ring.filter((entry) => this.persisted.has(entry));
+    const temp = `${this.file}.tmp`;
+    try {
+      await writeFile(temp, kept.map((entry) => `${JSON.stringify(entry)}\n`).join(""), "utf8");
+      await rename(temp, this.file);
+    } catch (error) {
+      await rm(temp, { force: true }).catch(() => undefined);
+      throw error;
+    }
+    this.fileLines = kept.length;
   }
 }
