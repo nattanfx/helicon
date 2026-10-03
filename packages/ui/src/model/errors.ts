@@ -86,6 +86,30 @@ export interface TurnErrorCopy {
  */
 export const EMPTY_TURN_ERROR = "A mensagem falhou.";
 
+/** Motivos conhecidos de um `session/compact` sem efeito (vocabulário durável em snake_case do MSP). */
+const COMPACT_NOOP_REASONS: Record<string, string> = {
+  no_compactable_history: "Não há histórico anterior para resumir.",
+  summarizer_failed: "O resumo do histórico falhou.",
+  install_rejected: "O Muse recusou instalar o resumo.",
+  cancelled: "A compactação foi cancelada.",
+};
+
+/**
+ * O motivo de uma compactação sem efeito, em português. Um código desconhecido vira um aviso genérico; o código
+ * cru vai só para o console, como diagnóstico.
+ */
+export function compactNoopCopy(reason: string | null | undefined): string | undefined {
+  if (!reason) {
+    return undefined;
+  }
+  const known = Object.hasOwn(COMPACT_NOOP_REASONS, reason) ? COMPACT_NOOP_REASONS[reason] : undefined;
+  if (known) {
+    return known;
+  }
+  console.info("Helicon: compactação sem efeito por motivo desconhecido", reason);
+  return "O Muse não compactou o contexto agora. O histórico continua como estava.";
+}
+
 /** Kind estável que o Muse envia em `turn/completed` quando há limite de uso. */
 const QUOTA_KIND = "rateLimit";
 

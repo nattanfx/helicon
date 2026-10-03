@@ -1,5 +1,5 @@
 import { errorKind, errorMessage, type HeliconClient } from "../client.js";
-import { userFacingError } from "./errors.js";
+import { compactNoopCopy, userFacingError } from "./errors.js";
 import { olderThan } from "./archived.js";
 import { defaultSettingsSection, isSettingsSectionId } from "./settingsSections.js";
 import type {
@@ -3134,8 +3134,7 @@ export class HeliconController {
     try {
       const result = await this.client.compact(sessionId);
       if (result.noop) {
-        const reason = result.reason === "no_compactable_history" ? "Não há histórico anterior para resumir." : result.reason;
-        this.toast("info", "Nada para compactar ainda", reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1).replace(/_/g, " ")}` : undefined);
+        this.toast("info", "Nada para compactar ainda", compactNoopCopy(result.reason));
         return false;
       }
       this.toast("info", "Compactando o contexto", "O Muse vai resumir as mensagens anteriores para liberar a janela de contexto.");

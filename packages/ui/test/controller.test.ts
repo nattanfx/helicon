@@ -1906,6 +1906,7 @@ describe("HeliconController", () => {
     assert.equal(await controller.send("/compact"), true);
     assert.equal(controller.store.get().toasts.at(-1)?.title, "Nada para compactar ainda");
     assert.equal(controller.store.get().toasts.at(-1)?.detail, "Não há histórico anterior para resumir.");
+    assert.equal(controller.store.get().toasts.at(-1)?.detail, "Não há histórico anterior para resumir.");
 
     assert.equal(await controller.send("/effort high"), true);
     assert.equal(controller.store.get().prefs.effort, "high");

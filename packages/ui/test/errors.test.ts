@@ -1,7 +1,29 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { HeliconError } from "../src/client.js";
-import { authErrorCopy, sanitizeErrorDetail, sessionErrorCopy, stuckThread, turnErrorCopy, userFacingError } from "../src/model/errors.js";
+import { authErrorCopy, compactNoopCopy, sanitizeErrorDetail, sessionErrorCopy, stuckThread, turnErrorCopy, userFacingError } from "../src/model/errors.js";
+
+describe("compactação sem efeito", () => {
+  it("explica os motivos conhecidos em português e nunca mostra o código cru", () => {
+    assert.equal(compactNoopCopy("no_compactable_history"), "Não há histórico anterior para resumir.");
+    assert.match(compactNoopCopy("summarizer_failed") ?? "", /resumo/);
+    assert.equal(compactNoopCopy(null), undefined);
+    const original = console.info;
+    const logged: unknown[][] = [];
+    console.info = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    try {
+      const generic = compactNoopCopy("history_locked_by_peer") ?? "";
+      assert.doesNotMatch(generic, /history|locked|_/);
+      assert.match(generic, /não compactou/);
+      assert.equal(compactNoopCopy("toString"), generic, "nome herdado não é motivo conhecido");
+      assert.ok(logged.some((args) => args.includes("history_locked_by_peer")), "o código cru fica no console");
+    } finally {
+      console.info = original;
+    }
+  });
+});
 
 describe("conversas travadas", () => {
   it("sabe que uma imagem ilegível envenena todas as próximas mensagens", () => {
