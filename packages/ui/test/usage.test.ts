@@ -82,6 +82,20 @@ describe("contexto e uso da sessão", () => {
     assert.deepEqual(sessionUsage(fold, []).lines, { files: 2, added: 2, removed: 2 });
   });
 
+  it("edições recusadas ou que falharam não entram nas linhas alteradas", () => {
+    const events = ["completed", "declined", "failed"].map((status, n) => ({
+      method: "item/completed",
+      params: { item: {
+        itemId: `patch-${n}`, kind: "toolCall", status, revision: 1, turnId: `t${n}`,
+        tool: "edit", args: JSON.stringify({ path: "a.ts", old_string: "x", new_string: "y" }),
+        patchSummary: { files: 1, added: 3, removed: 2 },
+      } },
+    }));
+    const fold = applyEvents(emptyFold(), events);
+    assert.deepEqual(sessionUsage(fold, []).lines, { files: 1, added: 3, removed: 2 });
+    assert.equal(sessionUsage(fold, []).tools.find((t) => t.tool === "edit")?.calls, 3, "a chamada em si ainda conta");
+  });
+
   it("precifica chamadas pelo catálogo e marca as que não conseguiu precificar", () => {
     const fold = applyEvents(emptyFold(), [
       tokenUsage("v:1", {

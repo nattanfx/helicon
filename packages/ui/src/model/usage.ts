@@ -375,7 +375,8 @@ export function sessionUsage(fold: ThreadFold, models: readonly ModelOption[]): 
       continue;
     }
     if (item.kind === "toolCall") {
-      const choice = itemDiff(item);
+      // Uma edição recusada ou que falhou não mudou nada no disco.
+      const choice = item.status === "completed" ? itemDiff(item) : null;
       if (choice?.source === "host") {
         added += choice.summary.added;
         removed += choice.summary.removed;

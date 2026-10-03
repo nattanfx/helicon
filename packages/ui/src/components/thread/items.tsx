@@ -31,6 +31,7 @@ import {
   diffStats,
   formatDuration,
   formatTokens,
+  groupFileChanges,
   humanize,
   hostPatchViews,
   itemDiff,
@@ -43,6 +44,7 @@ import {
   withoutDiffEcho,
   type DiffLine,
   type DiffView,
+  type FileChanges,
   type ToolKind,
 } from "../../model/format.js";
 import type { MspItem, OutputRef, UserInputAnswer } from "../../types.js";
@@ -447,57 +449,13 @@ export function DiffCount(props: { added: number; removed: number }) {
   );
 }
 
-interface FileChanges {
-  key: string;
-  path: string;
-  added: number;
-  removed: number;
-  diffs: DiffView[];
-  host?: { itemId: string; ref: OutputRef | null; fallback: DiffView | null };
-}
-
 /**
  * Os arquivos que uma mensagem mudou, como chips; paire ou foque um para prever seu diff.
  * via chips de diff de arquivo do Beautiful UI ToolChips (beautifului.dev), MIT (c) 2026 Shane Levine.
  * Adaptado: Radix Popover para acesso por teclado em vez de um portal posicionado à mão.
  */
 export function DiffChips(props: { entries: MspItem[]; className?: string; sessionId?: string }) {
-  const files = useMemo(() => {
-    const byPath = new Map<string, FileChanges>();
-    for (const item of props.entries) {
-      if (item.kind !== "toolCall") {
-        continue;
-      }
-      const choice = itemDiff(item);
-      if (!choice) {
-        continue;
-      }
-      if (choice.source === "host") {
-        const description = describeTool(item);
-        const path = choice.summary.files === 1 && (description.kind === "edit" || description.kind === "write") && description.subject
-          ? description.subject
-          : `${choice.summary.files} ${choice.summary.files === 1 ? "arquivo" : "arquivos"}`;
-        byPath.set(`host:${item.itemId}`, {
-          key: `host:${item.itemId}`,
-          path,
-          added: choice.summary.added,
-          removed: choice.summary.removed,
-          diffs: [],
-          host: { itemId: item.itemId, ref: choice.ref, fallback: choice.fallback },
-        });
-        continue;
-      }
-      const diff = choice.diff;
-      const key = diff.path ?? item.itemId;
-      const stats = diffStats(diff);
-      const entry = byPath.get(key) ?? { key, path: diff.path ?? "arquivo", added: 0, removed: 0, diffs: [] };
-      entry.added += stats.added;
-      entry.removed += stats.removed;
-      entry.diffs.push(diff);
-      byPath.set(key, entry);
-    }
-    return [...byPath.values()];
-  }, [props.entries]);
+  const files = useMemo(() => groupFileChanges(props.entries), [props.entries]);
   if (files.length === 0) {
     return null;
   }
@@ -513,7 +471,7 @@ export function DiffChips(props: { entries: MspItem[]; className?: string; sessi
 function DiffChip(props: { file: FileChanges; sessionId?: string }) {
   const controller = useController();
   const cwd = useApp((s) => (props.sessionId ? (s.sessions[props.sessionId]?.cwd ?? null) : null));
-  const target = cwd && !props.file.host ? fileTarget(props.file.path, cwd) : null;
+  const target = cwd && props.file.hosts.length === 0 ? fileTarget(props.file.path, cwd) : null;
   const [open, setOpen] = useState(false);
   const timer = useRef<number | null>(null);
   const show = () => {
@@ -567,11 +525,10 @@ function DiffChip(props: { file: FileChanges; sessionId?: string }) {
               </Button>
             </div>
           ) : null}
-          {props.file.host ? (
-            <HostPatchDetails sessionId={props.sessionId} itemId={props.file.host.itemId} patchRef={props.file.host.ref} fallback={props.file.host.fallback} />
-          ) : (
-            <FileDiffCard diffs={props.file.diffs} />
-          )}
+          {props.file.hosts.map((host) => (
+            <HostPatchDetails key={host.itemId} sessionId={props.sessionId} itemId={host.itemId} patchRef={host.ref} fallback={host.fallback} />
+          ))}
+          {props.file.diffs.length > 0 ? <FileDiffCard diffs={props.file.diffs} /> : null}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

@@ -13,6 +13,7 @@ import {
   usageThreadTitle,
   emptyAttachmentWarning,
   extractDiff,
+  groupFileChanges,
   formatDuration,
   formatTokens,
   hostPatchViews,
@@ -200,6 +201,29 @@ describe("descrições de ferramenta", () => {
     assert.deepEqual(itemDiff({ ...item, patchRef: { id: "" } }), { source: "host", summary: item.patchSummary, ref: null, fallback });
     assert.deepEqual(itemDiff({ ...item, patchSummary: undefined }), { source: "inferred", diff: extractDiff(item) });
     assert.equal(itemDiff(tool("bash", { command: "ls" })), null);
+  });
+
+  it("chips de arquivo: só edições concluídas, e uma por caminho mesmo com fatos do host", () => {
+    const host = (id: string, path: string, status = "completed"): MspItem => ({
+      ...tool("edit", { path, old_string: "x", new_string: "y" }, status),
+      itemId: id,
+      patchSummary: { files: 1, added: 2, removed: 1 },
+      patchRef: { id: `ref-${id}`, kind: "tool_patch", mediaType: "application/json" },
+    });
+    const files = groupFileChanges([
+      host("h1", "a.ts"),
+      host("h2", "a.ts"),
+      host("h3", "a.ts", "declined"),
+      host("h4", "b.ts", "failed"),
+      { ...tool("edit", { path: "c.ts", old_string: "x", new_string: "y" }, "failed"), itemId: "i1" },
+      { ...tool("edit", { path: "d.ts", old_string: "x", new_string: "y" }), itemId: "i2" },
+      { ...host("h5", "e.ts"), patchSummary: { files: 3, added: 5, removed: 0 } },
+    ]);
+    assert.deepEqual(files.map((f) => [f.path, f.added, f.removed, f.hosts.map((h) => h.itemId)]), [
+      ["a.ts", 4, 2, ["h1", "h2"]],
+      ["d.ts", 1, 1, []],
+      ["3 arquivos", 5, 0, ["h5"]],
+    ]);
   });
 
   it("mostra o patch JSON do host sem perder um formato ainda desconhecido", () => {

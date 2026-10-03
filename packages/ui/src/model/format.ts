@@ -642,6 +642,63 @@ export type ItemDiff =
   | { source: "host"; summary: PatchSummary; ref: OutputRef | null; fallback: DiffView | null }
   | { source: "inferred"; diff: DiffView };
 
+/** As mudanças de um arquivo numa mensagem, somando cada edição concluída dele. */
+export interface FileChanges {
+  key: string;
+  path: string;
+  added: number;
+  removed: number;
+  /** Diffs inferidos dos argumentos, em ordem. */
+  diffs: DiffView[];
+  /** Edições com fatos do host, cada uma com seu patch consultável. */
+  hosts: { itemId: string; ref: OutputRef | null; fallback: DiffView | null }[];
+}
+
+/**
+ * Agrupa por arquivo o que as edições de uma mensagem mudaram. Só edições concluídas contam: uma recusada ou
+ * que falhou não mudou nada. Duas edições do host no mesmo arquivo viram um chip só; um resumo do host para
+ * vários arquivos não diz quais, então fica num chip próprio.
+ */
+export function groupFileChanges(entries: readonly MspItem[]): FileChanges[] {
+  const byPath = new Map<string, FileChanges>();
+  const entryFor = (key: string, path: string): FileChanges => {
+    const found = byPath.get(key);
+    if (found) {
+      return found;
+    }
+    const created: FileChanges = { key, path, added: 0, removed: 0, diffs: [], hosts: [] };
+    byPath.set(key, created);
+    return created;
+  };
+  for (const item of entries) {
+    if (item.kind !== "toolCall" || item.status !== "completed") {
+      continue;
+    }
+    const choice = itemDiff(item);
+    if (!choice) {
+      continue;
+    }
+    if (choice.source === "host") {
+      const description = describeTool(item);
+      const single = choice.summary.files === 1 && (description.kind === "edit" || description.kind === "write") && description.subject;
+      const entry = single
+        ? entryFor(description.subject as string, description.subject as string)
+        : entryFor(`host:${item.itemId}`, `${choice.summary.files} ${choice.summary.files === 1 ? "arquivo" : "arquivos"}`);
+      entry.added += choice.summary.added;
+      entry.removed += choice.summary.removed;
+      entry.hosts.push({ itemId: item.itemId, ref: choice.ref, fallback: choice.fallback });
+      continue;
+    }
+    const diff = choice.diff;
+    const stats = diffStats(diff);
+    const entry = entryFor(diff.path ?? item.itemId, diff.path ?? "arquivo");
+    entry.added += stats.added;
+    entry.removed += stats.removed;
+    entry.diffs.push(diff);
+  }
+  return [...byPath.values()];
+}
+
 /** The host's committed patch facts take priority over guesses from tool arguments. */
 export function itemDiff(item: MspItem): ItemDiff | null {
   const summary = item.patchSummary;
