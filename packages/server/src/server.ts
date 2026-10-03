@@ -2862,7 +2862,8 @@ export class HeliconServer {
       }
       events = eventsFromHistory(payload);
       const snapshot = usageSnapshot(payload);
-      this.store.recordUsageRecovery(sessionId, false, "O histórico disponível não detalha as chamadas ao modelo.", num(snapshot?.["promptTokens"]) ?? null, num(snapshot?.["outputTokens"]) ?? null);
+      const emptySnapshot = snapshot !== null && num(snapshot["promptTokens"]) === 0 && num(snapshot["outputTokens"]) === 0 && events.length === 0;
+      this.store.recordUsageRecovery(sessionId, emptySnapshot, emptySnapshot ? null : "O histórico disponível não detalha as chamadas ao modelo.", num(snapshot?.["promptTokens"]) ?? null, num(snapshot?.["outputTokens"]) ?? null);
     }
 
     const pending = await manager.listPending(sessionId).catch(() => ({ approvals: [], userInputs: [] }));

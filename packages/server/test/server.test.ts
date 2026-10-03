@@ -289,11 +289,16 @@ describe("HeliconServer", () => {
 
   it("marks an empty snapshot as an empty conversation instead of missing spending", async () => {
     const connection = new FakeConnection();
+    connection.replies.set("session/start", { session: { sessionId: "s1" } });
+    connection.replies.set("session/resume", { session: { sessionId: "s1" } });
     connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
     connection.replies.set("view/page", { events: [], nextCursor: null });
     connection.replies.set("session/read", { history: { mode: "snapshot", snapshot: { state: { tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 }, items: [] } } } });
     const { base } = await start(connection);
     assert.equal((await backfill(base)).incomplete, 0);
+    assert.equal((await get(base, "/api/usage")).recovery.length, 0);
+    await send(base, "/api/sessions", { cwd: "/work/p" });
+    assert.equal((await send(base, "/api/sessions/s1/resume", {})).status, 200);
     assert.equal((await get(base, "/api/usage")).recovery.length, 0);
   });
 
