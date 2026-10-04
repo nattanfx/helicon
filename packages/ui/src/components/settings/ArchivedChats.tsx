@@ -300,7 +300,7 @@ export function ArchivedChats() {
         title="Excluir esta conversa?"
         description={
           confirming
-            ? `“${displayTitle(confirming)}” sai do Helicon para sempre, com seus anexos e uso registrado. A sessão do Muse é preservada.`
+            ? `“${displayTitle(confirming)}” sai do Helicon para sempre, com seus anexos. O uso registrado e a sessão do Muse são preservados.`
             : ""
         }
       >
@@ -326,7 +326,7 @@ export function ArchivedChats() {
         open={confirmingMany}
         onOpenChange={setConfirmingMany}
         title={selected.length === 1 ? "Excluir 1 conversa?" : `Excluir ${selected.length} conversas?`}
-        description="Elas saem do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas."
+        description="Elas saem do Helicon para sempre, com seus anexos. O uso registrado e as sessões do Muse são preservados."
       >
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmingMany(false)}>
@@ -350,8 +350,8 @@ export function ArchivedChats() {
         title={filtered.length === 1 ? "Excluir 1 conversa?" : `Excluir ${filtered.length} conversas?`}
         description={
           filteredOut
-            ? `${filtered.length === 1 ? "A conversa listada com o filtro atual sai" : `As ${filtered.length} conversas listadas com o filtro atual saem`} do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
-            : "Todas as arquivadas saem do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas."
+            ? `${filtered.length === 1 ? "A conversa listada com o filtro atual sai" : `As ${filtered.length} conversas listadas com o filtro atual saem`} do Helicon para sempre, com seus anexos. O uso registrado e as sessões do Muse são preservados.`
+            : "Todas as arquivadas saem do Helicon para sempre, com seus anexos. O uso registrado e as sessões do Muse são preservados."
         }
       >
         <div className="mt-6 flex justify-end gap-2">
@@ -380,7 +380,7 @@ export function ArchivedChats() {
         title={confirmingGroup ? `Excluir tudo em ${confirmingGroup.name}?` : ""}
         description={
           confirmingGroup
-            ? `${confirmingGroup.sessions.length === 1 ? "A conversa deste projeto sai" : `As ${confirmingGroup.sessions.length} conversas deste projeto saem`} do Helicon para sempre, com anexos e uso registrado. As sessões do Muse são preservadas.`
+            ? `${confirmingGroup.sessions.length === 1 ? "A conversa deste projeto sai" : `As ${confirmingGroup.sessions.length} conversas deste projeto saem`} do Helicon para sempre, com seus anexos. O uso registrado e as sessões do Muse são preservados.`
             : ""
         }
       >
