@@ -800,11 +800,19 @@ function EffortPicker(props: { sessionId: string | null; side: PickerSide }) {
 }
 
 export const MODES: { value: ApprovalMode; label: string; description: string; icon: ReactNode }[] = [
-  { value: "onRequest", label: "Perguntar antes", description: "O Muse pergunta antes de qualquer coisa que precise de aprovação.", icon: <Shield size={14} /> },
+  // `onRequest` do Muse: a sandbox decide, não uma pergunta. Edições no projeto e comandos que o Muse consegue conferir
+  // rodam direto; o que a sandbox bloqueia (rede, pastas de fora) falha sem pedir. Ele pergunta o que não confere.
+  {
+    value: "onRequest",
+    label: "Confiar na sandbox",
+    description:
+      "Edita o projeto e roda comandos sem perguntar, confinado pela sandbox; o que ela bloqueia, como rede e pastas de fora, falha sem pedir. Pergunta só o comando que não consegue conferir.",
+    icon: <Shield size={14} />,
+  },
   {
     value: "promptUnmatched",
     label: "Perguntar o fora da lista",
-    description: "Comandos que suas regras permitem executam direto; o resto pergunta.",
+    description: "Comandos que suas regras permitem executam direto; o resto pergunta antes.",
     icon: <ShieldQuestion size={14} />,
   },
   {
