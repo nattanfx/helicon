@@ -395,10 +395,25 @@ export interface UsageReport {
   buckets: UsageBucket[];
   threads: UsageThread[];
   undated?: { buckets: UsageBucket[]; threads: UsageThread[] };
-  recovery?: { sessionId: string; complete: boolean; reason: string | null; promptTokens: number | null; outputTokens: number | null; recordedPromptTokens: number; recordedOutputTokens: number }[];
+  recovery?: UsageRecovery[];
 }
 
 /** Progresso da releitura de uso em todas as sessões do host. */
+/** One conversation whose usage could not be read in full, with what its own total says and what was recorded. */
+export interface UsageRecovery {
+  sessionId: string;
+  complete: boolean;
+  reason: string | null;
+  promptTokens: number | null;
+  outputTokens: number | null;
+  recordedPromptTokens: number;
+  recordedOutputTokens: number;
+  /** The conversation's title here; absent from older servers, null for a session this app never adopted. */
+  title?: string | null;
+  cwd?: string | null;
+  deleted?: boolean;
+}
+
 export interface UsageBackfillStatus {
   running: boolean;
   total: number;
@@ -408,6 +423,8 @@ export interface UsageBackfillStatus {
   incomplete?: number;
   skipped?: number;
   enumerationIncomplete?: boolean;
+  /** How many conversations stayed incomplete for each reason, in the server's words. */
+  reasons?: Record<string, number>;
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;

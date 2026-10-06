@@ -48,3 +48,21 @@ it("shows preserved undated usage and incomplete evidence even with an empty sel
   assert.match(html, /Consumo com detalhamento incompleto/);
   assert.doesNotMatch(html, /Custo por dia/);
 });
+
+it("groups incomplete readings by reason, names the conversations and only counts the ones with nothing missing", () => {
+  const diverge = "O acumulado disponível e as chamadas registradas divergem; a leitura pode ser parcial ou desatualizada.";
+  const rows = Array.from({ length: 40 }, (_, i) => ({ sessionId: `same-${i}`, complete: false, reason: diverge, promptTokens: 100, outputTokens: 10, recordedPromptTokens: 200, recordedOutputTokens: 20, title: `Conversa repetida ${i}`, cwd: null, deleted: false }));
+  rows.push({ sessionId: "gap", complete: false, reason: diverge, promptTokens: 5_000_000, outputTokens: 0, recordedPromptTokens: 1_000_000, recordedOutputTokens: 0, title: "Refatorar o login", cwd: null, deleted: false });
+  rows.push({ sessionId: "0123456789ab", complete: false, reason: "O histórico disponível não informa as chamadas ao modelo.", promptTokens: null as never, outputTokens: null as never, recordedPromptTokens: 0, recordedOutputTokens: 0, title: null as never, cwd: null, deleted: false });
+  const html = render({ ...report, recovery: rows });
+  const section = html.slice(html.indexOf("Consumo com detalhamento incompleto"));
+  assert.equal(section.split(diverge).length - 1, 1, "each reason is written once");
+  assert.match(section, /41 conversas/);
+  assert.match(section, /40 sem diferença para o acumulado/);
+  assert.match(section, /Somadas, faltam 4M tokens de entrada/);
+  assert.match(section, /<details/);
+  assert.match(section, /Refatorar o login/);
+  assert.doesNotMatch(section, /Conversa repetida/, "nothing missing, nothing to list");
+  assert.match(section, /Conversa 01234567, não aberta no Helicon/);
+  assert.match(section, /sem acumulado/);
+});

@@ -41,6 +41,7 @@ import {
   type SessionSkill,
   type SubscriptionUsage,
   type TurnImage,
+  USAGE_DIVERGENCE_REASON,
 } from "@helicon/daemon";
 import { FailureLog } from "./failureLog.js";
 import { FileError, listFolder, readProjectFile, resolveInRoot, searchProjectFiles, serveProjectFile, writeProjectFile } from "./files.js";
@@ -199,6 +200,11 @@ type SseSink = (event: string, data: unknown) => void;
 
 const MAX_HISTORY_PAGES = 4;
 const MAX_USAGE_PAGES = 100;
+/** Why a recovery stopped short on a very long history. */
+const USAGE_PAGE_LIMIT_REASON = "Limite de páginas atingido.";
+/** Extra tries for a history page the host refused for a passing reason (busy, briefly unavailable). */
+const USAGE_PAGE_RETRIES = 2;
+const USAGE_RETRY_DELAY_MS = 400;
 /** Older pages scanned for the latest route transition beyond the transcript window. */
 const ROUTE_HISTORY_SCAN_PAGES = 8;
 const HISTORY_PAGE_SIZE = 1000;
@@ -774,7 +780,7 @@ export class HeliconServer {
   /** The newest subscription window any host reported; `usage/changed` carries no session, so it lives here. */
   private planUsage: SubscriptionUsage | null = null;
   /** Progresso da releitura de uso; uma por vez, sem adotar sessões na barra lateral. */
-  private usageBackfill = { running: false, total: 0, done: 0, calls: 0, failed: 0, incomplete: 0, skipped: 0, enumerationIncomplete: false, startedAt: null as string | null, finishedAt: null as string | null, error: null as string | null };
+  private usageBackfill = { running: false, total: 0, done: 0, calls: 0, failed: 0, incomplete: 0, skipped: 0, enumerationIncomplete: false, reasons: {} as Record<string, number>, startedAt: null as string | null, finishedAt: null as string | null, error: null as string | null };
   /** Append-only failure log; memory-only when the server runs without a data dir. */
   private readonly failures: FailureLog;
   /** The reasoning effort each session is known to be running at, so a turn only re-sets it when it changes. */
@@ -2579,13 +2585,13 @@ export class HeliconServer {
   /** Tokens per day and model, plus a row per thread, for the usage page to price. */
   /** Instantâneo do progresso da releitura de uso. */
   private usageBackfillStatus(): Record<string, unknown> {
-    return { ...this.usageBackfill };
+    return { ...this.usageBackfill, reasons: { ...this.usageBackfill.reasons } };
   }
 
   /** Começa a releitura se nenhuma roda; idempotente enquanto roda. */
   private startUsageBackfill(): Record<string, unknown> {
     if (!this.usageBackfill.running) {
-      this.usageBackfill = { running: true, total: 0, done: 0, calls: 0, failed: 0, incomplete: 0, skipped: 0, enumerationIncomplete: false, startedAt: nowIso(), finishedAt: null, error: null };
+      this.usageBackfill = { running: true, total: 0, done: 0, calls: 0, failed: 0, incomplete: 0, skipped: 0, enumerationIncomplete: false, reasons: {}, startedAt: nowIso(), finishedAt: null, error: null };
       void this.runUsageBackfill().catch((error: unknown) => {
         this.usageBackfill.running = false;
         this.usageBackfill.finishedAt = nowIso();
@@ -2640,7 +2646,12 @@ export class HeliconServer {
       const result = await this.recoverUsage(host.manager, sessionId);
       this.usageBackfill.calls += result.calls;
       this.usageBackfill.skipped += result.skipped;
-      if (!result.complete) this.usageBackfill.incomplete += 1;
+      if (!result.complete) {
+        this.usageBackfill.incomplete += 1;
+        // Why each one stayed incomplete, so the result can say it instead of only counting.
+        const why = result.reason ?? "Leitura incompleta sem motivo informado.";
+        this.usageBackfill.reasons[why] = (this.usageBackfill.reasons[why] ?? 0) + 1;
+      }
       if (result.failed) this.usageBackfill.failed += 1;
       this.usageBackfill.done += 1;
     }
@@ -2648,7 +2659,7 @@ export class HeliconServer {
     this.usageBackfill.finishedAt = nowIso();
   }
 
-  private async recoverUsage(manager: SessionManager, sessionId: string): Promise<{ calls: number; skipped: number; complete: boolean; failed: boolean }> {
+  private async recoverUsage(manager: SessionManager, sessionId: string): Promise<{ calls: number; skipped: number; complete: boolean; failed: boolean; reason: string | null }> {
     const cursors = new Set<string>();
     const signatures = new Set<string>();
     let cursor: string | undefined;
@@ -2657,11 +2668,49 @@ export class HeliconServer {
     let seenUsage = 0;
     let complete = false;
     let failed = false;
-    let reason: string | null = "Limite de páginas atingido.";
+    let pageFailure: string | null = null;
+    let oversized = 0;
+    let reason: string | null = USAGE_PAGE_LIMIT_REASON;
     let snapshot: Record<string, unknown> | null = null;
+    let limit = HISTORY_PAGE_SIZE;
+    let retries = 0;
     try {
-      for (let index = 0; index < MAX_USAGE_PAGES; index += 1) {
-        const page = await manager.pageView(sessionId, { cursor, direction: "backward", limit: HISTORY_PAGE_SIZE });
+      for (let pages = 0, attempts = 0; pages < MAX_USAGE_PAGES && attempts < MAX_USAGE_PAGES * 4; attempts += 1) {
+        let page;
+        try {
+          page = await manager.pageView(sessionId, { cursor, direction: "backward", limit });
+        } catch (error) {
+          const info = errorInfo(error);
+          const data = asRecord((error as { data?: unknown })?.["data"]);
+          if (info.kind === "pageEventTooLarge") {
+            // One event bigger than a page can carry (a huge tool output). Narrow the page until it is the only
+            // event asked for, then step past it: a token reading is never that large, so nothing priced is lost.
+            if (limit > 1) {
+              limit = Math.max(1, Math.floor(limit / 10));
+              continue;
+            }
+            const blocked = str(data?.["viewCursor"]);
+            if (!blocked || blocked === cursor || cursors.has(blocked)) throw error;
+            cursors.add(blocked);
+            cursor = blocked;
+            oversized += 1;
+            limit = HISTORY_PAGE_SIZE;
+            continue;
+          }
+          // A busy or briefly unavailable host answers the same read a moment later; the first run of the user
+          // missed whole long conversations this way and the second recovered them.
+          const transient = data?.["retryable"] === true || (error as { retryable?: unknown })?.["retryable"] === true ||
+            info.kind === "overloaded" || info.kind === "backpressured" || info.kind === "internal" || info.kind === null;
+          if (transient && retries < USAGE_PAGE_RETRIES) {
+            retries += 1;
+            await new Promise((resolve) => setTimeout(resolve, USAGE_RETRY_DELAY_MS * retries));
+            continue;
+          }
+          throw error;
+        }
+        pages += 1;
+        retries = 0;
+        limit = HISTORY_PAGE_SIZE;
         const signature = createHash("sha256").update(JSON.stringify(page.events)).digest("hex");
         if (signatures.has(signature)) {
           reason = "O histórico repetiu uma página.";
@@ -2683,9 +2732,16 @@ export class HeliconServer {
         cursor = page.nextCursor;
       }
     } catch (error) {
-      const kind = errorInfo(error).kind;
-      failed = kind !== "sessionNotLoaded" && kind !== "sessionInUse";
-      reason = "Não foi possível ler todas as chamadas do histórico.";
+      const info = errorInfo(error);
+      failed = info.kind !== "sessionNotLoaded" && info.kind !== "sessionInUse";
+      pageFailure = info.kind === "sessionInUse"
+        ? "Outro processo do Muse está com esta conversa aberta; feche-o e recupere de novo."
+        : `Não foi possível ler todas as chamadas do histórico${info.kind ? ` (o Muse respondeu ${info.kind})` : ""}.`;
+      reason = pageFailure;
+      this.log(`usage recovery(${sessionId}) view/page failed${info.kind ? ` [${info.kind}]` : ""}: ${info.message}`);
+    }
+    if (oversized > 0) {
+      this.log(`usage recovery(${sessionId}) stepped past ${oversized} history event(s) too large for a page`);
     }
     // Other hosts' leases and compacted snapshots can expose totals without individual completions.
     if (!complete || seenUsage === 0) {
@@ -2695,21 +2751,24 @@ export class HeliconServer {
         const history = asRecord(asRecord(read)?.["history"]);
         if (seenUsage === 0 && ((num(snapshot?.["totalTokens"]) ?? 0) > 0 || eventsFromHistory(read).length > 0 || history?.["mode"] === "none" || !history)) {
           complete = false;
-          reason = snapshot ? "Só o consumo acumulado está disponível; faltam as chamadas individuais." : "O histórico disponível não informa as chamadas ao modelo.";
+          // A failed page read is the cause; what the fallback read lacks would only hide it.
+          reason = pageFailure ?? (snapshot ? "Só o consumo acumulado está disponível; faltam as chamadas individuais." : "O histórico disponível não informa as chamadas ao modelo.");
         }
-      } catch {
+      } catch (error) {
+        const info = errorInfo(error);
         failed = true;
         complete = false;
-        reason = "Não foi possível ler o consumo desta conversa.";
+        reason = pageFailure ?? `Não foi possível ler o consumo desta conversa${info.kind ? ` (o Muse respondeu ${info.kind})` : ""}.`;
+        this.log(`usage recovery(${sessionId}) session/read failed${info.kind ? ` [${info.kind}]` : ""}: ${info.message}`);
       }
     }
     const recorded = this.store.usageTokens(sessionId);
     if (complete && snapshot && ((num(snapshot["promptTokens"]) ?? recorded.promptTokens) !== recorded.promptTokens || (num(snapshot["outputTokens"]) ?? recorded.outputTokens) !== recorded.outputTokens)) {
       complete = false;
-      reason = "O acumulado disponível e as chamadas registradas divergem; a leitura pode ser parcial ou desatualizada.";
+      reason = USAGE_DIVERGENCE_REASON;
     }
     this.store.recordUsageRecovery(sessionId, complete, reason, num(snapshot?.["promptTokens"]) ?? null, num(snapshot?.["outputTokens"]) ?? null);
-    return { calls, skipped, complete, failed };
+    return { calls, skipped, complete, failed, reason: complete ? null : reason };
   }
 
   /** Only newly inserted calls count as recovered; replays remain idempotent. */

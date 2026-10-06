@@ -1,6 +1,6 @@
 import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
-import { HeliconStore } from "../src/store.js";
+import { HeliconStore, USAGE_DIVERGENCE_REASON } from "../src/store.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -43,7 +43,7 @@ describe("HeliconStore", () => {
     store.recordUsageRecovery("s1", false, "snapshot only", 100, 50);
     store.recordUsageRecovery("s1", false, "unavailable", null, null);
     store.recordUsageRecovery("s1", true, null, 10, 5);
-    assert.deepEqual(store.listUsageRecovery()[0], { sessionId: "s1", complete: true, reason: null, promptTokens: 100, outputTokens: 50, recordedPromptTokens: 0, recordedOutputTokens: 0 });
+    assert.deepEqual(store.listUsageRecovery()[0], { sessionId: "s1", complete: true, reason: null, promptTokens: 100, outputTokens: 50, recordedPromptTokens: 0, recordedOutputTokens: 0, title: null, cwd: null, deleted: false });
     assert.equal(store.listUsage().length, 0);
   });
 
@@ -54,7 +54,7 @@ describe("HeliconStore", () => {
     assert.equal(store.listUsageRecovery()[0]?.complete, false, "a partial read still reports a gap nobody closed");
     store.recordUsageRecovery("s1", true, null);
     store.recordUsageRecovery("s1", false, "partial opening", null, null, { partial: true });
-    assert.deepEqual(store.listUsageRecovery()[0], { sessionId: "s1", complete: true, reason: null, promptTokens: null, outputTokens: null, recordedPromptTokens: 0, recordedOutputTokens: 0 });
+    assert.deepEqual(store.listUsageRecovery()[0], { sessionId: "s1", complete: true, reason: null, promptTokens: null, outputTokens: null, recordedPromptTokens: 0, recordedOutputTokens: 0, title: null, cwd: null, deleted: false });
     store.recordUsageRecovery("s1", false, "full read found a gap");
     assert.equal(store.listUsageRecovery()[0]?.complete, false);
     assert.equal(store.listUsageRecovery()[0]?.reason, "full read found a gap");
@@ -69,6 +69,62 @@ describe("HeliconStore", () => {
     assert.equal(store.listUsage().length, 2);
     assert.equal(store.usageTokens("s1").promptTokens, 30);
   });
+  it("folds the same call recorded under two cursors and a source range into one, and settles the divergence it caused", () => {
+    const folder = mkdtempSync(join(tmpdir(), "helicon-usage-dedupe-"));
+    const path = join(folder, "dupes.db");
+    after(() => rmSync(folder, { recursive: true, force: true }));
+    const seed = new HeliconStore(path);
+    const call = { sessionId: "s1", turnId: "t1", modelId: "m", outputTokens: 5, inputTokens: 100, cachedTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, durationMs: null, at: null };
+    // Two legacy cursor rows for one call (a host restart renumbered the cursor), plus a different later call.
+    seed.recordUsage({ ...call, key: "v:s1:14", promptTokens: 100 });
+    seed.recordUsage({ ...call, key: "v:s1:15", promptTokens: 100 });
+    seed.recordUsage({ ...call, key: "v:s1:20", promptTokens: 130 });
+    seed.recordUsageRecovery("s1", false, USAGE_DIVERGENCE_REASON, 230, 10);
+    seed.close();
+    // A recovery from an older build met the first call under a cursor it no longer matched and added a third copy.
+    const raw = new DatabaseSync(path);
+    raw.exec(`INSERT INTO usage (key, session_id, turn_id, model_id, prompt_tokens, output_tokens, input_tokens, at, source_key)
+      VALUES ('src-a', 's1', 't1', 'm', 100, 5, 100, '2026-10-04T11:30:00.000Z', 'range-a')`);
+    raw.close();
+
+    const store = new HeliconStore(path);
+    assert.deepEqual(store.usageTokens("s1"), { promptTokens: 230, outputTokens: 10 }, "each call counted once");
+    const kept = store.listUsage().find((row) => row.promptTokens === 100);
+    assert.equal(kept?.key, "src-a", "the copy that carries the source range survives");
+    const recovery = store.listUsageRecovery()[0];
+    assert.equal(recovery?.complete, true, "the totals agree with the session's own reading now");
+    assert.equal(recovery?.reason, null);
+    store.close();
+  });
+
+  it("gives a legacy row the source range of the same call instead of inserting a second copy", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    const call = { sessionId: "s1", turnId: "t1", modelId: "m", promptTokens: 100, outputTokens: 5, inputTokens: 100, cachedTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, durationMs: null, at: null };
+    store.recordUsage({ ...call, key: "v:s1:14" });
+    // The host renumbered its cursors: the recovery sees the same call at :15, with a source range.
+    assert.equal(store.recordUsage({ ...call, key: "src", sourceKey: "range-a", legacyKey: "v:s1:15" }), false);
+    assert.equal(store.listUsage().length, 1);
+    // Replaying it again is still the same call; a different call of the same turn is new.
+    assert.equal(store.recordUsage({ ...call, key: "src", sourceKey: "range-a", legacyKey: "v:s1:16" }), false);
+    assert.equal(store.recordUsage({ ...call, key: "src-b", sourceKey: "range-b", legacyKey: "v:s1:30", promptTokens: 140 }), true);
+    assert.equal(store.usageTokens("s1").promptTokens, 240);
+  });
+
+  it("names the conversation of each usage reading", () => {
+    const store = new HeliconStore();
+    after(() => store.close());
+    const project = store.upsertProject("D:\work\helicon");
+    store.recordSession({ id: "s1", projectId: project.id });
+    store.updateSession("s1", { title: "Corrigir o login", titleSource: "user" });
+    store.recordUsageRecovery("s1", false, "x", 10, 1);
+    store.recordUsageRecovery("cli-only", false, "y", null, null);
+    const rows = store.listUsageRecovery();
+    assert.equal(rows.find((row) => row.sessionId === "s1")?.title, "Corrigir o login");
+    assert.equal(rows.find((row) => row.sessionId === "s1")?.cwd, "D:\work\helicon");
+    assert.equal(rows.find((row) => row.sessionId === "cli-only")?.title, null);
+  });
+
   it("groups sessions under projects by directory", () => {
     const store = new HeliconStore();
     after(() => store.close());

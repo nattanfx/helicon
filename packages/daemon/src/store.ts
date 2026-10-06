@@ -292,6 +292,12 @@ export interface ShellRunRecord {
 }
 
 /** One model call's tokens, as the store keeps them for the usage page. */
+/** Why a full recovery stays incomplete when the session's own total and the recorded calls disagree. */
+export const USAGE_DIVERGENCE_REASON = "O acumulado disponível e as chamadas registradas divergem; a leitura pode ser parcial ou desatualizada.";
+
+/** The columns that make two ledger rows the same model call: one turn, the very same token counts. */
+const USAGE_TWIN_COLUMNS = "session_id, turn_id, model_id, prompt_tokens, output_tokens, input_tokens, cached_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens";
+
 export interface UsageCall {
   key: string;
   sourceKey?: string | null;
@@ -308,6 +314,20 @@ export interface UsageCall {
   reasoningTokens: number;
   durationMs: number | null;
   at: string | null;
+}
+
+export interface UsageRecoveryRow {
+  sessionId: string;
+  complete: boolean;
+  reason: string | null;
+  promptTokens: number | null;
+  outputTokens: number | null;
+  recordedPromptTokens: number;
+  recordedOutputTokens: number;
+  /** The conversation's title here; null for one this app never adopted (a CLI-only session). */
+  title: string | null;
+  cwd: string | null;
+  deleted: boolean;
 }
 
 export interface UsageRow extends UsageCall {
@@ -350,9 +370,54 @@ export class HeliconStore {
       }
     }
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_source ON usage(session_id, source_key) WHERE source_key IS NOT NULL");
+    this.dedupeUsage();
     // YOLO and sandbox-off used to be one global switch. Spreading it to every project would lift the sandbox in
     // workspaces nobody chose, so the old rows are dropped and every project starts protected. Idempotent.
     this.db.exec("DELETE FROM settings WHERE key IN ('sandbox', 'yolo')");
+  }
+
+  /**
+   * Folds ledger rows that are the same model call recorded twice. Older versions keyed calls by the view cursor,
+   * which a host restart renumbers, so the same call came back under a second cursor; and a recovery that met such
+   * a row under a cursor it no longer matched inserted a third copy keyed by its source range. Every copy has the
+   * same turn and the same token counts, which two different calls of one turn never share: the prompt grows with
+   * each call. Rows that carry two different source ranges are left alone, since the host says they are distinct.
+   * The survivor keeps the source range and the earliest known completion date. Idempotent; runs at every open.
+   * A divergence that only these copies caused is settled too, since the totals now agree.
+   */
+  private dedupeUsage(): void {
+    const groups = this.db.prepare(`SELECT ${USAGE_TWIN_COLUMNS}, COUNT(*) AS copies, COUNT(DISTINCT source_key) AS sources
+      FROM usage WHERE turn_id IS NOT NULL GROUP BY ${USAGE_TWIN_COLUMNS} HAVING copies > 1 AND sources <= 1`).all() as Row[];
+    if (groups.length === 0) {
+      return;
+    }
+    const members = this.db.prepare(`SELECT key, source_key, occurred_at, duration_ms FROM usage
+      WHERE session_id = ? AND turn_id = ? AND model_id IS ? AND prompt_tokens = ? AND output_tokens = ? AND input_tokens = ?
+        AND cached_tokens = ? AND cache_read_tokens = ? AND cache_write_tokens = ? AND reasoning_tokens = ?
+      ORDER BY source_key IS NULL, occurred_at IS NULL, occurred_at, at`);
+    const remove = this.db.prepare("DELETE FROM usage WHERE key = ?");
+    const keep = this.db.prepare("UPDATE usage SET occurred_at = COALESCE(occurred_at, ?), duration_ms = COALESCE(duration_ms, ?) WHERE key = ?");
+    this.transaction(() => {
+      for (const group of groups) {
+        const rows = members.all(
+          group["session_id"] as string, group["turn_id"] as string, (group["model_id"] ?? null) as string | null,
+          group["prompt_tokens"] as number, group["output_tokens"] as number, group["input_tokens"] as number,
+          group["cached_tokens"] as number, group["cache_read_tokens"] as number, group["cache_write_tokens"] as number,
+          group["reasoning_tokens"] as number,
+        ) as Row[];
+        const [survivor, ...copies] = rows;
+        if (!survivor) continue;
+        const occurredAt = rows.map((row) => row["occurred_at"]).find((value) => value !== null) ?? null;
+        const durationMs = rows.map((row) => row["duration_ms"]).find((value) => value !== null) ?? null;
+        for (const copy of copies) remove.run(String(copy["key"]));
+        keep.run(occurredAt as string | null, durationMs as number | null, String(survivor["key"]));
+      }
+      this.db.prepare(`UPDATE usage_recovery SET complete = 1, reason = NULL
+        WHERE complete = 0 AND reason = ? AND prompt_tokens IS NOT NULL AND output_tokens IS NOT NULL
+          AND prompt_tokens = (SELECT COALESCE(SUM(prompt_tokens), 0) FROM usage u WHERE u.session_id = usage_recovery.session_id)
+          AND output_tokens = (SELECT COALESCE(SUM(output_tokens), 0) FROM usage u WHERE u.session_id = usage_recovery.session_id)`)
+        .run(USAGE_DIVERGENCE_REASON);
+    });
   }
 
   /**
@@ -553,6 +618,19 @@ export class HeliconStore {
         .run(sourceKey, call.at, String(match["key"]));
       return false;
     }
+    // A row from an older version whose cursor the host has since renumbered: same turn, same token counts, no
+    // source range yet. It is this call, so it takes the provenance instead of a second copy entering the ledger.
+    // Only a call that brings a source range is matched this way; two cursor-only readings stay as they came.
+    const twin = call.turnId && sourceKey ? this.db.prepare(`SELECT key FROM usage WHERE session_id = ? AND turn_id = ? AND source_key IS NULL
+        AND prompt_tokens = ? AND output_tokens = ? AND input_tokens = ? AND cached_tokens = ? AND cache_read_tokens = ?
+        AND cache_write_tokens = ? AND reasoning_tokens = ? AND (model_id IS ? OR model_id IS NULL OR ? IS NULL) LIMIT 1`)
+      .get(call.sessionId, call.turnId, call.promptTokens, call.outputTokens, call.inputTokens, call.cachedTokens, call.cacheReadTokens,
+        call.cacheWriteTokens, call.reasoningTokens, call.modelId, call.modelId) as Row | undefined : undefined;
+    if (twin) {
+      this.db.prepare("UPDATE usage SET source_key = COALESCE(source_key, ?), occurred_at = COALESCE(occurred_at, ?) WHERE key = ?")
+        .run(sourceKey, call.at, String(twin["key"]));
+      return false;
+    }
     const inserted = this.db
       .prepare(
         `INSERT INTO usage (key, session_id, turn_id, model_id, prompt_tokens, output_tokens, input_tokens,
@@ -595,12 +673,21 @@ export class HeliconStore {
       .run(sessionId, complete ? 1 : 0, reason, promptTokens, outputTokens, options.partial ? 1 : 0, options.partial ? 1 : 0);
   }
 
-  listUsageRecovery(): { sessionId: string; complete: boolean; reason: string | null; promptTokens: number | null; outputTokens: number | null; recordedPromptTokens: number; recordedOutputTokens: number }[] {
-    return (this.db.prepare(`SELECT r.*, COALESCE(SUM(u.prompt_tokens), 0) AS recorded_prompt, COALESCE(SUM(u.output_tokens), 0) AS recorded_output
-      FROM usage_recovery r LEFT JOIN usage u ON u.session_id = r.session_id GROUP BY r.session_id`).all() as Row[]).map((row) => ({
+  /** Each read of a session's usage with the totals recorded for it, and the conversation's name to show it by. */
+  listUsageRecovery(): UsageRecoveryRow[] {
+    return (this.db.prepare(`SELECT r.*, COALESCE(u.prompt, 0) AS recorded_prompt, COALESCE(u.output, 0) AS recorded_output,
+        s.title AS session_title, p.cwd AS project_cwd, d.session_id IS NOT NULL AS deleted
+      FROM usage_recovery r
+      LEFT JOIN (SELECT session_id, SUM(prompt_tokens) AS prompt, SUM(output_tokens) AS output FROM usage GROUP BY session_id) u ON u.session_id = r.session_id
+      LEFT JOIN sessions s ON s.id = r.session_id
+      LEFT JOIN projects p ON p.id = s.project_id
+      LEFT JOIN deleted_sessions d ON d.session_id = r.session_id`).all() as Row[]).map((row) => ({
       sessionId: String(row["session_id"]), complete: Number(row["complete"]) === 1, reason: row["reason"] === null ? null : String(row["reason"]),
       promptTokens: row["prompt_tokens"] === null ? null : Number(row["prompt_tokens"]), outputTokens: row["output_tokens"] === null ? null : Number(row["output_tokens"]),
       recordedPromptTokens: Number(row["recorded_prompt"]), recordedOutputTokens: Number(row["recorded_output"]),
+      title: row["session_title"] === null || row["session_title"] === undefined ? null : String(row["session_title"]),
+      cwd: row["project_cwd"] === null || row["project_cwd"] === undefined ? null : String(row["project_cwd"]),
+      deleted: Number(row["deleted"] ?? 0) === 1,
     }));
   }
 

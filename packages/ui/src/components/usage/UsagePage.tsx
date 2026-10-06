@@ -5,8 +5,8 @@ import { useOverlayDragProps } from "../../app/frame.js";
 import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, plural, relativeTime, usageThreadTitle } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
 import { fillUsageDays, formatUsageDay, USAGE_RANGES } from "../../model/usage-range.js";
-import { recoveryGap } from "../../model/usage-recovery.js";
-import type { ModelOption, UsageBucket, UsageReport, UsageThread } from "../../types.js";
+import { groupRecovery } from "../../model/usage-recovery.js";
+import type { ModelOption, UsageBucket, UsageRecovery, UsageReport, UsageThread } from "../../types.js";
 import { Button, Spinner, cn } from "../ui/primitives.js";
 import { TopBar } from "../chrome.js";
 import { PlanMeter } from "./PlanMeter.js";
@@ -134,24 +134,73 @@ export function UsageResults({ report, models }: { report: UsageReport; models: 
         <Models view={undated} />
         <Threads view={undated} />
       </> : null}
-      {report?.recovery?.length ? <section className="rounded-xl bg-raised px-4 py-4 shadow-[0_0_0_1px_var(--border)]">
-        <h2 className="text-sm font-semibold text-fg">Consumo com detalhamento incompleto</h2>
-        <p className="mt-1 text-xs text-muted">Estes dados não entram nos custos nem nos totais acima. Faltam datas, modelos ou chamadas individuais. Recuperar uso pode ampliar a leitura disponível.</p>
-        <ul className="mt-3 flex flex-col gap-3">
-          {report.recovery.map((row) => {
-            const gap = recoveryGap(row);
-            return <li key={row.sessionId} className="text-xs text-muted">
-              <p>{row.reason ?? "O acumulado informa mais consumo do que as chamadas registradas."}</p>
-              {gap.promptTokens !== null && gap.outputTokens !== null ? <p className="mt-1 tabular-nums">Diferença para o acumulado: {formatTokens(gap.promptTokens)} tokens de entrada e {formatTokens(gap.outputTokens)} de saída sem detalhamento.</p> : <p className="mt-1">Consumo acumulado indisponível.</p>}
-            </li>;
-          })}
-        </ul>
-      </section> : null}
+      {report?.recovery?.length ? <IncompleteUsage rows={report.recovery} /> : null}
       <p className="text-xs text-subtle">
         Os preços são as tarifas publicadas pela Meta por milhão de tokens, ou o preço de catálogo do próprio modelo quando ele
         tem um. Níveis de contribuidor são cobrados à parte e marcados como tal.
       </p>
     </div>
+  );
+}
+
+/**
+ * Consumo que não se pôde detalhar, agrupado pelo motivo: quantas conversas, o que o motivo quer dizer, quanto falta
+ * somado, e as conversas pelo nome, recolhidas. As que não deixam nada faltando só entram na contagem.
+ */
+function IncompleteUsage({ rows }: { rows: readonly UsageRecovery[] }) {
+  const groups = useMemo(() => groupRecovery(rows), [rows]);
+  return (
+    <section className="rounded-xl bg-raised px-4 py-4 shadow-[0_0_0_1px_var(--border)]">
+      <h2 className="text-sm font-semibold text-fg">Consumo com detalhamento incompleto</h2>
+      <p className="mt-1 text-xs text-muted">
+        {plural(rows.length, "conversa", "conversas")}. Estes dados não entram nos custos nem nos totais acima. Faltam datas, modelos ou
+        chamadas individuais. Recuperar uso pode ampliar a leitura disponível.
+      </p>
+      <ul className="mt-3 flex flex-col gap-4">
+        {groups.map((group) => (
+          <li key={group.reason} className="text-xs text-muted">
+            <p className="text-pretty text-fg">
+              {group.reason} <span className="text-muted tabular-nums">· {plural(group.count, "conversa", "conversas")}</span>
+            </p>
+            {group.explanation ? <p className="mt-0.5 text-pretty">{group.explanation}</p> : null}
+            {group.promptTokens > 0 || group.outputTokens > 0 ? (
+              <p className="mt-1 tabular-nums">
+                Somadas, faltam {formatTokens(group.promptTokens)} tokens de entrada e {formatTokens(group.outputTokens)} de saída sem detalhamento.
+              </p>
+            ) : null}
+            {group.noDifference > 0 ? (
+              <p className="mt-1 tabular-nums">
+                {group.noDifference} sem diferença para o acumulado: as chamadas registradas já cobrem o total.
+              </p>
+            ) : null}
+            {group.noTotal > 0 ? (
+              <p className="mt-1 tabular-nums">
+                {group.noTotal} sem acumulado para comparar.
+              </p>
+            ) : null}
+            {group.entries.length > 0 ? (
+              <details className="mt-1.5">
+                <summary className="cursor-pointer select-none text-fg hover:underline">
+                  {group.entries.length === 1 ? "Ver a conversa" : `Ver as ${group.entries.length} conversas`}
+                </summary>
+                <ul className="mt-1.5 flex flex-col gap-1 pl-3">
+                  {group.entries.map((entry) => (
+                    <li key={entry.sessionId} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3">
+                      <span className="min-w-0 truncate text-fg">{entry.title}</span>
+                      <span className="shrink-0 tabular-nums">
+                        {entry.promptTokens === null || entry.outputTokens === null
+                          ? "sem acumulado"
+                          : `faltam ${formatTokens(entry.promptTokens)} de entrada, ${formatTokens(entry.outputTokens)} de saída`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

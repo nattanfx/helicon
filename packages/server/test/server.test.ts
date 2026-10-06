@@ -3519,3 +3519,66 @@ describe("server robustness: bounds and cleanup", () => {
     assert.equal(lines.filter((line) => line.includes("inconclusive")).length, 1);
   });
 });
+
+describe("recuperação de uso", () => {
+  it("tenta de novo uma página que o host recusou de passagem, e a conversa fica completa", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    let refusals = 0;
+    connection.replies.set("view/page", () => {
+      if (refusals < 1) {
+        refusals += 1;
+        throw new MspTestError("busy", "overloaded");
+      }
+      return { events: [usageEvent("r1")], nextCursor: null };
+    });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.calls, 1);
+    assert.equal(status.failed, 0);
+    assert.equal(status.incomplete, 0);
+    assert.deepEqual(status.reasons, {});
+  });
+
+  it("passa por um evento grande demais para uma página sem perder as chamadas em volta dele", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }], nextCursor: null });
+    const limits: number[] = [];
+    connection.replies.set("view/page", (params: Record<string, unknown>) => {
+      const limit = Number(params["limit"]);
+      limits.push(limit);
+      if (params["cursor"] === undefined) {
+        // From the head: the newest call fits one event at a time, the next older event is the huge one.
+        if (limit > 1) throw Object.assign(new MspTestError("too large", "pageEventTooLarge"), { data: { kind: "pageEventTooLarge", viewCursor: "big" } });
+        return { events: [usageEvent("newest", "c3", { promptTokens: 30 })], nextCursor: "c3" };
+      }
+      if (params["cursor"] === "c3") {
+        throw Object.assign(new MspTestError("too large", "pageEventTooLarge"), { data: { kind: "pageEventTooLarge", viewCursor: "big" } });
+      }
+      if (params["cursor"] === "big") return { events: [usageEvent("oldest", "c1", { promptTokens: 20 })], nextCursor: null };
+      throw new Error(`unexpected cursor ${String(params["cursor"])}`);
+    });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.calls, 2, "as duas chamadas, antes e depois do evento grande");
+    assert.equal(status.failed, 0);
+    assert.equal(status.incomplete, 0);
+    assert.ok(limits.includes(1), "a página estreitou até um evento");
+  });
+
+  it("diz o motivo real quando o histórico falha, em vez de dizer que ele não informa as chamadas", async () => {
+    const connection = new FakeConnection();
+    connection.replies.set("session/list", { sessions: [{ sessionId: "s1" }, { sessionId: "s2" }], nextCursor: null });
+    connection.replies.set("view/page", new MspTestError("view projection failed", "viewTruncated"));
+    connection.replies.set("session/read", { session: { sessionId: "s1" }, history: { mode: "none", noneReason: "excluded" } });
+    const { base } = await start(connection);
+    const status = await backfill(base);
+    assert.equal(status.failed, 2);
+    assert.equal(status.incomplete, 2);
+    const reason = "Não foi possível ler todas as chamadas do histórico (o Muse respondeu viewTruncated).";
+    assert.deepEqual(status.reasons, { [reason]: 2 }, "o resultado conta cada motivo");
+    const report = await get(base, "/api/usage");
+    assert.equal(report.recovery[0].reason, reason);
+    assert.equal(report.recovery[0].title, null, "uma conversa que este app nunca adotou vem sem título");
+  });
+});
