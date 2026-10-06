@@ -10,6 +10,7 @@ export type { WindowFrame } from "./app/frame.js";
 export * from "./model/identity.js";
 export * from "./model/approvals.js";
 export * from "./model/fileDrafts.js";
+export * from "./model/draftFiles.js";
 export * from "./model/notify.js";
 export * from "./model/errors.js";
 export * from "./model/failures.js";

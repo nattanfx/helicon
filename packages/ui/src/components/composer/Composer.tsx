@@ -29,7 +29,14 @@ import {
   type ReactNode,
 } from "react";
 import { AttachButton, AttachmentTray, readFiles, restoreFiles, toOutgoing, toPreview, type PendingFile } from "./attachments.js";
-import { DRAFT_FILES_PREFIX, DRAFT_TEXT_PREFIX, parseDraftFiles, restoreDraftFiles, storeDraftFiles } from "../../model/draftFiles.js";
+import {
+  DRAFT_TEXT_PREFIX,
+  loadDraftFiles,
+  persistDraftFiles,
+  restoreDraftFiles,
+  unsavedDraftFilesNotice,
+  type DraftFilesVault,
+} from "../../model/draftFiles.js";
 import { CostMeter } from "./CostPanel.js";
 import { Popover, Slider, Switch } from "radix-ui";
 import { shallowEqual, useApp, useController } from "../../app/context.js";
@@ -82,39 +89,45 @@ function useDraft(key: string): [string, (value: string) => void] {
   return [value, set];
 }
 
-function readDraftFiles(key: string): PendingFile[] {
+function localDrafts(): Storage | null {
   try {
-    const raw = window.localStorage.getItem(DRAFT_FILES_PREFIX + key);
-    return raw === null ? [] : restoreDraftFiles(parseDraftFiles(raw));
+    return window.localStorage;
   } catch {
-    return [];
+    return null;
   }
 }
 
-/** Os anexos do rascunho, persistidos como o texto; acima do teto ou sem armazenamento, ficam só na memória. */
-function useDraftFiles(key: string): [PendingFile[], (action: PendingFile[] | ((current: PendingFile[]) => PendingFile[])) => void] {
-  const [state, setState] = useState(() => ({ key, files: readDraftFiles(key) }));
-  const files = state.key === key ? state.files : readDraftFiles(key);
+function readDraftFiles(key: string, vault: DraftFilesVault | undefined): PendingFile[] {
+  return restoreDraftFiles(loadDraftFiles(localDrafts(), vault, key));
+}
+
+/**
+ * Os anexos do rascunho, persistidos como o texto: no cofre do desktop, ou no `localStorage` no navegador. Acima do
+ * teto ou sem armazenamento, ficam só na memória, e `unsaved` diz isso para a caixa avisar em vez de perder calada.
+ */
+function useDraftFiles(
+  key: string,
+): [PendingFile[], (action: PendingFile[] | ((current: PendingFile[]) => PendingFile[])) => void, boolean] {
+  const vault = useController().draftFilesVault;
+  const [state, setState] = useState(() => ({ key, files: readDraftFiles(key, vault) }));
+  const files = state.key === key ? state.files : readDraftFiles(key, vault);
   if (state.key !== key) {
     setState({ key, files });
   }
+  const [unsaved, setUnsaved] = useState(false);
   useEffect(() => {
-    try {
-      storeDraftFiles(window.localStorage, key, files);
-    } catch {
-      /* rascunhos são melhor-esforço */
-    }
-  }, [key, files]);
+    setUnsaved(persistDraftFiles(localDrafts(), vault, key, files) === "skipped");
+  }, [key, files, vault]);
   const set = useCallback(
     (action: PendingFile[] | ((current: PendingFile[]) => PendingFile[])) => {
       setState((prev) => {
-        const base = prev.key === key ? prev.files : readDraftFiles(key);
+        const base = prev.key === key ? prev.files : readDraftFiles(key, vault);
         return { key, files: typeof action === "function" ? action(base) : action };
       });
     },
-    [key],
+    [key, vault],
   );
-  return [files, set];
+  return [files, set, unsaved];
 }
 
 /** O menu de barra para um rascunho, com o que escolher uma linha escreve na frente do nome do comando. */
@@ -209,7 +222,7 @@ export function Composer(props: ComposerProps) {
   const shell = !props.readOnly && /^!\s*\S/.test(text);
 
   // Arquivos pegam carona na próxima mensagem: o Muse vê imagens ele mesmo, qualquer outra coisa cai na pasta do projeto.
-  const [files, setFiles] = useDraftFiles(draftKey);
+  const [files, setFiles, filesUnsaved] = useDraftFiles(draftKey);
   const addFiles = (incoming: Iterable<File>) => {
     if (props.readOnly) {
       return;
@@ -461,6 +474,11 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       <AttachmentTray files={files} onRemove={removeFile} />
+      {filesUnsaved && files.length > 0 ? (
+        <p role="status" className="px-4 pt-1.5 text-xs text-muted">
+          {unsavedDraftFilesNotice(files.length, Boolean(controller.draftFilesVault))}
+        </p>
+      ) : null}
       <textarea
         id={id}
         ref={ref}

@@ -5,7 +5,14 @@ import {
   DRAFT_TEXT_PREFIX,
   MAX_DRAFT_FILES_CHARS,
   MAX_DRAFT_FILES_TOTAL_CHARS,
+  MAX_VAULT_DRAFT_FILES_CHARS,
+  MAX_VAULT_DRAFT_FILES_TOTAL_CHARS,
   forgetStoredDraft,
+  loadDraftFiles,
+  persistDraftFiles,
+  unsavedDraftFilesNotice,
+  type DraftFilesVault,
+  type StoredDraftFile,
   parseDraftFiles,
   storeDraftFiles,
   restoreDraftFiles,
@@ -173,3 +180,86 @@ describe("gravação dos anexos do rascunho", () => {
     );
   });
 });
+
+/** O cofre do desktop na memória, como o app o monta depois de ler `composer-drafts.json`. */
+function memoryVault(initial: Record<string, StoredDraftFile[]> = {}): DraftFilesVault & { writes: number } {
+  let drafts: Record<string, readonly StoredDraftFile[]> = { ...initial };
+  const vault = {
+    writes: 0,
+    all: () => drafts,
+    set(key: string, files: readonly StoredDraftFile[]) {
+      vault.writes += 1;
+      if (files.length === 0) {
+        const { [key]: _gone, ...rest } = drafts;
+        drafts = rest;
+      } else {
+        drafts = { ...drafts, [key]: [...files] };
+      }
+    },
+  };
+  return vault;
+}
+
+describe("anexos do rascunho no cofre do desktop", () => {
+  it("guarda uma imagem de ~954 KB (1,3 milhão de caracteres) que o localStorage recusaria, e ela volta ao reabrir", () => {
+    const storage = memoryStorage();
+    const vault = memoryVault();
+    const image = pending({ base64: "x".repeat(1_300_000), size: 954_000 });
+    assert.equal(persistDraftFiles(storage, undefined, "s1", [image]), "skipped", "no navegador o teto do localStorage vale");
+    assert.equal(persistDraftFiles(storage, vault, "s1", [image]), "stored");
+    assert.equal(storage.map.has(DRAFT_FILES_PREFIX + "s1"), false, "o espelho no localStorage não guarda anexos");
+    // Reabrir: um cofre novo com o que foi gravado, e um localStorage vazio.
+    const reopened = memoryVault(structuredClone(vault.all()) as Record<string, StoredDraftFile[]>);
+    const restored = restoreDraftFiles(loadDraftFiles(memoryStorage(), reopened, "s1"));
+    assert.equal(restored.length, 1);
+    assert.equal(restored[0]?.base64.length, 1_300_000);
+    assert.equal(restored[0]?.name, "print.png");
+  });
+
+  it("tira a cópia do localStorage de antes do cofre ao gravar no cofre, e a lê enquanto o cofre não tem nada", () => {
+    const storage = memoryStorage();
+    storage.map.set(DRAFT_FILES_PREFIX + "s1", JSON.stringify([{ name: "a.png", mediaType: "image/png", kind: "image", base64: "AAAA", size: 3 }]));
+    const vault = memoryVault();
+    assert.equal(loadDraftFiles(storage, vault, "s1").length, 1, "cópia antiga ainda volta");
+    persistDraftFiles(storage, vault, "s1", restoreDraftFiles(loadDraftFiles(storage, vault, "s1")));
+    assert.equal(storage.map.has(DRAFT_FILES_PREFIX + "s1"), false);
+    assert.equal(vault.all()["s1"]?.length, 1);
+  });
+
+  it("acima do teto do cofre, tira a cópia e avisa que o anexo fica só na memória", () => {
+    const vault = memoryVault({ s1: [{ name: "velho.png", mediaType: "image/png", kind: "image", base64: "AAAA", size: 3 }] });
+    const huge = pending({ base64: "x".repeat(MAX_VAULT_DRAFT_FILES_CHARS + 1) });
+    assert.equal(persistDraftFiles(null, vault, "s1", [huge]), "skipped");
+    assert.equal(vault.all()["s1"], undefined, "uma cópia velha não volta no lugar da atual");
+    assert.equal(persistDraftFiles(null, vault, "s1", [pending({ base64: "x".repeat(MAX_VAULT_DRAFT_FILES_CHARS) })]), "stored");
+  });
+
+  it("respeita o teto somado do cofre e esvazia ao tirar todos os anexos", () => {
+    const vault = memoryVault();
+    const chunk = MAX_VAULT_DRAFT_FILES_CHARS;
+    let key = 0;
+    while ((key + 1) * chunk <= MAX_VAULT_DRAFT_FILES_TOTAL_CHARS) {
+      assert.equal(persistDraftFiles(null, vault, `k${key}`, [pending({ base64: "x".repeat(chunk) })]), "stored");
+      key += 1;
+    }
+    assert.equal(persistDraftFiles(null, vault, "extra", [pending({ base64: "x".repeat(chunk) })]), "skipped");
+    assert.equal(persistDraftFiles(null, vault, "k0", []), "removed");
+    assert.equal(vault.all()["k0"], undefined);
+    assert.equal(persistDraftFiles(null, vault, "extra", [pending({ base64: "x".repeat(chunk) })]), "stored");
+  });
+
+  it("os tetos do cofre ficam acima dos do localStorage", () => {
+    assert.equal(MAX_VAULT_DRAFT_FILES_CHARS, 3_000_000);
+    assert.equal(MAX_VAULT_DRAFT_FILES_TOTAL_CHARS, 20_000_000);
+    assert.ok(MAX_VAULT_DRAFT_FILES_CHARS > MAX_DRAFT_FILES_CHARS);
+  });
+
+  it("explica em português o anexo que não ficou guardado", () => {
+    assert.equal(
+      unsavedDraftFilesNotice(1, true),
+      "Este anexo é grande demais para ficar guardado no rascunho; ele some se você fechar o app.",
+    );
+    assert.match(unsavedDraftFilesNotice(2, false), /^Estes anexos são grandes demais.*fechar ou recarregar a página\.$/);
+  });
+});
+

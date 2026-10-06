@@ -82,7 +82,7 @@ import {
   type ThreadState,
   type Toast,
 } from "./store.js";
-import { forgetStoredDraft } from "./draftFiles.js";
+import { forgetStoredDraft, type DraftFilesVault } from "./draftFiles.js";
 import {
   FILE_DRAFTS_KEY,
   FILE_DRAFTS_LEAVE_MESSAGE,
@@ -120,6 +120,8 @@ export interface Platform {
   onBeforeClose?(handler: (options: { dialog: boolean }) => boolean): () => void;
   /** Apaga o rascunho guardado da caixa de mensagem (texto e anexos) de uma conversa excluída. */
   forgetDraft?(key: string): void;
+  /** Cofre durável dos anexos de rascunho (desktop). Ausente: os anexos ficam no `localStorage`, com tetos menores. */
+  draftFilesVault?: DraftFilesVault;
 }
 
 const PREFS_KEY = "helicon.prefs.v1";
@@ -2280,7 +2282,7 @@ export class HeliconController {
     this.setBusy(`delete:${sessionId}`, true);
     try {
       await this.client.deleteSession(sessionId);
-      this.platform.forgetDraft?.(sessionId);
+      this.forgetDraft(sessionId);
       this.notifications?.forget(sessionId);
       this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== sessionId) }));
       this.toast("info", "Conversa excluída", displayTitle(current));
@@ -2384,7 +2386,7 @@ export class HeliconController {
     for (const current of targets) {
       try {
         await this.client.deleteSession(current.sessionId);
-        this.platform.forgetDraft?.(current.sessionId);
+        this.forgetDraft(current.sessionId);
         this.notifications?.forget(current.sessionId);
         this.update((s) => ({ ...s, archived: s.archived.filter((a) => a.sessionId !== current.sessionId) }));
       } catch {
@@ -3552,6 +3554,17 @@ export class HeliconController {
       const fold = fn(thread.fold);
       return fold === thread.fold ? s : { ...s, threads: { ...s.threads, [sessionId]: { ...thread, fold } } };
     });
+  }
+
+  /** Onde a caixa de mensagem guarda os anexos do rascunho no desktop; ausente no navegador. */
+  get draftFilesVault(): DraftFilesVault | undefined {
+    return this.platform.draftFilesVault;
+  }
+
+  /** O rascunho de uma conversa excluída sai do `localStorage` e do cofre do desktop. */
+  private forgetDraft(key: string): void {
+    this.platform.forgetDraft?.(key);
+    this.platform.draftFilesVault?.set(key, []);
   }
 
   private patchMeta(sessionId: string, patch: Partial<ThreadFold["meta"]>): void {

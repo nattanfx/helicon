@@ -10,9 +10,16 @@ C4 sobre `cad7a8c`. O rascunho da caixa de mensagem já sobrevive em `helicon.dr
 | Abas abertas | `AppState.filePanels` por `sessionId` | Não |
 | Preferência de painel aberto | `prefs.filesOpen` → `helicon.prefs.v1` | Sim |
 | Rascunho da mensagem | `localStorage` `helicon.draft.<sessionId ou new:cwd>` | Sim |
-| Anexos do rascunho da mensagem | `localStorage` `helicon.draftFiles.<mesma chave>` | Sim, até 1 milhão de caracteres por rascunho e 2 milhões somando todos |
+| Anexos do rascunho da mensagem (navegador) | `localStorage` `helicon.draftFiles.<mesma chave>` | Sim, até 1 milhão de caracteres de base64 por rascunho e 2 milhões somando todos |
+| Anexos do rascunho da mensagem (desktop) | `composer-drafts.json` na pasta de dados da instalação | Sim, até 3 milhões de caracteres por rascunho e 20 milhões somando todos |
 
-Os anexos do rascunho acima desses tetos, ou com a cota da origem esgotada, ficam só na memória e a cópia guardada sai (nunca volta uma versão velha). Excluir uma conversa apaga o texto e os anexos guardados do seu rascunho; arquivar não apaga, porque a conversa pode ser restaurada. No desktop, o cofre `file-drafts.json` é gravado antes do espelho no `localStorage`: uma cota esgotada não impede a cópia durável, e o espelho que não coube é retirado.
+No navegador, os anexos do rascunho acima desses tetos, ou com a cota da origem esgotada, ficam só na memória e a cópia guardada sai (nunca volta uma versão velha). Os tetos de 1 e 2 milhões existem por causa da cota do `localStorage` (no WebView2, uns 5 milhões de caracteres por origem, divididos com prefs e edições de arquivo).
+
+No desktop, os anexos vão para o cofre `composer-drafts.json` (comandos `helicon_load_composer_drafts` e `helicon_save_composer_drafts`), que não divide cota com nada: o `localStorage` deixa de guardar anexos (a cópia de uma versão anterior é lida uma vez e sai na primeira gravação). O teto por rascunho volta aos 3 milhões de antes (uma imagem de 954 KB vira ~1,27 milhão de caracteres e cabe); o somado fica em 20 milhões (~15 MB) porque o cofre é lido inteiro ao abrir o app e regravado inteiro a cada anexo que entra ou sai. É um arquivo separado de `file-drafts.json` para que editar um arquivo Markdown não regrave megabytes de imagens a cada pausa na digitação. Tem `.bak` e escrita por arquivo temporário, como o cofre das edições; fechar o app descarrega a fila de escrita. Se nem ele puder ser lido, os anexos ficam no `localStorage` com os tetos do navegador.
+
+Acima do teto (do cofre ou do `localStorage`), a caixa de mensagem mostra abaixo dos anexos: **"Este anexo é grande demais para ficar guardado no rascunho; ele some se você fechar o app."** (no navegador, "fechar ou recarregar a página"). O anexo continua valendo para enviar.
+
+Excluir uma conversa apaga o texto e os anexos guardados do seu rascunho, no `localStorage` e no cofre; arquivar não apaga, porque a conversa pode ser restaurada. No desktop, o cofre `file-drafts.json` é gravado antes do espelho no `localStorage`: uma cota esgotada não impede a cópia durável, e o espelho que não coube é retirado.
 
 ## O que já funciona (preservar)
 
@@ -55,4 +62,5 @@ removida); só o cofre da cópia mudou de lugar no desktop.
 - Vazio válido, limite de 1 milhão, conflito, descarte e falha de escrita continuam como antes; só o transporte mudou. Falha do cofre não derruba o app (vai ao console); a cópia local da sessão segue valendo.
 - Fechar o desktop descarrega a fila de escrita antes de liberar a janela.
 - Restauração manual: com o app fechado, renomeie `file-drafts.json.bak` para `file-drafts.json` (ou apague o `.json` para voltar ao `localStorage` da origem). Nunca edite com o app aberto. Não aplicar a dados reais sem cópia de segurança.
-- Concessão remota (BUG-V1-F6/REV6): a UI do desktop é servida pelo servidor local em `http://127.0.0.1:*`, que o Tauri trata como conteúdo remoto. Os comandos `helicon_load_file_drafts` e `helicon_save_file_drafts` precisam estar declarados no `AppManifest` em `build.rs` e concedidos (`allow-helicon-load-file-drafts`, `allow-helicon-save-file-drafts`) em `capabilities/main.json`; sem isso o `invoke` é negado em silêncio no instalador e o cofre nunca é usado. O teste `remote_ui_may_invoke_the_drafts_vault_commands` vigia essa concessão.
+- Concessão remota (BUG-V1-F6/REV6): a UI do desktop é servida pelo servidor local em `http://127.0.0.1:*`, que o Tauri trata como conteúdo remoto. Os comandos `helicon_load_file_drafts`, `helicon_save_file_drafts`, `helicon_load_composer_drafts` e `helicon_save_composer_drafts` precisam estar declarados no `AppManifest` em `build.rs` e concedidos (`allow-helicon-load-file-drafts`, `allow-helicon-save-file-drafts`, `allow-helicon-load-composer-drafts`, `allow-helicon-save-composer-drafts`) em `capabilities/main.json`; sem isso o `invoke` é negado em silêncio no instalador e o cofre nunca é usado. O teste `remote_ui_may_invoke_the_drafts_vault_commands` vigia essa concessão.
+- Restauração manual dos anexos do rascunho: o mesmo de `file-drafts.json`, com `composer-drafts.json.bak`.

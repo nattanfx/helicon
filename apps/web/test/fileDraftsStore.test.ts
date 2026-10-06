@@ -1,8 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { Platform } from "@helicon/ui";
+import { loadDraftFiles, persistDraftFiles, restoreDraftFiles, type Platform } from "@helicon/ui";
 import {
+  createComposerVault,
   createStableSaver,
+  loadComposerDrafts,
   loadStableFileDrafts,
   prepareStableFileDrafts,
   type InvokeFn,
@@ -162,3 +164,95 @@ describe("cofre estável de rascunhos", () => {
     }
   });
 });
+
+describe("cofre dos anexos de rascunho no desktop", () => {
+  const image = {
+    id: "f1",
+    name: "captura.png",
+    mediaType: "image/png",
+    kind: "image" as const,
+    url: null,
+    // Uma imagem de ~954 KB em base64: acima do teto de 1 milhão do localStorage.
+    base64: "x".repeat(1_300_000),
+    width: 10,
+    height: 10,
+    size: 954_000,
+  };
+
+  it("uma imagem de 1,3 milhão de caracteres sobrevive a fechar e reabrir o app", async () => {
+    tauriWindow();
+    let disk: string | null = null;
+    const invoker = fakeInvoker((cmd, args) => {
+      if (cmd === "helicon_save_composer_drafts") {
+        disk = args?.["content"] as string;
+      }
+      return cmd === "helicon_load_composer_drafts" ? disk : null;
+    });
+    const first = await prepareStableFileDrafts(basePlatform(null, { count: 0 }), { invoker });
+    const vault = first.platform.draftFilesVault;
+    assert.ok(vault, "o desktop tem cofre de anexos");
+    assert.equal(persistDraftFiles(null, vault, "s1", [image]), "stored");
+    await first.flushStable();
+    assert.ok(disk, "o fechar descarrega a escrita");
+
+    const reopened = await prepareStableFileDrafts(basePlatform(null, { count: 0 }), { invoker });
+    const restored = restoreDraftFiles(loadDraftFiles(null, reopened.platform.draftFilesVault, "s1"));
+    assert.equal(restored.length, 1);
+    assert.equal(restored[0]?.base64.length, 1_300_000);
+    assert.equal(restored[0]?.name, "captura.png");
+  });
+
+  it("junta mudanças seguidas numa escrita com o estado mais novo, e apagar tudo grava vazio", async () => {
+    const invoker = fakeInvoker(() => null);
+    const vault = createComposerVault({}, invoker);
+    vault.set("a", [{ name: "a.txt", mediaType: "text/plain", kind: "file", base64: "QQ==", size: 1 }]);
+    vault.set("b", [{ name: "b.txt", mediaType: "text/plain", kind: "file", base64: "Qg==", size: 1 }]);
+    await vault.flush();
+    const writes = invoker.calls.filter((call) => call.cmd === "helicon_save_composer_drafts");
+    assert.equal(writes.length, 1);
+    assert.deepEqual(Object.keys(JSON.parse(writes[0]?.args?.["content"] as string)), ["a", "b"]);
+    vault.set("a", []);
+    vault.set("b", []);
+    vault.set("nunca-existiu", []);
+    await vault.flush();
+    const last = invoker.calls.filter((call) => call.cmd === "helicon_save_composer_drafts").at(-1);
+    assert.equal(last?.args?.["content"], "{}", "o Rust apaga o arquivo com {}");
+  });
+
+  it("lê só anexos bem formados e trata ausência e corrupção como vazio", async () => {
+    assert.deepEqual(await loadComposerDrafts(fakeInvoker(() => null)), {});
+    assert.deepEqual(await loadComposerDrafts(fakeInvoker(() => "{ quebrado")), {});
+    const loaded = await loadComposerDrafts(
+      fakeInvoker(() =>
+        JSON.stringify({ s1: [{ name: "a.png", mediaType: "image/png", kind: "image", base64: "AAAA", size: 3 }, { bogus: true }], s2: [] }),
+      ),
+    );
+    assert.deepEqual(Object.keys(loaded), ["s1"]);
+    assert.equal(loaded["s1"]?.length, 1);
+  });
+
+  it("sem conseguir ler o cofre, os anexos ficam no localStorage como antes", async () => {
+    tauriWindow();
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      const invoker = fakeInvoker((cmd) => {
+        if (cmd === "helicon_load_composer_drafts") {
+          throw new Error("comando negado");
+        }
+        return null;
+      });
+      const { platform } = await prepareStableFileDrafts(basePlatform(null, { count: 0 }), { invoker });
+      assert.equal(platform.draftFilesVault, undefined);
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  it("no navegador não há cofre de anexos", async () => {
+    plainWindow();
+    const { platform } = await prepareStableFileDrafts(basePlatform(null, { count: 0 }), { invoker: fakeInvoker(() => null) });
+    assert.equal(platform.draftFilesVault, undefined);
+  });
+});
+

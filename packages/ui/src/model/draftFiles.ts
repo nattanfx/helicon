@@ -7,13 +7,26 @@ export const DRAFT_TEXT_PREFIX = "helicon.draft.";
 export const DRAFT_FILES_PREFIX = "helicon.draftFiles.";
 
 /**
- * Teto de base64 por rascunho (cerca de 730 KB binários); acima disso o anexo fica só na memória.
+ * Teto de base64 por rascunho no `localStorage` (cerca de 730 KB binários); acima disso o anexo fica só na memória.
  * A cota do WebView2 é de uns 5 milhões de caracteres por origem, dividida com prefs e edições de arquivo.
+ * Vale no navegador; no desktop os anexos vão para o cofre durável, com os tetos abaixo.
  */
 export const MAX_DRAFT_FILES_CHARS = 1_000_000;
 
 /** Teto somado de todos os anexos de rascunho guardados, para sobrar cota às prefs e às edições de arquivo. */
 export const MAX_DRAFT_FILES_TOTAL_CHARS = 2_000_000;
+
+/**
+ * Teto por rascunho no cofre durável do desktop (`composer-drafts.json`, cerca de 2,2 MB binários): o de antes dos
+ * tetos do `localStorage`, que cobre uma captura de tela ou foto comum (uma imagem de 954 KB vira ~1,27 milhão).
+ */
+export const MAX_VAULT_DRAFT_FILES_CHARS = 3_000_000;
+
+/**
+ * Teto somado no cofre durável (cerca de 15 MB binários). O cofre não divide cota com nada, mas é lido inteiro ao
+ * abrir o app e regravado inteiro a cada anexo que entra ou sai; 20 milhões mantêm isso em frações de segundo.
+ */
+export const MAX_VAULT_DRAFT_FILES_TOTAL_CHARS = 20_000_000;
 
 /** O pedaço do `localStorage` que a gravação dos anexos usa; injetável nos testes. */
 export interface DraftStorage {
@@ -22,6 +35,17 @@ export interface DraftStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
+}
+
+/**
+ * O cofre durável dos anexos de rascunho no desktop: um arquivo na pasta de dados do app, sem a cota do
+ * `localStorage`. Carregado inteiro antes de montar a interface; gravar só enfileira a escrita.
+ */
+export interface DraftFilesVault {
+  /** Os anexos guardados de cada rascunho, por chave de conversa. */
+  all(): Readonly<Record<string, readonly StoredDraftFile[]>>;
+  /** Grava os anexos de um rascunho; lista vazia apaga. Nunca lança. */
+  set(key: string, files: readonly StoredDraftFile[]): void;
 }
 
 /** Um anexo guardado no armazenamento local: bytes e metadados, sem id efêmero nem URL de objeto. */
@@ -84,6 +108,11 @@ export function parseDraftFiles(raw: unknown): StoredDraftFile[] {
   } catch {
     return [];
   }
+  return parseStoredDraftFiles(parsed);
+}
+
+/** Como `parseDraftFiles`, para uma lista já lida (o cofre do desktop guarda o JSON inteiro de uma vez). */
+export function parseStoredDraftFiles(parsed: unknown): StoredDraftFile[] {
   if (!Array.isArray(parsed)) {
     return [];
   }
@@ -97,24 +126,28 @@ export function parseDraftFiles(raw: unknown): StoredDraftFile[] {
   return out;
 }
 
+/** Os anexos da bandeja na forma guardada: bytes e metadados. */
+export function toStoredDraftFiles(files: readonly PendingFile[]): StoredDraftFile[] {
+  return files.map((file) => ({
+    name: file.name,
+    mediaType: file.mediaType,
+    kind: file.kind,
+    base64: file.base64,
+    ...(file.width !== undefined && file.height !== undefined ? { width: file.width, height: file.height } : {}),
+    size: file.size,
+  }));
+}
+
+function base64Chars(files: readonly { base64: string }[]): number {
+  return files.reduce((sum, file) => sum + file.base64.length, 0);
+}
+
 /** Serializa para o armazenamento local; null quando passa do teto (tudo-ou-nada, sem meio rascunho). */
 export function serializeDraftFiles(files: readonly PendingFile[]): string | null {
-  let chars = 0;
-  const stored: StoredDraftFile[] = files.map((file) => {
-    chars += file.base64.length;
-    return {
-      name: file.name,
-      mediaType: file.mediaType,
-      kind: file.kind,
-      base64: file.base64,
-      ...(file.width !== undefined && file.height !== undefined ? { width: file.width, height: file.height } : {}),
-      size: file.size,
-    };
-  });
-  if (chars > MAX_DRAFT_FILES_CHARS) {
+  if (base64Chars(files) > MAX_DRAFT_FILES_CHARS) {
     return null;
   }
-  return JSON.stringify(stored);
+  return JSON.stringify(toStoredDraftFiles(files));
 }
 
 let draftFileSeq = 0;
@@ -177,6 +210,79 @@ export function storeDraftFiles(storage: DraftStorage, key: string, files: reado
     drop();
     return "skipped";
   }
+}
+
+/**
+ * Grava (ou apaga) os anexos do rascunho `key` no cofre durável do desktop, com os tetos do cofre. Acima deles, a
+ * cópia guardada sai e o anexo fica só na memória, como no `localStorage`. Nunca lança.
+ */
+export function storeVaultDraftFiles(vault: DraftFilesVault, key: string, files: readonly PendingFile[]): "stored" | "removed" | "skipped" {
+  try {
+    if (files.length === 0) {
+      vault.set(key, []);
+      return "removed";
+    }
+    const chars = base64Chars(files);
+    let others = 0;
+    for (const [other, stored] of Object.entries(vault.all())) {
+      if (other !== key) {
+        others += base64Chars(stored);
+      }
+    }
+    if (chars > MAX_VAULT_DRAFT_FILES_CHARS || others + chars > MAX_VAULT_DRAFT_FILES_TOTAL_CHARS) {
+      vault.set(key, []);
+      return "skipped";
+    }
+    vault.set(key, toStoredDraftFiles(files));
+    return "stored";
+  } catch {
+    return "skipped";
+  }
+}
+
+/**
+ * Guarda os anexos do rascunho onde eles sobrevivem a fechar o app: no cofre do desktop quando há um (e aí o
+ * espelho no `localStorage` sai, para a cota sobrar às prefs e às edições), senão no `localStorage` com seus tetos.
+ * `skipped` = o anexo ficou só na memória e some ao fechar. Nunca lança.
+ */
+export function persistDraftFiles(
+  storage: DraftStorage | null,
+  vault: DraftFilesVault | undefined,
+  key: string,
+  files: readonly PendingFile[],
+): "stored" | "removed" | "skipped" {
+  if (!vault) {
+    return storage ? storeDraftFiles(storage, key, files) : files.length === 0 ? "removed" : "skipped";
+  }
+  const result = storeVaultDraftFiles(vault, key, files);
+  try {
+    storage?.removeItem(DRAFT_FILES_PREFIX + key);
+  } catch {
+    /* armazenamento indisponível: nada a liberar */
+  }
+  return result;
+}
+
+/** Os anexos guardados do rascunho: do cofre do desktop, senão do `localStorage` (navegador, ou cópia de antes do cofre). */
+export function loadDraftFiles(storage: Pick<DraftStorage, "getItem"> | null, vault: DraftFilesVault | undefined, key: string): StoredDraftFile[] {
+  const kept = vault?.all()[key];
+  if (kept && kept.length > 0) {
+    return [...kept];
+  }
+  try {
+    const raw = storage?.getItem(DRAFT_FILES_PREFIX + key) ?? null;
+    return raw === null ? [] : parseDraftFiles(raw);
+  } catch {
+    return [];
+  }
+}
+
+/** O aviso de um anexo que não coube no rascunho guardado: ele vale para enviar, mas não volta depois de fechar. */
+export function unsavedDraftFilesNotice(count: number, desktop: boolean): string {
+  const closing = desktop ? "fechar o app" : "fechar ou recarregar a página";
+  return count === 1
+    ? `Este anexo é grande demais para ficar guardado no rascunho; ele some se você ${closing}.`
+    : `Estes anexos são grandes demais para ficar guardados no rascunho; eles somem se você ${closing}.`;
 }
 
 /** Apaga texto e anexos guardados do rascunho de uma conversa excluída. Nunca lança. */

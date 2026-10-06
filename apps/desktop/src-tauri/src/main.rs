@@ -155,10 +155,27 @@ const DRAFTS_BACKUP_FILE: &str = "file-drafts.json.bak";
 /// Escrita em andamento: só substitui o arquivo principal (rename) depois de completa.
 const DRAFTS_TEMP_FILE: &str = "file-drafts.json.tmp";
 
-fn drafts_paths(data_dir: Option<&Path>) -> Option<(PathBuf, PathBuf)> {
+/// Anexos não enviados dos rascunhos da caixa de mensagem: um cofre à parte, para que editar um arquivo
+/// não regrave megabytes de imagens a cada pausa na digitação. Sem a cota do `localStorage` do WebView2.
+const COMPOSER_DRAFTS_FILE: &str = "composer-drafts.json";
+const COMPOSER_DRAFTS_BACKUP_FILE: &str = "composer-drafts.json.bak";
+const COMPOSER_DRAFTS_TEMP_FILE: &str = "composer-drafts.json.tmp";
+
+/// Os três arquivos de um cofre: o principal, a última versão válida e a escrita em andamento.
+struct Vault {
+    file: &'static str,
+    backup: &'static str,
+    temp: &'static str,
+}
+
+const FILE_DRAFTS_VAULT: Vault = Vault { file: DRAFTS_FILE, backup: DRAFTS_BACKUP_FILE, temp: DRAFTS_TEMP_FILE };
+const COMPOSER_DRAFTS_VAULT: Vault =
+    Vault { file: COMPOSER_DRAFTS_FILE, backup: COMPOSER_DRAFTS_BACKUP_FILE, temp: COMPOSER_DRAFTS_TEMP_FILE };
+
+fn drafts_paths(data_dir: Option<&Path>, vault: &Vault) -> Option<(PathBuf, PathBuf)> {
     let dir = data_dir?;
     std::fs::create_dir_all(dir).ok()?;
-    Some((plain_path(&dir.join(DRAFTS_FILE)), plain_path(&dir.join(DRAFTS_BACKUP_FILE))))
+    Some((plain_path(&dir.join(vault.file)), plain_path(&dir.join(vault.backup))))
 }
 
 fn read_drafts_file(path: &Path) -> Option<String> {
@@ -171,7 +188,15 @@ fn read_valid_drafts_file(path: &Path) -> Option<String> {
 }
 
 fn load_drafts_from(data_dir: &Path) -> Option<String> {
-    let (path, backup) = drafts_paths(Some(data_dir))?;
+    load_vault_from(data_dir, &FILE_DRAFTS_VAULT)
+}
+
+fn save_drafts_to(data_dir: &Path, content: &str) -> Result<(), String> {
+    save_vault_to(data_dir, &FILE_DRAFTS_VAULT, content)
+}
+
+fn load_vault_from(data_dir: &Path, vault: &Vault) -> Option<String> {
+    let (path, backup) = drafts_paths(Some(data_dir), vault)?;
     // Sem arquivo principal = cópia descartada; o `.bak` não ressuscita o descarte.
     if !path.exists() {
         return None;
@@ -179,8 +204,8 @@ fn load_drafts_from(data_dir: &Path) -> Option<String> {
     read_valid_drafts_file(&path).or_else(|| read_valid_drafts_file(&backup))
 }
 
-fn save_drafts_to(data_dir: &Path, content: &str) -> Result<(), String> {
-    let (path, backup) = drafts_paths(Some(data_dir)).ok_or_else(|| "pasta de dados indisponível".to_string())?;
+fn save_vault_to(data_dir: &Path, vault: &Vault, content: &str) -> Result<(), String> {
+    let (path, backup) = drafts_paths(Some(data_dir), vault).ok_or_else(|| "pasta de dados indisponível".to_string())?;
     if content.trim().is_empty() || content.trim() == "{}" {
         let _ = std::fs::remove_file(&path);
         return Ok(());
@@ -191,7 +216,7 @@ fn save_drafts_to(data_dir: &Path, content: &str) -> Result<(), String> {
     }
     // Escreve ao lado e troca por rename (no Windows substitui o destino): uma queda no meio deixa o
     // principal anterior intacto em vez de truncado.
-    let temp = plain_path(&data_dir.join(DRAFTS_TEMP_FILE));
+    let temp = plain_path(&data_dir.join(vault.temp));
     let fail = |error: std::io::Error| format!("não foi possível guardar a cópia: {error}");
     std::fs::write(&temp, content).map_err(fail)?;
     if let Err(error) = std::fs::rename(&temp, &path) {
@@ -220,6 +245,27 @@ fn helicon_save_file_drafts(app: tauri::AppHandle, webview: tauri::Webview, cont
         .map(|dir| plain_path(&dir))
         .ok_or_else(|| "pasta de dados indisponível".to_string())?;
     save_drafts_to(&dir, &content)
+}
+
+/// Lê os anexos guardados dos rascunhos da caixa de mensagem; `None` = nenhum.
+#[tauri::command]
+fn helicon_load_composer_drafts(app: tauri::AppHandle, webview: tauri::Webview) -> Option<String> {
+    require_helicon_page(&webview).ok()?;
+    let dir = app.path().app_data_dir().ok().map(|dir| plain_path(&dir))?;
+    load_vault_from(&dir, &COMPOSER_DRAFTS_VAULT)
+}
+
+/// Guarda os anexos dos rascunhos da caixa de mensagem; vazio remove o arquivo. Guarda a versão anterior em `.bak`.
+#[tauri::command]
+fn helicon_save_composer_drafts(app: tauri::AppHandle, webview: tauri::Webview, content: String) -> Result<(), String> {
+    require_helicon_page(&webview)?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| plain_path(&dir))
+        .ok_or_else(|| "pasta de dados indisponível".to_string())?;
+    save_vault_to(&dir, &COMPOSER_DRAFTS_VAULT, &content)
 }
 
 /// Toast nativo do Windows com o som do sistema: é esse som que se ouve no Grok.
@@ -707,7 +753,14 @@ fn main() {
                 .build(),
         )
         .manage(ServerChild(Arc::new(Mutex::new(None))))
-        .invoke_handler(tauri::generate_handler![helicon_load_file_drafts, helicon_save_file_drafts, helicon_notify_toast, helicon_notify_sound])
+        .invoke_handler(tauri::generate_handler![
+            helicon_load_file_drafts,
+            helicon_save_file_drafts,
+            helicon_load_composer_drafts,
+            helicon_save_composer_drafts,
+            helicon_notify_toast,
+            helicon_notify_sound
+        ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             install_zoom_menu(app)?;
@@ -785,7 +838,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_node_in, find_resource, fresh_port, load_drafts_from, open_server_log, parse_listening_url, plain_path, save_drafts_to,
+        bundled_node_in, find_resource, fresh_port, load_drafts_from, load_vault_from, open_server_log, parse_listening_url, plain_path,
+        save_drafts_to, save_vault_to, COMPOSER_DRAFTS_VAULT,
         stable_port, start_with_retry, BootError, StartFailure, PORT_FILE, SERVER_LOG_MAX_BYTES, SPLASH_PAGE,
     };
     #[cfg(unix)]
@@ -913,6 +967,22 @@ mod tests {
     }
 
     #[test]
+    fn composer_drafts_live_in_their_own_vault() {
+        // Cópia descartável: nunca toca nos dados reais do app.
+        let dir = std::env::temp_dir().join(format!("helicon-composer-drafts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let files = r##"{"s1":[{"name":"a.png","mediaType":"image/png","kind":"image","base64":"AAAA","size":3}]}"##;
+        save_vault_to(&dir, &COMPOSER_DRAFTS_VAULT, files).unwrap();
+        assert_eq!(load_vault_from(&dir, &COMPOSER_DRAFTS_VAULT).as_deref(), Some(files));
+        assert_eq!(load_drafts_from(&dir), None, "as edições de arquivo não veem os anexos");
+        assert!(dir.join(super::COMPOSER_DRAFTS_FILE).exists());
+        save_vault_to(&dir, &COMPOSER_DRAFTS_VAULT, "{}").unwrap();
+        assert_eq!(load_vault_from(&dir, &COMPOSER_DRAFTS_VAULT), None, "descartar limpa a cópia");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn truncated_file_drafts_fall_back_to_the_last_valid_backup() {
         // Cópia descartável: nunca toca nos dados reais do app.
         let dir = std::env::temp_dir().join(format!("helicon-drafts-torn-{}", std::process::id()));
@@ -970,7 +1040,12 @@ mod tests {
         )
         .unwrap();
         let permissions = caps["permissions"].as_array().unwrap();
-        for cmd in ["helicon_load_file_drafts", "helicon_save_file_drafts"] {
+        for cmd in [
+            "helicon_load_file_drafts",
+            "helicon_save_file_drafts",
+            "helicon_load_composer_drafts",
+            "helicon_save_composer_drafts",
+        ] {
             assert!(
                 build.contains(cmd),
                 "build.rs deve declarar {cmd} no AppManifest para gerar o allow-*"

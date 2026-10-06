@@ -10,6 +10,8 @@ fn main() {
                 .commands(&[
                     "helicon_load_file_drafts",
                     "helicon_save_file_drafts",
+                    "helicon_load_composer_drafts",
+                    "helicon_save_composer_drafts",
                     "helicon_notify_toast",
                     "helicon_notify_sound",
                 ]),

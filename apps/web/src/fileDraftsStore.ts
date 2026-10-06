@@ -1,5 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import { serializeFileDrafts, type FileDraft, type Platform } from "@helicon/ui";
+import {
+  parseStoredDraftFiles,
+  serializeFileDrafts,
+  type DraftFilesVault,
+  type FileDraft,
+  type Platform,
+  type StoredDraftFile,
+} from "@helicon/ui";
 
 /**
  * Cópia recuperável de edições fora da origem web da janela (REV5).
@@ -13,6 +20,9 @@ import { serializeFileDrafts, type FileDraft, type Platform } from "@helicon/ui"
 
 export const DRAFTS_LOAD_CMD = "helicon_load_file_drafts";
 export const DRAFTS_SAVE_CMD = "helicon_save_file_drafts";
+/** Anexos não enviados da caixa de mensagem: `composer-drafts.json`, um cofre à parte das edições de arquivo. */
+export const COMPOSER_DRAFTS_LOAD_CMD = "helicon_load_composer_drafts";
+export const COMPOSER_DRAFTS_SAVE_CMD = "helicon_save_composer_drafts";
 
 export type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
@@ -74,6 +84,76 @@ export function createStableSaver(invoker: InvokeFn = invoke): StableSaver {
   };
 }
 
+/** Lê os anexos guardados dos rascunhos da caixa de mensagem; entradas inválidas ficam de fora. */
+export async function loadComposerDrafts(invoker: InvokeFn = invoke): Promise<Record<string, StoredDraftFile[]>> {
+  const raw = await invoker(COMPOSER_DRAFTS_LOAD_CMD);
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      return {};
+    }
+  }
+  const out: Record<string, StoredDraftFile[]> = {};
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return out;
+  }
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    const files = parseStoredDraftFiles(value);
+    if (key && files.length > 0) {
+      out[key] = files;
+    }
+  }
+  return out;
+}
+
+/**
+ * O cofre dos anexos de rascunho: o mapa vive na memória e cada mudança enfileira uma escrita do arquivo inteiro.
+ * Mudanças seguidas enquanto uma escrita espera viram uma só, que leva o estado mais novo.
+ */
+export function createComposerVault(
+  initial: Record<string, StoredDraftFile[]>,
+  invoker: InvokeFn = invoke,
+): DraftFilesVault & { flush(): Promise<void> } {
+  let drafts: Record<string, readonly StoredDraftFile[]> = { ...initial };
+  let tail: Promise<void> = Promise.resolve();
+  let queued = false;
+  const write = (): void => {
+    if (queued) {
+      return;
+    }
+    queued = true;
+    tail = tail
+      .then(() => {
+        queued = false;
+        return invoker(COMPOSER_DRAFTS_SAVE_CMD, { content: JSON.stringify(drafts) });
+      })
+      .then(
+        () => undefined,
+        (error) => {
+          console.warn("Helicon: não foi possível guardar os anexos do rascunho", error);
+        },
+      );
+  };
+  return {
+    all: () => drafts,
+    set(key, files) {
+      if (files.length === 0) {
+        if (!(key in drafts)) {
+          return;
+        }
+        const { [key]: _gone, ...rest } = drafts;
+        drafts = rest;
+      } else {
+        drafts = { ...drafts, [key]: [...files] };
+      }
+      write();
+    },
+    flush: () => tail,
+  };
+}
+
 /**
  * Monta a `Platform` com cofre estável no desktop. Fora do Tauri, devolve a base intacta.
  * Migração única: cofre vazio + `localStorage` atual com rascunhos copia para o cofre, sem apagar o local.
@@ -106,9 +186,18 @@ export async function prepareStableFileDrafts(
     await saver.saveNow(local as Record<string, FileDraft>);
   }
   const frozen = snapshot;
+  // Sem conseguir ler o cofre dos anexos, gravar nele também falharia: os anexos ficam no `localStorage`, como antes.
+  let composer: (DraftFilesVault & { flush(): Promise<void> }) | undefined;
+  try {
+    composer = createComposerVault(await loadComposerDrafts(invoker), invoker);
+  } catch (error) {
+    console.warn("Helicon: cofre dos anexos de rascunho indisponível; eles ficam no armazenamento local", error);
+    composer = undefined;
+  }
   return {
     platform: {
       ...base,
+      ...(composer ? { draftFilesVault: composer } : {}),
       loadFileDrafts: () => frozen,
       saveFileDrafts: (drafts) => {
         // O cofre vem primeiro: uma cota esgotada no `localStorage` não pode impedir a cópia durável.
@@ -126,6 +215,6 @@ export async function prepareStableFileDrafts(
         }
       },
     },
-    flushStable: () => saver.flush(),
+    flushStable: () => Promise.all([saver.flush(), composer?.flush()]).then(() => undefined),
   };
 }
