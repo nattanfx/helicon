@@ -508,45 +508,49 @@ export function Composer(props: ComposerProps) {
           shell ? "pt-1.5 font-mono text-sm" : "pt-3.5",
         )}
       />
-      <div className="flex min-w-0 flex-wrap items-center gap-0.5 px-2 pb-2">
-        {/* A caixa de nova conversa fica no alto, então seus menus abrem para baixo; ainda viram quando não há espaço. */}
-        <AttachButton onFiles={(picked) => addFiles(Array.from(picked))} disabled={props.readOnly || files.length >= MAX_FILES} />
-        <ModelPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
-        <EffortPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
-        <AccessPicker sessionId={props.sessionId} cwd={props.cwd} side={props.variant === "home" ? "bottom" : "top"} />
-        <span className="min-w-2 flex-1" />
-        {props.sessionId ? <SpeedReadout sessionId={props.sessionId} /> : null}
-        {props.sessionId ? <CostMeter sessionId={props.sessionId} /> : null}
-        {props.sessionId ? <ContextMeter sessionId={props.sessionId} /> : null}
-        {props.running && props.sessionId && hasText ? (
-          <Tip label="Parar a mensagem" shortcut={["Esc"]}>
-            <IconButton size="md" label="Parar a mensagem" disabled={stopping} onClick={() => void controller.stop(props.sessionId as string)}>
-              <Square size={11} className="fill-current" />
-            </IconButton>
-          </Tip>
-        ) : null}
-        <Tip label={sendLabel} shortcut={[showStop ? "Esc" : "Enter"]}>
-          <button
-            type="button"
-            aria-label={showStop ? "Parar a mensagem" : shell ? "Executar comando" : props.running ? "Enfileirar mensagem" : "Enviar mensagem"}
-            disabled={showStop ? stopping : (!hasText && files.length === 0) || props.readOnly || starting}
-            onClick={() => (showStop ? void controller.stop(props.sessionId as string) : void submit(false))}
-            className={cn(
-              "ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-[transform,background-color,color] duration-150 active:scale-95",
-              showStop ? "bg-inverse text-inverse-fg" : "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-active disabled:text-subtle",
-            )}
-          >
-            <SwapIcon value={starting || stopping ? "busy" : showStop ? "stop" : "send"}>
-              {starting || stopping ? (
-                <Spinner size={13} />
-              ) : showStop ? (
+      <div className="flex min-w-0 items-center gap-0.5 px-2 pb-2">
+        {/* Os seletores quebram linha entre si quando falta espaço; medidores e envio ficam sempre à direita, na última linha. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5 self-end">
+          {/* A caixa de nova conversa fica no alto, então seus menus abrem para baixo; ainda viram quando não há espaço. */}
+          <AttachButton onFiles={(picked) => addFiles(Array.from(picked))} disabled={props.readOnly || files.length >= MAX_FILES} />
+          <ModelPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
+          <EffortPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
+          <AccessPicker sessionId={props.sessionId} cwd={props.cwd} side={props.variant === "home" ? "bottom" : "top"} />
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5 self-end">
+          {props.sessionId ? <SpeedReadout sessionId={props.sessionId} /> : null}
+          {props.sessionId ? <CostMeter sessionId={props.sessionId} /> : null}
+          {props.sessionId ? <ContextMeter sessionId={props.sessionId} /> : null}
+          {props.running && props.sessionId && hasText ? (
+            <Tip label="Parar a mensagem" shortcut={["Esc"]}>
+              <IconButton size="md" label="Parar a mensagem" disabled={stopping} onClick={() => void controller.stop(props.sessionId as string)}>
                 <Square size={11} className="fill-current" />
-              ) : (
-                <ArrowUp size={16} strokeWidth={2.25} />
+              </IconButton>
+            </Tip>
+          ) : null}
+          <Tip label={sendLabel} shortcut={[showStop ? "Esc" : "Enter"]}>
+            <button
+              type="button"
+              aria-label={showStop ? "Parar a mensagem" : shell ? "Executar comando" : props.running ? "Enfileirar mensagem" : "Enviar mensagem"}
+              disabled={showStop ? stopping : (!hasText && files.length === 0) || props.readOnly || starting}
+              onClick={() => (showStop ? void controller.stop(props.sessionId as string) : void submit(false))}
+              className={cn(
+                "ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-[transform,background-color,color] duration-150 active:scale-95",
+                showStop ? "bg-inverse text-inverse-fg" : "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-active disabled:text-subtle",
               )}
-            </SwapIcon>
-          </button>
-        </Tip>
+            >
+              <SwapIcon value={starting || stopping ? "busy" : showStop ? "stop" : "send"}>
+                {starting || stopping ? (
+                  <Spinner size={13} />
+                ) : showStop ? (
+                  <Square size={11} className="fill-current" />
+                ) : (
+                  <ArrowUp size={16} strokeWidth={2.25} />
+                )}
+              </SwapIcon>
+            </button>
+          </Tip>
+        </div>
       </div>
     </div>
   );
