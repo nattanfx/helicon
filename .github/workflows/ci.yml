@@ -52,5 +52,6 @@ jobs:
       - run: npm run bundle:server --workspace helicon-desktop
       # bundle.externalBin is checked the same way, so fetch the Node.js sidecar too.
       - run: npm run fetch:node --workspace helicon-desktop
-      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
-      - run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+      # --locked: fail instead of quietly resolving crates differently from the committed Cargo.lock.
+      - run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml

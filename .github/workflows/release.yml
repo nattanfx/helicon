@@ -77,7 +77,8 @@ jobs:
           releaseDraft: true
           prerelease: false
           retryAttempts: 3
-          args: --target x86_64-pc-windows-msvc
+          # After --, arguments go to cargo: build exactly the crates in the committed Cargo.lock.
+          args: --target x86_64-pc-windows-msvc -- --locked
       - name: Attach the installer SHA256 to the draft
         shell: pwsh
         env:

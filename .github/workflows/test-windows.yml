@@ -31,7 +31,8 @@ jobs:
         env:
           HELICON_NODE_TARGET: x86_64-pc-windows-msvc
           HELICON_BUILD: ${{ github.sha }}
-        run: npm run tauri -- build --target x86_64-pc-windows-msvc --config src-tauri/tauri.test.conf.json
+        # The last -- hands --locked to cargo, so the installer uses the committed Cargo.lock as is.
+        run: npm run tauri -- build --target x86_64-pc-windows-msvc --config src-tauri/tauri.test.conf.json -- --locked
       - name: Record build and installer checksum
         shell: pwsh
         run: |
