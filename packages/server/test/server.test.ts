@@ -1363,6 +1363,11 @@ describe("HeliconServer", () => {
 
     await send(base, "/api/sandbox-settings", { cwd: "/work/proj", disabled: true }, "PATCH");
     await waitFor(() => closes === 1, "the live host closing");
+    // O aviso vai ao toast e ao Diagnóstico do Sobre: em português.
+    await waitFor(async () => ((await get(base, "/api/failures")) as { count: number }).count === 1, "the restart record");
+    const log = (await get(base, "/api/failures")) as { recent: { kind: string; message: string }[] };
+    assert.equal(log.recent[0]?.kind, "host-restarted");
+    assert.equal(log.recent[0]?.message, "O servidor Muse reiniciou para aplicar uma mudança de configuração.");
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.deepEqual(
       probe.targets.map((t) => t.args),
@@ -1537,9 +1542,9 @@ describe("HeliconServer", () => {
 
     const log = (await get(base, "/api/failures")) as { count: number; recent: any[] };
     assert.equal(log.recent[0].kind, "host-exited");
-    assert.match(log.recent[0].message, /exited \(1\)/);
+    assert.match(log.recent[0].message, /^O servidor Muse saiu \(código 1\)\./);
     assert.equal(log.recent[1].kind, "host-restarted");
-    assert.match(log.recent[1].message, /at the user's request/);
+    assert.equal(log.recent[1].message, "O servidor Muse reiniciou a pedido do usuário.");
   });
 
   it("keeps only the newest failure records", async () => {
@@ -2091,7 +2096,7 @@ describe("HeliconServer", () => {
     const session = (await get(base, "/api/sessions")).sessions[0];
     assert.equal(session.live.activeTurnId, null);
     assert.equal(session.live.lastTerminal, "failed");
-    assert.match((await get(base, "/api/health")).lastHostError, /exited/);
+    assert.match((await get(base, "/api/health")).lastHostError, /servidor Muse saiu/);
     await send(base, "/api/sessions", { cwd: "/work/proj" });
     assert.equal(probe.targets.length, 2);
   });
@@ -2350,7 +2355,7 @@ describe("slash commands, skills and shell", () => {
     const { base } = await start(new FakeConnection(), { exec: async () => ({ stdout: "", exitCode: 127 }) });
     const listed = await get(base, "/api/slash?cwd=%2Fwork%2Fproj");
     assert.deepEqual(listed.skills, []);
-    assert.match(listed.error, /Could not list Muse skills/);
+    assert.match(listed.error, /Não foi possível listar as skills do Muse/);
   });
 
   it("runs shell commands in a session and forks it into a new thread", async () => {

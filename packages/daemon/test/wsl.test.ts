@@ -24,8 +24,8 @@ describe("wsl paths", () => {
     assert.equal(toWslPath("D:\\work\\helicon"), "/mnt/d/work/helicon");
     assert.equal(toWslPath("C:/proj"), "/mnt/c/proj");
     assert.equal(toWindowsPath("/mnt/d/work/helicon"), "D:\\work\\helicon");
-    assert.throws(() => toWslPath("relative/path"), /absolute Windows path/);
-    assert.throws(() => toWindowsPath("/home/harjot"), /\/mnt\/<drive>/);
+    assert.throws(() => toWslPath("relative/path"), /caminho absoluto do Windows/);
+    assert.throws(() => toWindowsPath("/home/harjot"), /\/mnt\/<unidade>/);
   });
 
   it("decodes UTF-16 WSL output", () => {

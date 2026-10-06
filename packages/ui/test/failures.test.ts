@@ -58,3 +58,28 @@ describe("formatFailureEntry", () => {
     assert.ok(!formatFailureEntry(entry({ kind: "host-restarted", errorKind: null })).includes("kind=ausente"));
   });
 });
+
+describe("registros antigos em inglês", () => {
+  it("mostra traduzidos os avisos conhecidos do servidor Muse, mantendo o stderr como veio", () => {
+    const { recent } = parseFailures({
+      count: 4,
+      recent: [
+        { at: "2026-10-01T10:00:00.000Z", kind: "host-restarted", message: "The Muse host restarted to apply a settings change." },
+        { at: "2026-10-01T10:01:00.000Z", kind: "host-restarted", message: "The Muse host restarted at the user's request." },
+        { at: "2026-10-01T10:02:00.000Z", kind: "host-exited", message: "The Muse host exited (1). error: not logged in" },
+        { at: "2026-10-01T10:03:00.000Z", kind: "host-exited", message: "The Muse host exited (SIGKILL)." },
+        { at: "2026-10-01T10:04:00.000Z", kind: "turn-failed", message: "API error 400: something" },
+      ],
+    });
+    assert.deepEqual(
+      recent.map((entry) => entry.message),
+      [
+        "O servidor Muse reiniciou para aplicar uma mudança de configuração.",
+        "O servidor Muse reiniciou a pedido do usuário.",
+        "O servidor Muse saiu (código 1). error: not logged in",
+        "O servidor Muse saiu (sinal SIGKILL).",
+        "API error 400: something",
+      ],
+    );
+  });
+});

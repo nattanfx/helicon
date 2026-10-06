@@ -88,7 +88,7 @@ export function defaultDistro(distros: WslDistro[]): WslDistro | null {
 export function toWslPath(windowsPath: string): string {
   const match = windowsPath.match(/^([A-Za-z]):[\\/]+(.*)$/);
   if (!match) {
-    throw new Error(`Cannot map to WSL: not an absolute Windows path: ${windowsPath}.`);
+    throw new Error(`Não dá para levar ao WSL: não é um caminho absoluto do Windows: ${windowsPath}.`);
   }
   const drive = (match[1] as string).toLowerCase();
   const rest = (match[2] as string).replace(/[\\/]+/g, "/");
@@ -98,7 +98,7 @@ export function toWslPath(windowsPath: string): string {
 export function toWindowsPath(wslPath: string): string {
   const match = wslPath.match(/^\/mnt\/([a-z])\/(.*)$/);
   if (!match) {
-    throw new Error(`Cannot map to Windows: not a /mnt/<drive> path: ${wslPath}.`);
+    throw new Error(`Não dá para levar ao Windows: não é um caminho /mnt/<unidade>: ${wslPath}.`);
   }
   const drive = (match[1] as string).toUpperCase();
   const rest = (match[2] as string).replace(/\//g, "\\");

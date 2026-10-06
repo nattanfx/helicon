@@ -57,8 +57,31 @@ function parseFailureEntry(value: unknown): FailureEntry | null {
     turnId: asString(r["turnId"]),
     hostKey: asString(r["hostKey"]),
     errorKind: asString(r["errorKind"]),
-    message: asString(r["message"]),
+    message: legacyHostMessage(asString(r["message"])),
   };
+}
+
+/**
+ * Registros gravados antes de o servidor falar português guardam os avisos do servidor Muse em inglês. As frases
+ * conhecidas aparecem traduzidas; o stderr do Muse que segue uma saída fica como veio, e o resto também.
+ */
+export function legacyHostMessage(message: string | null): string | null {
+  if (message === null) {
+    return null;
+  }
+  if (message === "The Muse host restarted to apply a settings change.") {
+    return "O servidor Muse reiniciou para aplicar uma mudança de configuração.";
+  }
+  if (message === "The Muse host restarted at the user's request.") {
+    return "O servidor Muse reiniciou a pedido do usuário.";
+  }
+  const exited = /^The Muse host exited \(([^)]*)\)\.([\s\S]*)$/.exec(message);
+  if (exited) {
+    const why = exited[1] as string;
+    const how = /^-?\d+$/.test(why) ? `código ${why}` : why === "unknown" ? "motivo desconhecido" : `sinal ${why}`;
+    return `O servidor Muse saiu (${how}).${exited[2] ?? ""}`;
+  }
+  return message;
 }
 
 /** Uma linha de falha em texto legível, para o diagnóstico do Sobre. */

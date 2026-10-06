@@ -350,18 +350,18 @@ function runProcess(command: string, args: string[], timeoutMs: number): Promise
     });
     const timer = setTimeout(() => {
       child.kill();
-      fail(new HttpError(504, "The clone took too long and was stopped."));
+      fail(new HttpError(504, "A clonagem demorou demais e foi interrompida."));
     }, timeoutMs);
     child.on("error", (error) => {
       clearTimeout(timer);
-      fail(new HttpError(500, `Could not run ${command}: ${error.message}`));
+      fail(new HttpError(500, `Não foi possível executar ${command}: ${error.message}`));
     });
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) {
         done();
       } else {
-        fail(new HttpError(500, lastLines(stderr) || `${command} exited with code ${code ?? "unknown"}.`));
+        fail(new HttpError(500, lastLines(stderr) || `${command} saiu com o código ${code ?? "desconhecido"}.`));
       }
     });
   });
@@ -531,7 +531,7 @@ export function defaultOpener(platform: string): Opener {
       let args: string[];
       if (platform === "win32") {
         if (CMD_UNSAFE.test(path)) {
-          rejectOpen(new HttpError(400, "That folder path contains characters Helicon will not pass to the shell."));
+          rejectOpen(new HttpError(400, "O caminho dessa pasta tem caracteres que o Helicon não repassa ao shell."));
           return;
         }
         [command, args] = target === "editor" ? ["cmd.exe", ["/d", "/c", "code", path]] : ["explorer.exe", [path]];
@@ -546,8 +546,8 @@ export function defaultOpener(platform: string): Opener {
           new HttpError(
             500,
             target === "editor"
-              ? `Could not launch VS Code (${error.message}). Make sure the \`code\` command is on your PATH.`
-              : `Could not open the folder (${error.message}).`,
+              ? `Não foi possível abrir o VS Code (${error.message}). Confira se o comando \`code\` está no PATH.`
+              : `Não foi possível abrir a pasta (${error.message}).`,
           ),
         ),
       );
@@ -730,6 +730,9 @@ const SKILL_CACHE_MS = 60_000;
 const OUTPUT_PAGE_BYTES = 1024 * 1024;
 
 /** Attachment limits: enough for a screenshot or a PDF, not enough to wedge the host. */
+/** O aviso de reinício depois de mudar a sandbox ou o YOLO: vai ao toast e ao registro de falhas, então em português. */
+export const HOST_RESTARTED_FOR_SETTINGS = "O servidor Muse reiniciou para aplicar uma mudança de configuração.";
+
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const MAX_BODY_BYTES = 96 * 1024 * 1024;
@@ -1066,7 +1069,7 @@ export class HeliconServer {
     for await (const chunk of req) {
       size += (chunk as Buffer).length;
       if (size > MAX_BODY_BYTES) {
-        throw new HttpError(413, "That request is too large.");
+        throw new HttpError(413, "Esse pedido é grande demais.");
       }
       chunks.push(chunk as Buffer);
     }
@@ -1253,7 +1256,7 @@ export class HeliconServer {
         throw new HttpError(400, "url and path are required.");
       }
       if (!/^(https?:\/\/|ssh:\/\/|git:\/\/)\S+$/.test(remote) && !/^git@[^\s:]+:\S+$/.test(remote)) {
-        throw new HttpError(400, "That does not look like a Git URL.");
+        throw new HttpError(400, "Isso não parece um endereço Git.");
       }
       const cwd = normalizeCwd(await this.cloneRepository(remote, target));
       this.json(res, 200, await this.addProjectFolder(cwd));
@@ -1276,7 +1279,7 @@ export class HeliconServer {
       const resolved = resolveUserPath(target, await this.pathContext(target));
       const info = await stat(resolved.local).catch(() => null);
       if (!info?.isDirectory()) {
-        throw new HttpError(404, "That folder does not exist.");
+        throw new HttpError(404, "Essa pasta não existe.");
       }
       await this.opener(resolved.local, "files");
       this.json(res, 200, { ok: true });
@@ -1431,7 +1434,7 @@ export class HeliconServer {
           throw new HttpError(404, "Unknown session.");
         }
         if (this.isBusy(sessionId)) {
-          throw new HttpError(409, "Stop the running turn and answer its requests before deleting this thread.");
+          throw new HttpError(409, "Pare a mensagem em execução e responda aos pedidos dela antes de excluir esta conversa.");
         }
         this.store.deleteSession(sessionId);
         this.forgetSession(sessionId);
@@ -1448,7 +1451,7 @@ export class HeliconServer {
         const title = typeof body["title"] === "string" ? body["title"].trim().slice(0, 200) : undefined;
         const settled = typeof body["settled"] === "boolean" ? body["settled"] : undefined;
         if (settled === true && this.isBusy(sessionId)) {
-          throw new HttpError(409, "Stop the running turn and answer its requests before settling this thread.");
+          throw new HttpError(409, "Pare a mensagem em execução e responda aos pedidos dela antes de resolver esta conversa.");
         }
         if (title && title !== found.session.title) {
           await this.renameInMuse(sessionId, title);
@@ -1695,7 +1698,7 @@ export class HeliconServer {
       // Reinício manual para recuperar de um host envenenado: mesma fila de fundo das viradas
       // de configuração, para uma sessão criada no meio do reinício nunca cair num host aposentado.
       // Turnos em voo falham com esta mensagem em vez de pendurar como em execução.
-      const run = this.restartChain.then(() => this.restartHosts("The Muse host restarted at the user's request."));
+      const run = this.restartChain.then(() => this.restartHosts("O servidor Muse reiniciou a pedido do usuário."));
       this.restartChain = run.catch(() => undefined);
       this.json(res, 200, { ok: true });
       return true;
@@ -1720,7 +1723,7 @@ export class HeliconServer {
     if (method === "GET" && attachmentMatch) {
       const found = this.store.readAttachment(attachmentMatch[1] as string);
       if (!found) {
-        throw new HttpError(404, "No such attachment.");
+        throw new HttpError(404, "Anexo não encontrado.");
       }
       // The type came from the client. Only a known image type shows inline; the rest download as opaque bytes.
       const inline = INLINE_ATTACHMENT_TYPES.has(found.record.mediaType.toLowerCase());
@@ -2243,7 +2246,7 @@ export class HeliconServer {
     const resolved = resolveUserPath(target, ctx);
     const existing = await readdir(resolved.local).catch(() => null);
     if (existing && existing.length > 0) {
-      throw new HttpError(409, "That folder already exists and is not empty. Pick another name.");
+      throw new HttpError(409, "Essa pasta já existe e não está vazia. Escolha outro nome.");
     }
     await mkdir((ctx.platform === "win32" ? win32 : posix).dirname(resolved.local), { recursive: true });
     // A Linux folder under WSL is cloned by WSL's own git, so it gets Linux line endings and permissions.
@@ -2309,8 +2312,8 @@ export class HeliconServer {
           paths: new Map(),
           error:
             result.exitCode === 0
-              ? "Muse listed its skills in a form Helicon does not understand."
-              : "Could not list Muse skills. Check that muse runs in a terminal.",
+              ? "O Muse listou suas skills num formato que o Helicon não entende."
+              : "Não foi possível listar as skills do Muse. Confira se o muse roda num terminal.",
         };
     this.skillCache.set(key, listing);
     return listing;
@@ -2320,11 +2323,11 @@ export class HeliconServer {
   private async skillBody(cwd: string, id: string): Promise<string> {
     const path = (await this.listCliSkills(cwd)).paths.get(id);
     if (!path) {
-      throw new HttpError(404, "Muse does not list that skill for this workspace.");
+      throw new HttpError(404, "O Muse não lista essa skill para esta pasta do projeto.");
     }
     const bundled = /^bundled:\/\/(.+)$/.exec(path)?.[1];
     if (bundled?.split("/").includes("..")) {
-      throw new HttpError(400, "That skill's path is not readable.");
+      throw new HttpError(400, "O caminho dessa skill não pode ser lido.");
     }
     if ((await this.museRuntime()) === "native") {
       // Native Muse keeps its data where the launcher keeps its config: XDG folders under the user profile.
@@ -2332,7 +2335,7 @@ export class HeliconServer {
       const file = bundled ? win32.join(dataHome, "muse", "skills", "bundled", ...bundled.split("/")) : path;
       const body = stripFrontmatter(await readFile(file, "utf8").catch(() => ""));
       if (!body) {
-        throw new HttpError(502, "Could not read that skill's instructions.");
+        throw new HttpError(502, "Não foi possível ler as instruções dessa skill.");
       }
       return body;
     }
@@ -2347,7 +2350,7 @@ export class HeliconServer {
     const result = await this.options.exec(plan.command, plan.args);
     const body = result.exitCode === 0 ? stripFrontmatter(result.stdout) : "";
     if (!body) {
-      throw new HttpError(502, "Could not read that skill's instructions.");
+      throw new HttpError(502, "Não foi possível ler as instruções dessa skill.");
     }
     return body;
   }
@@ -2449,7 +2452,7 @@ export class HeliconServer {
     const images: TurnImage[] = [];
     const files: PreparedAttachment[] = [];
     if (raw.length > MAX_ATTACHMENTS) {
-      throw new HttpError(400, `A message takes at most ${MAX_ATTACHMENTS} files.`);
+      throw new HttpError(400, `Uma mensagem leva no máximo ${MAX_ATTACHMENTS} arquivos.`);
     }
     for (const entry of raw) {
       const record = asRecord(entry);
@@ -2461,10 +2464,10 @@ export class HeliconServer {
       const name = safeFileName(str(record["name"]));
       const bytes = Buffer.from(base64, "base64");
       if (bytes.length === 0) {
-        throw new HttpError(400, `${name} has no content.`);
+        throw new HttpError(400, `${name} está vazio.`);
       }
       if (bytes.length > MAX_ATTACHMENT_BYTES) {
-        throw new HttpError(413, `${name} is over ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MB.`);
+        throw new HttpError(413, `${name} passa de ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MB.`);
       }
       const width = num(record["width"]) ?? null;
       const height = num(record["height"]) ?? null;
@@ -2478,7 +2481,7 @@ export class HeliconServer {
         continue;
       }
       if (!cwd) {
-        throw new HttpError(400, `${name} needs a workspace to land in.`);
+        throw new HttpError(400, `${name} precisa de uma pasta do projeto onde ficar.`);
       }
       const written = await this.writeIntoWorkspace(cwd, name, bytes);
       mentions.push(`@${[...ATTACHMENT_DIR, written].join("/")}`);
@@ -2498,9 +2501,9 @@ export class HeliconServer {
    */
   private async writeIntoWorkspace(cwd: string, name: string, bytes: Buffer): Promise<string> {
     const root = await realpath(cwd).catch(() => {
-      throw new HttpError(400, "The workspace folder does not exist.");
+      throw new HttpError(400, "A pasta do projeto não existe.");
     });
-    const refused = `${ATTACHMENT_DIR.join("/")} must be a plain folder inside the workspace.`;
+    const refused = `${ATTACHMENT_DIR.join("/")} precisa ser uma pasta comum dentro da pasta do projeto.`;
     let directory = root;
     for (const part of ATTACHMENT_DIR) {
       directory = join(directory, part);
@@ -2534,7 +2537,7 @@ export class HeliconServer {
         }
       }
     }
-    throw new HttpError(409, `Too many attachments are already named ${name}.`);
+    throw new HttpError(409, `Já há anexos demais com o nome ${name}.`);
   }
 
   /**
@@ -3489,7 +3492,7 @@ export class HeliconServer {
       return pending;
     }
     if (this.closed) {
-      throw new HttpError(503, "Helicon is shutting down.");
+      throw new HttpError(503, "O Helicon está encerrando.");
     }
     const startup = this.spawnHost(key, cwd);
     this.starting.set(key, startup);
@@ -3510,7 +3513,7 @@ export class HeliconServer {
       this.lastHostError = error instanceof Error ? error.message : String(error);
       this.emit("helicon", { type: "host", key, state: "failed", message: this.lastHostError });
       this.failures.record({ kind: "host-start-failed", sessionId: null, turnId: null, hostKey: key, errorKind: null, message: this.lastHostError });
-      throw new HttpError(502, `Could not start Muse: ${this.lastHostError}`);
+      throw new HttpError(502, `Não foi possível iniciar o Muse: ${this.lastHostError}`);
     }
     this.lastHostError = null;
     this.fingerprints.set(key, started?.fingerprintWarning ?? null);
@@ -3547,7 +3550,9 @@ export class HeliconServer {
       return;
     }
     const detail = managed.handle.recentStderr?.trim();
-    const message = `The Muse host exited (${exit.code ?? exit.signal ?? "unknown"}).${detail ? ` ${detail}` : ""}`;
+    const how = exit.code !== null ? `código ${exit.code}` : exit.signal ? `sinal ${exit.signal}` : "motivo desconhecido";
+    // O stderr do Muse vai como veio: é o detalhe técnico que explica a saída.
+    const message = `O servidor Muse saiu (${how}).${detail ? ` ${detail}` : ""}`;
     this.lastHostError = message;
     this.emit("helicon", { type: "host", key: managed.key, state: "exited", message });
     this.forgetHost(managed, message);
@@ -3606,7 +3611,7 @@ export class HeliconServer {
     }
     const project = this.store.getProject(normalizeCwd(raw));
     if (!project) {
-      throw new HttpError(404, "That folder is not a project here.");
+      throw new HttpError(404, "Essa pasta não é um projeto aqui.");
     }
     return project;
   }
@@ -3648,7 +3653,7 @@ export class HeliconServer {
    * without changing any posture.
    */
   private async restartHosts(
-    message = "The Muse host restarted to apply a settings change.",
+    message = HOST_RESTARTED_FOR_SETTINGS,
     only: (managed: ManagedHost) => boolean = () => true,
   ): Promise<void> {
     for (const pending of this.starting.values()) {
@@ -3683,7 +3688,7 @@ export class HeliconServer {
     }
     if (runtime === "native") {
       if (!musePath) {
-        throw new HttpError(503, "Muse for Windows is not installed. Install it from PowerShell: irm https://dev.meta.ai/install.ps1 | iex");
+        throw new HttpError(503, "O Muse para Windows não está instalado. Instale pelo PowerShell: irm https://dev.meta.ai/install.ps1 | iex");
       }
       const releaseInfo = this.releaseInfoFor(musePath);
       return {
@@ -3868,7 +3873,7 @@ export class HeliconServer {
         }
         const terminal = str(params["terminal"]) ?? "completed";
         live.lastTerminal = terminal;
-        live.lastError = terminal === "failed" ? (str(asRecord(params["error"])?.["message"]) ?? "The turn failed.") : null;
+        live.lastError = terminal === "failed" ? (str(asRecord(params["error"])?.["message"]) ?? "A mensagem falhou.") : null;
         if (terminal === "failed") {
           const error = asRecord(params["error"]);
           this.failures.record({
