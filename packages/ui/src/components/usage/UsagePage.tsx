@@ -160,7 +160,7 @@ function IncompleteUsage({ rows }: { rows: readonly UsageRecovery[] }) {
         {groups.map((group) => (
           <li key={group.reason} className="text-xs text-muted">
             <p className="text-pretty text-fg">
-              {group.reason} <span className="text-muted tabular-nums">· {plural(group.count, "conversa", "conversas")}</span>
+              {group.label} <span className="text-muted tabular-nums">· {plural(group.count, "conversa", "conversas")}</span>
             </p>
             {group.explanation ? <p className="mt-0.5 text-pretty">{group.explanation}</p> : null}
             {group.promptTokens > 0 || group.outputTokens > 0 ? (

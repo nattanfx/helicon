@@ -1,6 +1,6 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { backfillDetail, groupRecovery, recoveryGap } from "../src/model/usage-recovery.js";
+import { backfillDetail, groupRecovery, reasonLabel, recoveryGap } from "../src/model/usage-recovery.js";
 import type { UsageBackfillStatus } from "../src/types.js";
 
 const status: UsageBackfillStatus = { running: false, total: 2, done: 2, calls: 0, failed: 0, startedAt: null, finishedAt: null, error: null };
@@ -79,4 +79,13 @@ it("groups by reason and keeps per-conversation gaps, never pricing them", () =>
   assert.deepEqual(groups.map((g) => [g.reason, g.count, g.entries.length, g.noDifference, g.noTotal]), [["x", 3, 3, 0, 1], ["y", 1, 0, 1, 0]]);
   assert.deepEqual(groups[0]?.entries.map((e) => e.title), ["B", "A", "Conversa excluída"]);
   assert.equal(groups[0]?.promptTokens, 40);
+});
+
+it("says the Muse's error codes in Portuguese in the group heading", () => {
+  assert.equal(
+    reasonLabel("Não foi possível ler todas as chamadas do histórico (o Muse respondeu internal)."),
+    "Não foi possível ler todas as chamadas do histórico (erro interno do Muse).",
+  );
+  assert.equal(reasonLabel("Não foi possível ler o consumo desta conversa (o Muse respondeu weird)."), "Não foi possível ler o consumo desta conversa (código do Muse: weird).");
+  assert.equal(reasonLabel("O histórico disponível não informa as chamadas ao modelo."), "O histórico disponível não informa as chamadas ao modelo.");
 });

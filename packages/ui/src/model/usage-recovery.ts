@@ -62,6 +62,22 @@ function museKind(reason: string): string | null {
   return /\(o Muse respondeu ([^)]+)\)/.exec(reason)?.[1]?.trim() ?? null;
 }
 
+/** The Muse's error codes said in Portuguese; an unknown code still shows, marked as the Muse's. */
+const MUSE_KINDS: Record<string, string> = {
+  internal: "erro interno do Muse",
+  overloaded: "Muse sobrecarregado",
+  timeout: "o Muse demorou demais",
+  unavailable: "Muse indisponível",
+};
+
+/** A reason as the page shows it: the Muse's code in parentheses becomes words. */
+export function reasonLabel(reason: string): string {
+  return reason.replace(/\(o Muse respondeu ([^)]+)\)/, (_, kind: string) => {
+    const code = kind.trim();
+    return `(${MUSE_KINDS[code] ?? `código do Muse: ${code}`})`;
+  });
+}
+
 function reasonInfo(reason: string): { short: string; explanation: string | null; failure: string | null } {
   const known = REASONS.find((entry) => reason.startsWith(entry.prefix));
   if (!known) return { short: "por outro motivo", explanation: null, failure: null };
@@ -149,6 +165,8 @@ export interface RecoveryEntry {
 
 export interface RecoveryGroup {
   reason: string;
+  /** The reason in plain Portuguese, for the heading. */
+  label: string;
   explanation: string | null;
   /** Every conversation with this reason, listed or not. */
   count: number;
@@ -172,6 +190,7 @@ export function groupRecovery(rows: readonly UsageRecovery[]): RecoveryGroup[] {
     const reason = row.reason ?? UNSTATED_REASON;
     const group = groups.get(reason) ?? {
       reason,
+      label: reasonLabel(reason),
       explanation: row.reason === null ? null : reasonInfo(reason).explanation,
       count: 0,
       entries: [],
