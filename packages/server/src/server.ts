@@ -2652,6 +2652,8 @@ export class HeliconServer {
         const why = result.reason ?? "Leitura incompleta sem motivo informado.";
         this.usageBackfill.reasons[why] = (this.usageBackfill.reasons[why] ?? 0) + 1;
       }
+      // A failed reading is always incomplete too (its reason is a read failure): `failed` is a subset of
+      // `incomplete`, and the summary tells it as part of it, never added beside it.
       if (result.failed) this.usageBackfill.failed += 1;
       this.usageBackfill.done += 1;
     }

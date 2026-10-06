@@ -26,7 +26,46 @@ it("says why readings stayed incomplete, most frequent first", () => {
     "O acumulado disponível e as chamadas registradas divergem; a leitura pode ser parcial ou desatualizada.": 2,
     "Não foi possível ler todas as chamadas do histórico (o Muse respondeu overloaded).": 1,
   } });
-  assert.match(detail, /3 com leitura incompleta \(2 com total diferente das chamadas, 1 com falha ao ler o histórico\)/);
+  assert.match(detail, /3 com leitura incompleta: 2 com total diferente das chamadas e 1 com falha ao ler o histórico\./);
+  assert.doesNotMatch(detail, /1 com falha de leitura/, "the failed one is already among the incomplete");
+});
+
+it("counts each conversation once: read failures are part of the incomplete ones", () => {
+  // What build 44 showed: 16 failures (11 + 5) were told inside the 20 and again beside them.
+  const detail = backfillDetail({ ...status, total: 138, done: 138, incomplete: 20, failed: 16, reasons: {
+    "Não foi possível ler todas as chamadas do histórico (o Muse respondeu internal).": 9,
+    "Não foi possível ler todas as chamadas do histórico (o Muse respondeu overloaded).": 2,
+    "Não foi possível ler o consumo desta conversa (o Muse respondeu internal).": 5,
+    "O histórico disponível não informa as chamadas ao modelo.": 2,
+    "O acumulado disponível e as chamadas registradas divergem; a leitura pode ser parcial ou desatualizada.": 2,
+  } });
+  assert.equal(
+    detail,
+    "Recuperação parcial: 138 conversas lidas, 0 chamadas novas recuperadas. 20 com leitura incompleta: 16 com falha de leitura (11 ao ler o histórico e 5 ao ler a conversa), 2 sem as chamadas no histórico e 2 com total diferente das chamadas. Veja os dados disponíveis e os limites na página de Uso.",
+  );
+  assert.equal(detail.match(/16/g)?.length, 1);
+});
+
+it("does not promise that recovering again fixes the Muse's internal errors", () => {
+  const base = { complete: false, recordedPromptTokens: 0, recordedOutputTokens: 0, cwd: null, deleted: true, title: null, promptTokens: null, outputTokens: null };
+  const groups = groupRecovery([
+    { ...base, sessionId: "a", reason: "Não foi possível ler todas as chamadas do histórico (o Muse respondeu internal)." },
+    { ...base, sessionId: "b", reason: "Não foi possível ler o consumo desta conversa (o Muse respondeu internal)." },
+    { ...base, sessionId: "c", reason: "Não foi possível ler todas as chamadas do histórico (o Muse respondeu overloaded)." },
+  ]);
+  const byReason = Object.fromEntries(groups.map((g) => [g.reason, g.explanation ?? ""]));
+  const internal = groups.map((g) => g.reason).filter((r) => r.includes("internal"));
+  assert.equal(internal.length, 2);
+  for (const reason of internal) {
+    assert.match(byReason[reason]!, /erro interno/);
+    assert.match(byReason[reason]!, /excluídas ou muito antigas/);
+    assert.match(byReason[reason]!, /em geral não resolve/);
+    assert.match(byReason[reason]!, /restante do uso não é afetado/);
+    assert.doesNotMatch(byReason[reason]!, /pode resolver/);
+  }
+  const busy = byReason["Não foi possível ler todas as chamadas do histórico (o Muse respondeu overloaded)."]!;
+  assert.match(busy, /Recuperar uso de novo pode resolver/);
+  assert.match(busy, /Entre parênteses, a resposta do Muse/);
 });
 
 it("groups by reason and keeps per-conversation gaps, never pricing them", () => {
