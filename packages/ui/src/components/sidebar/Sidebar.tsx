@@ -28,8 +28,7 @@ import {
 import { memo, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { shallowEqual, useApp, useController, useNow } from "../../app/context.js";
 import { useOverlayDragProps, useTitlebarOverlay } from "../../app/frame.js";
-import { isTurnFinalizing } from "../../model/fold.js";
-import { basename, displayTitle, formatElapsed, plural, relativeTime, renameInitial } from "../../model/format.js";
+import { basename, displayTitle, plural, relativeTime, renameInitial } from "../../model/format.js";
 import { statusLabel } from "../../model/goal.js";
 import { PlanPill } from "../usage/PlanMeter.js";
 import { SettingsNav } from "./SettingsNav.js";
@@ -512,36 +511,18 @@ function SettledShelf(props: { shelfKey: string; entries: SidebarEntry[]; active
   );
 }
 
-/** "Trabalhando há 1m" contado do início da mensagem e atualizando a cada segundo, como o cronômetro do T3 Code. */
-function WorkingFor(props: { session: SessionSummary }) {
-  const foldStart = useApp((s) => {
-    const fold = s.threads[props.session.sessionId]?.fold;
-    return fold?.activeTurnId ? (fold.turns[fold.activeTurnId]?.startedAt ?? null) : null;
-  });
-  const finalizing = useApp((s) => {
-    const fold = s.threads[props.session.sessionId]?.fold;
-    return fold ? isTurnFinalizing(fold, fold.activeTurnId) : false;
-  });
-  const liveStart = props.session.live?.turnStartedAt ? Date.parse(props.session.live.turnStartedAt) : null;
-  const start = foldStart ?? liveStart;
-  const now = useNow(1000);
-  return (
-    <span className="text-accent-text">
-      {finalizing ? "Finalizando…" : "Trabalhando"}
-      {start ? <span className="ml-1">{formatElapsed(now - start)}</span> : null}
-    </span>
-  );
-}
-
-/** O espaço à direita de uma linha: do que a conversa precisa, um cronômetro rodando, ou há quanto tempo ela se moveu. */
-function RowStatus(props: { entry: SidebarEntry; now: number; settled?: boolean }) {
+/**
+ * O espaço à direita de uma linha: do que a conversa precisa ou há quanto tempo ela se moveu. Rodando, fica vazio:
+ * o spinner à esquerda já diz, e o rótulo para leitores de tela vem do botão da linha ("Trabalhando").
+ */
+export function RowStatus(props: { entry: SidebarEntry; now: number; settled?: boolean }) {
   const { session, status } = props.entry;
   if (props.settled) {
     return <span className="text-subtle">{relativeTime(session.settledAt ?? session.activityAt, props.now)}</span>;
   }
   switch (status) {
     case "running":
-      return <WorkingFor session={session} />;
+      return null;
     case "approval":
       return <span className="font-medium text-warn-text">Aprovação</span>;
     case "input":

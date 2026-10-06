@@ -1,9 +1,8 @@
-import { Archive, CircleStop, Code, Copy, Ellipsis, Folder, FolderOpen, FolderTree, PanelBottomOpen, GitBranch, Lock, Minimize2, Pencil, ShieldAlert, ShieldOff, Square, SquarePen } from "lucide-react";
+import { Archive, CircleStop, Code, Copy, Ellipsis, FolderOpen, FolderTree, PanelBottomOpen, GitBranch, Lock, Minimize2, Pencil, ShieldAlert, ShieldOff } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
-import { useApp, useController, useNow } from "../../app/context.js";
+import { useApp, useController } from "../../app/context.js";
 import { CaptionSpacer, useOverlayDragProps } from "../../app/frame.js";
-import { isTurnFinalizing } from "../../model/fold.js";
-import { basename, displayTitle, formatDuration, modelDisplayName, renameInitial, sessionLoadLabel } from "../../model/format.js";
+import { displayTitle, modelDisplayName, renameInitial, sessionLoadLabel } from "../../model/format.js";
 import { backgroundTasks } from "../../model/plan.js";
 import { goalView } from "../../model/goal.js";
 import type { ThreadState } from "../../model/store.js";
@@ -65,15 +64,12 @@ function RouteUnservedNotice(props: { route: RouteUnservedView; sessionId: strin
   );
 }
 
-function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | null; running: boolean }) {
+export function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | null; running: boolean }) {
   const controller = useController();
   const { session, thread } = props;
   const [renaming, setRenaming] = useState(false);
   const fold = thread?.fold ?? null;
-  const finalizing = fold ? isTurnFinalizing(fold, fold.activeTurnId) : false;
   const waiting = fold ? Object.keys(fold.approvals).length + Object.keys(fold.userInputs).length > 0 : false;
-  const startedAt = fold?.activeTurnId ? fold.turns[fold.activeTurnId]?.startedAt : undefined;
-  const now = useNow(1000, props.running && startedAt !== undefined);
   const drag = useOverlayDragProps();
   const noDrag = useOverlayDragProps("off");
   const filesOpen = useApp((s) => s.prefs.filesOpen);
@@ -104,9 +100,6 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
             {displayTitle(session)}
           </h1>
         )}
-        <span className="hidden min-w-0 shrink @min-[420px]:flex">
-          <ProjectChip cwd={session.cwd} />
-        </span>
         {fold?.meta.branch ? (
           <span className="hidden min-w-0 items-center gap-1 text-xs text-subtle lg:flex">
             <GitBranch size={12} className="shrink-0" />
@@ -128,13 +121,7 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
           <span className="attention-pulse size-1.5 rounded-full bg-warn" aria-hidden="true" />
           <span className="@max-[420px]:hidden">Esperando você</span>
         </span>
-      ) : props.running ? (
-        <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs text-muted" role="status">
-          <Spinner size={11} className="text-accent-text" />
-          <span className="@max-[420px]:hidden">{finalizing ? "Finalizando…" : "Trabalhando"}</span>
-          {startedAt ? <span className="text-subtle tabular-nums">{formatDuration(now - startedAt)}</span> : null}
-        </span>
-      ) : thread?.readOnly ? (
+      ) : props.running ? null : thread?.readOnly ? (
         <span className="flex shrink-0 items-center gap-1.5 px-1 text-xs text-subtle">
           <Lock size={12} />
           <span className="@max-[420px]:hidden">Somente leitura</span>
@@ -144,13 +131,6 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
         <span className="shrink-0 px-1 text-xs text-subtle" role="status">
           {loadLabel}
         </span>
-      ) : null}
-      {props.running ? (
-        <Tip label="Parar a mensagem" shortcut={["Esc"]}>
-          <IconButton label="Parar a mensagem" onClick={() => void controller.stop(session.sessionId)}>
-            <Square size={11} className="fill-current" />
-          </IconButton>
-        </Tip>
       ) : null}
       <HiddenCardsButton sessionId={session.sessionId} running={props.running} />
       <Tip label={filesOpen ? "Ocultar arquivos" : "Mostrar arquivos"} shortcut={[MOD, "Shift", "E"]}>
@@ -194,35 +174,6 @@ function ThreadHeader(props: { session: SessionSummary; thread: ThreadState | nu
       </Menu>
       <CaptionSpacer />
     </header>
-  );
-}
-
-function ProjectChip(props: { cwd: string }) {
-  const controller = useController();
-  return (
-    <Menu>
-      <MenuTrigger asChild>
-        <button
-          type="button"
-          className="flex min-w-0 shrink items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover"
-          title={props.cwd}
-        >
-          <Folder size={12} className="shrink-0" />
-          <span className="truncate">{basename(props.cwd)}</span>
-        </button>
-      </MenuTrigger>
-      <MenuContent>
-        <MenuItem icon={<SquarePen size={14} />} onSelect={() => controller.newThread(props.cwd)}>
-          Nova conversa em {basename(props.cwd)}
-        </MenuItem>
-        <MenuItem icon={<FolderOpen size={14} />} onSelect={() => void controller.openFolder(props.cwd, "files")}>
-          {revealLabel()}
-        </MenuItem>
-        <MenuItem icon={<Code size={14} />} onSelect={() => void controller.openFolder(props.cwd, "editor")}>
-          Abrir no VS Code
-        </MenuItem>
-      </MenuContent>
-    </Menu>
   );
 }
 

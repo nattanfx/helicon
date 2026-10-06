@@ -1,5 +1,5 @@
 import { Activity, ArrowDown, Brain, ChevronRight, CircleAlert, GitFork, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useApp, useController, useNow } from "../../app/context.js";
 import { useSampled } from "../../app/sampled.js";
@@ -307,10 +307,12 @@ const TurnBlock = memo(
             ))}
             {turn.running ? <LiveStatus turn={turn} gates={props.gates} /> : null}
           </div>
-        ) : hasWork ? (
-          <WorkLog turn={turn} gates={props.gates} answers={props.answers} sessionId={props.sessionId} speed={turn.final ? null : props.speed} />
+        ) : hasWork && !turn.final ? (
+          <WorkLog turn={turn} gates={props.gates} answers={props.answers} sessionId={props.sessionId} speed={props.speed} />
         ) : null}
-        {turn.final ? (
+        {turn.final && hasWork && !turn.running && !standalone ? (
+          <AnsweredWork turn={turn} gates={props.gates} answers={props.answers} sessionId={props.sessionId} speed={props.speed} cost={props.cost} />
+        ) : turn.final ? (
           <div className="group/final flex flex-col gap-2">
             <AgentText item={turn.final} />
             <TurnFooter turn={turn} speed={props.speed} cost={props.cost} />
@@ -447,8 +449,26 @@ function turnDuration(turn: TurnView): number | null {
   return null;
 }
 
+/** As etapas de uma mensagem terminada, penduradas numa linha vertical. */
+function StepList(props: { turn: TurnView; gates: GateMap; answers: AnswerMap; sessionId: string; className?: string; id?: string }) {
+  return (
+    <div id={props.id} className={cn("ml-[7px] flex flex-col gap-1 border-l border-line pl-4", props.className)}>
+      {props.turn.entries.map((item) => (
+        <Entry
+          key={item.itemId}
+          item={item}
+          gate={props.gates[item.itemId]}
+          answers={props.answers[item.itemId] ?? null}
+          sessionId={props.sessionId}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
- * O trabalho de uma mensagem terminada, dobrado numa linha; os arquivos que mudou ficam visíveis como chips.
+ * O trabalho de uma mensagem terminada sem resposta final, dobrado numa linha; os arquivos que mudou ficam visíveis
+ * como chips. Com resposta, quem dobra as etapas é o rodapé da resposta (AnsweredWork).
  * Gramática do cabeçalho via Beautiful UI ToolChips (beautifului.dev), MIT (c) 2026 Shane Levine.
  */
 function WorkLog(props: { turn: TurnView; gates: GateMap; answers: AnswerMap; sessionId: string; speed?: TurnSpeed | null }) {
@@ -481,24 +501,54 @@ function WorkLog(props: { turn: TurnView; gates: GateMap; answers: AnswerMap; se
         ) : null}
       </button>
       <Collapse open={open}>
-        <div className="mt-1 ml-[7px] flex flex-col gap-1 border-l border-line pl-4">
-          {turn.entries.map((item) => (
-            <Entry
-              key={item.itemId}
-              item={item}
-              gate={props.gates[item.itemId]}
-              answers={props.answers[item.itemId] ?? null}
-              sessionId={props.sessionId}
-            />
-          ))}
-        </div>
+        <StepList turn={turn} gates={props.gates} answers={props.answers} sessionId={props.sessionId} className="mt-1" />
       </Collapse>
       <DiffChips entries={turn.entries} className="mt-2" sessionId={props.sessionId} />
     </div>
   );
 }
 
-function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
+/**
+ * Uma mensagem terminada com etapas e resposta final: as etapas ficam dobradas acima da resposta e o rodapé
+ * ("Concluída 23:57 · 12s · ...") é o botão que as abre. Uma só linha, uma só duração.
+ */
+export function AnsweredWork(props: {
+  turn: TurnView;
+  gates: GateMap;
+  answers: AnswerMap;
+  sessionId: string;
+  speed: TurnSpeed | null;
+  cost: TurnCost | null;
+}) {
+  const { turn } = props;
+  const [open, setOpen] = useState(turn.info?.terminal === "failed");
+  const stepsId = useId();
+  if (!turn.final) {
+    return null;
+  }
+  return (
+    // Sem espaçamento próprio do flex: o espaço abaixo das etapas mora dentro do que dobra, para nada sobrar fechado.
+    <div className="flex flex-col">
+      <Collapse open={open}>
+        <div className="pb-3">
+          <StepList id={stepsId} turn={turn} gates={props.gates} answers={props.answers} sessionId={props.sessionId} />
+        </div>
+      </Collapse>
+      <DiffChips entries={turn.entries} className="mb-3" sessionId={props.sessionId} />
+      <div className="group/final flex flex-col gap-2">
+        <AgentText item={turn.final} />
+        <TurnFooter
+          turn={turn}
+          speed={props.speed}
+          cost={props.cost}
+          steps={{ open, onToggle: () => setOpen((v) => !v), controls: stepsId, summary: summarize(turn.entries) }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
   const now = useNow(1000);
   const { turn } = props;
   const infoRef = useRef(turn.info);
@@ -538,46 +588,104 @@ function LiveStatus(props: { turn: TurnView; gates: GateMap }) {
       )}
       {elapsed ? <span className="font-mono text-xs text-subtle tabular-nums">{elapsed}</span> : null}
       {speed !== null && !waiting ? (
-        <Tip label="Estimado do texto transmitindo agora">
-          <span tabIndex={0} className="font-mono text-xs text-subtle tabular-nums">
-            ~{formatSpeed(speed)}
-          </span>
-        </Tip>
+        <>
+          {elapsed ? (
+            <span aria-hidden="true" className="text-xs text-line-strong">
+              ·
+            </span>
+          ) : null}
+          {/* A estimativa ao vivo que antes ficava no composer: só aqui, enquanto o texto flui. */}
+          <Tip label="Estimado a partir do texto fluindo agora">
+            <span
+              tabIndex={0}
+              aria-label={`Estimado a partir do texto fluindo agora: ${formatSpeed(speed)}`}
+              className="font-mono text-xs text-subtle tabular-nums"
+            >
+              ~{formatSpeed(speed)}
+            </span>
+          </Tip>
+        </>
       ) : null}
       {retry?.reason ? <span className="truncate text-xs text-subtle">{retry.reason}</span> : null}
     </div>
   );
 }
 
-/** Sob uma resposta: quando terminou, quanto levou quando não houve registro de trabalho, e sua velocidade de saída. */
-function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: TurnCost | null }) {
+/** Abrir e fechar as etapas de uma mensagem a partir do seu rodapé. */
+export interface FooterSteps {
+  open: boolean;
+  onToggle: () => void;
+  /** O id da lista de etapas que o botão abre. */
+  controls: string;
+  /** "2 edições, 3 comandos": vai na dica e no nome acessível do botão. */
+  summary: string;
+}
+
+/**
+ * Sob uma resposta: quando terminou, quanto levou (a duração de trabalho da mensagem), sua velocidade de saída e
+ * custo. Com etapas, a parte "Concluída 23:57 · 12s" é o botão que as mostra.
+ */
+export function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: TurnCost | null; steps?: FooterSteps }) {
   const duration = turnDuration(props.turn);
-  const hasWork = props.turn.entries.length > 0;
   const completed = completedTime(props.turn);
   const failed = props.turn.info?.terminal === "failed";
+  const status = failed ? "Falhou" : "Concluída";
+  const steps = props.steps;
   const dot = (
     <span aria-hidden="true" className="text-line-strong">
       ·
     </span>
   );
+  const when = completed !== null ? `${status} ${formatClock(completed)}` : null;
+  const took = duration !== null ? formatDuration(duration) : null;
+  const lead = when !== null || took !== null || Boolean(steps);
+  const stepsTip = steps
+    ? [completed !== null ? `${status} ${formatFullDate(completed)}` : null, steps.summary || null].filter(Boolean).join(" · ") || "Etapas"
+    : "";
   return (
     <div className="flex h-6 items-center gap-1.5 text-xs text-subtle">
-      {completed !== null ? (
-        <Tip label={`${failed ? "Falhou" : "Concluída"} ${formatFullDate(completed)}`}>
-          <span tabIndex={0} className="tabular-nums">
-            {failed ? "Falhou" : "Concluída"} {formatClock(completed)}
-          </span>
+      {steps ? (
+        <Tip label={stepsTip}>
+          <button
+            type="button"
+            aria-expanded={steps.open}
+            aria-controls={steps.controls}
+            onClick={steps.onToggle}
+            className="-ml-1.5 inline-flex h-6 min-w-0 shrink-0 items-center gap-1.5 rounded-md px-1.5 tabular-nums transition-colors duration-100 hover:bg-hover hover:text-muted"
+          >
+            <ChevronRight
+              size={12}
+              strokeWidth={2.2}
+              aria-hidden="true"
+              className={cn("shrink-0 transition-transform duration-200 ease-out", steps.open && "rotate-90")}
+            />
+            {when !== null ? <span>{when}</span> : null}
+            {when !== null && took !== null ? dot : null}
+            {took !== null ? <span>{took}</span> : null}
+            {when === null && took === null ? <span>Registro de trabalho</span> : null}
+            <span className="sr-only">{`, etapas${steps.summary ? `: ${steps.summary}` : ""}`}</span>
+          </button>
         </Tip>
-      ) : null}
-      {duration !== null && !hasWork ? (
+      ) : (
         <>
-          {completed !== null ? dot : null}
-          <span className="tabular-nums">{formatDuration(duration)}</span>
+          {completed !== null ? (
+            <Tip label={`${status} ${formatFullDate(completed)}`}>
+              <span tabIndex={0} className="tabular-nums">
+                {when}
+              </span>
+            </Tip>
+          ) : null}
+          {took !== null ? (
+            <>
+              {completed !== null ? dot : null}
+              <span className="tabular-nums">{took}</span>
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
       {props.speed ? (
         <>
-          {completed !== null || (duration !== null && !hasWork) ? dot : null}
+          {lead ? dot : null}
           <Tip label={`${formatTokens(props.speed.outputTokens)} tokens de saída em ${formatDuration(props.speed.generationMs)} de chamadas ao modelo`}>
             <span tabIndex={0} className="tabular-nums">
               {formatSpeed(props.speed.tokensPerSecond)}
@@ -587,7 +695,7 @@ function TurnFooter(props: { turn: TurnView; speed: TurnSpeed | null; cost: Turn
       ) : null}
       {props.cost && props.cost.cost > 0 ? (
         <>
-          {completed !== null || props.speed || (duration !== null && !hasWork) ? dot : null}
+          {lead || props.speed ? dot : null}
           <Tip
             label={`Nas tarifas de API: ${formatTokens(props.cost.promptTokens)} de entrada (${formatTokens(props.cost.cachedTokens)} do cache), ${formatTokens(props.cost.outputTokens)} de saída${props.cost.complete ? "" : "; uma chamada aqui não tem preço publicado"}`}
           >

@@ -39,12 +39,10 @@ import {
 } from "../../model/draftFiles.js";
 import { CostMeter } from "./CostPanel.js";
 import { Popover, Slider, Switch } from "radix-ui";
-import { shallowEqual, useApp, useController } from "../../app/context.js";
-import { useSampled } from "../../app/sampled.js";
-import { basename, CONTRIBUTOR_LABEL, CONTRIBUTOR_NOTICE, emptyAttachmentWarning, formatDuration, formatSpeed, formatTokens, modelDisplayName } from "../../model/format.js";
+import { useApp, useController } from "../../app/context.js";
+import { basename, CONTRIBUTOR_LABEL, CONTRIBUTOR_NOTICE, emptyAttachmentWarning, formatTokens, modelDisplayName } from "../../model/format.js";
 import { matchSlash, parseSlash, resolveSlash, slashCommands, type SlashCommand } from "../../model/slash.js";
 import { yoloOn, type SkillsState } from "../../model/store.js";
-import { lastTurnSpeed, streamingSpeed } from "../../model/usage.js";
 import type { ApprovalMode, ModelOption, ReasoningEffort } from "../../types.js";
 import { effortAccepted, effortLabel } from "../../model/effort.js";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuOption, MenuRadioGroup, MenuSeparator, MenuTrigger, Modal, Tip, FLOATING } from "../ui/overlays.js";
@@ -518,7 +516,6 @@ export function Composer(props: ComposerProps) {
           <AccessPicker sessionId={props.sessionId} cwd={props.cwd} side={props.variant === "home" ? "bottom" : "top"} />
         </div>
         <div className="flex shrink-0 items-center gap-0.5 self-end">
-          {props.sessionId ? <SpeedReadout sessionId={props.sessionId} /> : null}
           {props.sessionId ? <CostMeter sessionId={props.sessionId} /> : null}
           {props.sessionId ? <ContextMeter sessionId={props.sessionId} /> : null}
           {props.running && props.sessionId && hasText ? (
@@ -1004,40 +1001,6 @@ function AccessPicker(props: { sessionId: string | null; cwd: string | null; sid
         </div>
       </Modal>
     </>
-  );
-}
-
-/** Velocidade de saída ao lado do anel de contexto: uma estimativa enquanto o texto flui, senão a velocidade medida da última mensagem. */
-function SpeedReadout(props: { sessionId: string }) {
-  const controller = useController();
-  const running = useApp((s) => Boolean(s.threads[props.sessionId]?.fold.activeTurnId));
-  const last = useApp((s) => {
-    const fold = s.threads[props.sessionId]?.fold;
-    const speed = fold ? lastTurnSpeed(fold) : null;
-    return speed ? { tps: speed.tokensPerSecond, tokens: speed.outputTokens, ms: speed.generationMs } : null;
-  }, shallowEqual);
-  const live = useSampled(() => {
-    const fold = controller.store.get().threads[props.sessionId]?.fold;
-    return fold?.activeTurnId ? streamingSpeed(fold.turns[fold.activeTurnId], Date.now()) : null;
-  }, running);
-  if (running && live !== null) {
-    return (
-      <Tip label="Estimado a partir do texto fluindo agora">
-        <span tabIndex={0} className="shrink-0 px-1 text-2xs text-subtle tabular-nums">
-          ~{formatSpeed(live)}
-        </span>
-      </Tip>
-    );
-  }
-  if (!last) {
-    return null;
-  }
-  return (
-    <Tip label={`Última mensagem: ${formatTokens(last.tokens)} tokens de saída em ${formatDuration(last.ms)} de chamadas ao modelo`}>
-      <span tabIndex={0} className="shrink-0 px-1 text-2xs text-subtle tabular-nums">
-        {formatSpeed(last.tps)}
-      </span>
-    </Tip>
   );
 }
 
