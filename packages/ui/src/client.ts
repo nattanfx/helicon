@@ -26,6 +26,7 @@ import type {
   YoloSettings,
 } from "./types.js";
 import { listedPrice } from "./model/pricing.js";
+import { isReasoningEffort } from "./model/effort.js";
 
 /** Um erro do servidor Helicon, carregando o tipo de erro MSP quando há um. */
 export class HeliconError extends Error {
@@ -243,6 +244,9 @@ export function parseModelList(value: unknown): ModelOption[] {
       // O catálogo do Muse não traz preços hoje, então a tabela publicada o substitui quando ele não lista nenhum.
       cost: parseCost(r["cost"]) ?? listedPrice(modelId),
       contributor: /contributor/i.test(modelId) || /product improvement/i.test(description ?? ""),
+      // Só uma lista vale como declaração: `"unknown"` e a ausência (host antigo) deixam todos os níveis abertos.
+      efforts: Array.isArray(r["variants"]) ? r["variants"].filter(isReasoningEffort) : null,
+      defaultEffort: isReasoningEffort(r["defaultReasoningEffort"]) ? r["defaultReasoningEffort"] : null,
     });
   }
   return options;

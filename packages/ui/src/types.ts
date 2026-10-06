@@ -286,6 +286,10 @@ export interface ModelOption {
   cost: { input: number; output: number; cached: number; currency: string | null } | null;
   /** Contributor-tier models may use prompts and outputs for product improvement. */
   contributor: boolean;
+  /** Níveis de esforço que o modelo aceita, na ordem do catálogo; ausente ou `null` quando o catálogo não declara. */
+  efforts?: ReasoningEffort[] | null;
+  /** O esforço padrão do catálogo para este modelo, quando declarado. */
+  defaultEffort?: ReasoningEffort | null;
 }
 
 /** Geração de títulos mantida pelo servidor: ativação e modelo, quando escolhido. */
@@ -516,6 +520,8 @@ export interface TranscriptLoad {
     turnCount: number;
     contextUsage?: ContextUsage | null;
     tokenUsage?: TokenTotals | null;
+    /** O esforço padrão permanente da conversa, quando um foi definido. */
+    reasoningEffort?: string | null;
   } | null;
   events: ViewEvent[];
   truncated: boolean;

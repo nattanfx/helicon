@@ -3129,6 +3129,8 @@ export class HeliconServer {
             // History pages carry no context readings, so pass along the session's own when it has them.
             contextUsage: asRecord(msp["contextUsage"]) ?? null,
             tokenUsage: asRecord(msp["tokenUsage"]) ?? null,
+            // The session's standing effort: what a turn sent on auto runs at, so the UI can catch one the model refuses.
+            reasoningEffort: str(asRecord(msp["reasoningEffort"])?.["reasoningEffort"]),
           }
         : null,
       events: events.map((event) => ({ ...event, params: stripSource(event.params) })),

@@ -1,4 +1,6 @@
 import { HeliconError, errorKind, errorMessage } from "../client.js";
+import { effortLabel, isReasoningEffort, unsupportedEffortError } from "./effort.js";
+import { modelDisplayName } from "./format.js";
 
 /**
  * Falhas que deixam uma conversa travada em vez de falhar uma única vez. Cada mensagem envia a conversa
@@ -78,6 +80,8 @@ export interface TurnErrorCopy {
   /** Texto original, sem credenciais, quando a explicação não o substitui por completo. */
   technical: string | null;
   offerRetry: boolean;
+  /** Um ajuste que resolve a falha, oferecido como botão no cartão: `effort` abre o seletor de esforço. */
+  action?: "effort";
 }
 
 /**
@@ -282,6 +286,21 @@ export function turnErrorCopy(
         "O Muse recusou esta mensagem por limite temporário, não pela cota do plano. Espere um pouco antes de tentar de novo; repetir na mesma hora pode falhar igual. Não houve nova tentativa automática.",
       technical: text,
       offerRetry: retryable,
+    };
+  }
+  const effort = unsupportedEffortError(raw);
+  if (effort) {
+    // Tentar de novo vale depois de trocar o esforço, e também sem trocar quando o catálogo declara os níveis do
+    // modelo: o envio ajusta sozinho um esforço recusado.
+    const tier = isReasoningEffort(effort.effort) ? effortLabel(effort.effort) : effort.effort;
+    const model = effort.modelId ? `O ${modelDisplayName(effort.modelId)}` : "O modelo desta conversa";
+    const accepted = effort.supported.length ? ` Ele aceita: ${effort.supported.map((e) => effortLabel(e)).join(", ")}.` : "";
+    return {
+      title: "Este modelo não aceita o esforço escolhido",
+      explanation: `${model} não aceita o esforço ${tier}, então o Muse recusa cada mensagem até o esforço mudar.${accepted} Escolha outro nível e envie de novo.`,
+      technical: text,
+      offerRetry: true,
+      action: "effort",
     };
   }
   // Falha sem detalhe do host: mostrar kind e mensagem em vez de nada, para a próxima

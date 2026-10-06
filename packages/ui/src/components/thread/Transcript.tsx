@@ -1,4 +1,4 @@
-import { Activity, ArrowDown, ChevronRight, CircleAlert, GitFork, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
+import { Activity, ArrowDown, Brain, ChevronRight, CircleAlert, GitFork, RotateCcw, RotateCw, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useApp, useController, useNow } from "../../app/context.js";
@@ -903,6 +903,13 @@ function TurnError(props: {
             onClick={() => again((files) => controller.retryTurn(props.sessionId, props.prompt as string, files))}
           >
             <RotateCcw size={13} /> Tentar de novo
+          </Button>
+        </Tip>
+      ) : null}
+      {!stuck && copy.action === "effort" && !props.readOnly ? (
+        <Tip label="Abrir o seletor de esforço para escolher um nível que este modelo aceite">
+          <Button size="sm" onClick={() => controller.setPicker("effort")}>
+            <Brain size={13} /> Mudar o esforço
           </Button>
         </Tip>
       ) : null}

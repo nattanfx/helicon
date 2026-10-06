@@ -4,6 +4,7 @@ import type {
   ContextUsage,
   Goal,
   MspItem,
+  ReasoningEffort,
   TodoItem,
   TokenTotals,
   TranscriptLoad,
@@ -12,6 +13,7 @@ import type {
   ViewEvent,
 } from "../types.js";
 import { EMPTY_TURN_ERROR } from "./errors.js";
+import { isReasoningEffort } from "./effort.js";
 
 /**
  * The per-thread fold of the MSP view stream. Pure and immutable: every apply returns a new
@@ -86,6 +88,8 @@ export interface ThreadMeta {
   goalStatusAt: number | null;
   /** Stretches the goal spent paused or blocked, seen live; its running time and counts leave them out. */
   goalPauses: { from: number; to: number | null }[];
+  /** O esforço padrão permanente da conversa no host, quando um foi definido: vale nas mensagens enviadas no Automático. */
+  effort: ReasoningEffort | null;
 }
 
 export interface ThreadFold {
@@ -131,6 +135,7 @@ export function emptyFold(): ThreadFold {
       goalSince: null,
       goalStatusAt: null,
       goalPauses: [],
+      effort: null,
     },
     closed: false,
   };
@@ -688,6 +693,11 @@ function applyOne(draft: Draft, event: ViewEvent): void {
     case "session/modelChanged":
       d.meta.modelId = str(params["modelId"]) ?? d.meta.modelId;
       break;
+    case "session/reasoningEffortChanged":
+      if (isReasoningEffort(params["reasoningEffort"])) {
+        d.meta.effort = params["reasoningEffort"];
+      }
+      break;
     case "session/approvalModeChanged":
       if (isApprovalMode(params["mode"])) {
         d.meta.approvalMode = params["mode"];
@@ -858,6 +868,7 @@ export function foldFromLoad(load: TranscriptLoad, previous?: ThreadFold | null)
       tokenTotals: fold.meta.tokenTotals ?? (typeof load.msp?.tokenUsage?.totalTokens === "number" ? load.msp.tokenUsage : null),
       modelId: fold.meta.modelId ?? load.msp?.modelId ?? load.session?.modelId ?? null,
       approvalMode: fold.meta.approvalMode ?? (isApprovalMode(load.msp?.approvalMode) ? load.msp.approvalMode : null),
+      effort: fold.meta.effort ?? (isReasoningEffort(load.msp?.reasoningEffort) ? load.msp.reasoningEffort : null),
     },
     closed: false,
   };

@@ -803,7 +803,15 @@ describe("HeliconServer", () => {
     const connection = new FakeConnection();
     connection.replies.set("session/start", { session: { sessionId: "s1" } });
     connection.replies.set("session/resume", {
-      session: { sessionId: "s1", status: "running", activeTurnId: "t2", turnCount: 1, modelId: "muse-spark-1.3", updatedAt: "2026-09-11T14:00:00Z" },
+      session: {
+        sessionId: "s1",
+        status: "running",
+        activeTurnId: "t2",
+        turnCount: 1,
+        modelId: "muse-spark-1.3",
+        updatedAt: "2026-09-11T14:00:00Z",
+        reasoningEffort: { reasoningEffort: "max", source: "user" },
+      },
     });
     const event = (n: number, method: string, extra: Record<string, unknown> = {}) => ({
       method,
@@ -838,6 +846,7 @@ describe("HeliconServer", () => {
     assert.equal(loaded.json.pending.approvals[0].subject.command, "rm -rf dist");
     assert.equal(loaded.json.pending.approvals[0].sourceRange, undefined);
     assert.equal(loaded.json.msp.activeTurnId, "t2");
+    assert.equal(loaded.json.msp.reasoningEffort, "max", "o esforço permanente da conversa vai junto");
     assert.equal(loaded.json.session.title, "Add dark mode");
     assert.equal(loaded.json.session.live.pendingApprovals, 1);
     assert.equal(loaded.json.session.live.activeTurnId, "t2");

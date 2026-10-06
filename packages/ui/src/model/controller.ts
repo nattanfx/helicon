@@ -32,6 +32,7 @@ import {
 } from "./format.js";
 import { fileKey, fileTarget, type LineRange } from "./files.js";
 import { goalPrompt } from "./goal.js";
+import { effortAccepted, effortLabel, fallbackEffort } from "./effort.js";
 import { browserTimeZone } from "./usage-range.js";
 import {
   INIT_PROMPT,
@@ -1404,10 +1405,13 @@ export class HeliconController {
       ...(options.previews?.length ? { attachments: options.previews } : {}),
     };
     this.patchFold(sessionId, (f) => addEcho(f, echo));
+    // Uma conversa antiga, ou aberta em outro modelo, pode estar num esforço que o modelo dela recusa: ajustar
+    // antes de enviar em vez de deixar o host recusar cada mensagem.
+    const effort = this.fitEffort(thread.fold.meta.modelId ?? this.state.sessions[sessionId]?.modelId ?? null, sessionId, false);
     try {
       const ack = await this.client.sendTurn(sessionId, text, {
         ifBusy: running ? (options.steer ? "steer" : "queue") : undefined,
-        reasoningEffort: this.state.prefs.effort ?? undefined,
+        reasoningEffort: effort ?? undefined,
         displayText: options.displayText,
         attachments: options.attachments,
         ...(options.skill ? { skill: options.skill } : {}),
@@ -1804,6 +1808,8 @@ export class HeliconController {
     this.setPrefs({ defaultModelId: modelId });
     const route = this.state.route;
     if (route.kind !== "thread") {
+      // O padrão de novas conversas: o esforço escolhido tem de caber no modelo com que elas começam.
+      this.fitEffort(modelId, null, true);
       return;
     }
     const previous = this.state.threads[route.sessionId]?.fold.meta.modelId ?? null;
@@ -1813,7 +1819,49 @@ export class HeliconController {
     } catch (error) {
       this.patchMeta(route.sessionId, { modelId: previous });
       this.toast("error", "Não foi possível trocar de modelo", userFacingError(error));
+      return;
     }
+    // Só depois da troca aceita: uma troca recusada não deve rebaixar o esforço à toa.
+    this.fitEffort(modelId, route.sessionId, true);
+  }
+
+  /**
+   * O esforço com que a próxima mensagem vai para `modelId`, ajustado quando o catálogo diz que o modelo não aceita o
+   * escolhido (o host recusaria todas as mensagens, como no `muse-spark-1.2` com Max). O ajuste vai para o nível
+   * aceito mais próximo abaixo, vira a nova escolha e é avisado. No Automático, o padrão permanente da conversa é que
+   * vale, então é ele que se confere. Com `apply`, a conversa assume o novo nível na hora; sem, ele vai com a
+   * própria mensagem, que o define do mesmo jeito. Catálogo sem declaração: nada muda.
+   */
+  private fitEffort(modelId: string | null, sessionId: string | null, apply: boolean): ReasoningEffort | null {
+    const model = modelId ? this.state.models.find((m) => m.modelId === modelId) : undefined;
+    const chosen = this.state.prefs.effort;
+    const standing = sessionId ? (this.state.threads[sessionId]?.fold.meta.effort ?? null) : null;
+    const current = chosen ?? standing;
+    if (current === null || effortAccepted(model, current)) {
+      return chosen;
+    }
+    const next = fallbackEffort(model, current);
+    if (chosen === null && next === null) {
+      // Nada abaixo e nenhum padrão declarado: um padrão permanente não se desfaz daqui, e o host explica a recusa.
+      return null;
+    }
+    if (chosen !== null) {
+      this.setPrefs({ effort: next });
+    }
+    if (sessionId && next !== null) {
+      this.patchMeta(sessionId, { effort: next });
+      if (apply && !this.state.threads[sessionId]?.readOnly) {
+        void this.client.setReasoningEffort(sessionId, next).catch(() => {
+          // A conversa ainda não carregada assume o nível com a próxima mensagem, que o leva junto.
+        });
+      }
+    }
+    this.toast(
+      "info",
+      `Esforço ajustado para ${effortLabel(next)}`,
+      `O ${modelDisplayName(modelId)} não aceita ${effortLabel(current)}.`,
+    );
+    return next;
   }
 
   async setMode(mode: ApprovalMode): Promise<void> {
@@ -2089,6 +2137,7 @@ export class HeliconController {
     if (effort === null || route.kind !== "thread" || !thread || thread.readOnly) {
       return;
     }
+    this.patchMeta(route.sessionId, { effort });
     void this.client.setReasoningEffort(route.sessionId, effort).catch((error: unknown) => {
       // Uma conversa ainda não carregada assume o esforço com sua próxima mensagem.
       const kind = errorKind(error);

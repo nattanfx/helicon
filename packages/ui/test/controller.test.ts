@@ -107,8 +107,15 @@ class FakeClient implements HeliconClient {
   async sendTurn(
     sessionId: string,
     text: string,
-    options?: { ifBusy?: string; displayText?: string; attachments?: { name: string; mediaType: string; base64: string }[]; skill?: { selector: string; arguments?: string } },
+    options?: {
+      ifBusy?: string;
+      displayText?: string;
+      reasoningEffort?: string;
+      attachments?: { name: string; mediaType: string; base64: string }[];
+      skill?: { selector: string; arguments?: string };
+    },
   ) {
+    this.turnEfforts.push(options?.reasoningEffort);
     this.sent.push({
       sessionId,
       text,
@@ -119,6 +126,8 @@ class FakeClient implements HeliconClient {
     });
     return this.sendResult();
   }
+  /** O esforço que cada mensagem levou, na ordem de envio. */
+  turnEfforts: (string | undefined)[] = [];
   interrupted: { sessionId: string; turnId?: string }[] = [];
   async interruptTurn(sessionId: string, turnId?: string) {
     this.interrupted.push({ sessionId, turnId });
@@ -3555,5 +3564,141 @@ describe("stale thread watchdog", () => {
     assert.equal(loads, 1, "a question left unanswered for half an hour is never reloaded");
     assert.equal(controller.store.get().threads["s1"]?.stalled, false, "and never reported as stalled");
     stop();
+  });
+});
+
+/** Um modelo do catálogo, com os níveis de esforço que ele declara (ou nenhuma declaração). */
+function catalogModel(modelId: string, efforts: ModelOption["efforts"], defaultEffort: ModelOption["defaultEffort"] = null): ModelOption {
+  return {
+    modelId, displayLabel: modelId, description: null, isDefault: false, isActive: false,
+    contextLimit: null, outputLimit: null, cost: null, contributor: /contributor/.test(modelId), efforts, defaultEffort,
+  };
+}
+
+const SPARK_13 = catalogModel("muse-spark-1.3", ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "medium");
+const SPARK_12 = catalogModel("muse-spark-1.2", ["minimal", "low", "medium", "high", "xhigh"], "medium");
+const UNKNOWN = catalogModel("muse-legacy", null);
+
+describe("esforço que o modelo não aceita", () => {
+  async function withCatalog(models: ModelOption[], effort: string | null, hash = "#/t/s1") {
+    const client = new FakeClient();
+    client.listModels = async () => models;
+    const shared = { ...platform(hash), loadPrefs: () => (effort === null ? null : { effort }) };
+    const controller = new HeliconController(client, shared);
+    const stop = controller.start();
+    await settle();
+    await settle();
+    return { client, controller, stop };
+  }
+
+  it("ajusta Max para Extra alto ao trocar a conversa para um modelo que não aceita Max", async () => {
+    const { client, controller, stop } = await withCatalog([SPARK_13, SPARK_12], "max");
+    try {
+      await controller.setModel("muse-spark-1.2");
+      const state = controller.store.get();
+      assert.equal(state.prefs.effort, "xhigh");
+      assert.deepEqual(client.efforts, ["s1:xhigh"], "a conversa assume o novo nível na hora");
+      assert.equal(state.threads["s1"]?.fold.meta.effort, "xhigh");
+      assert.equal(state.toasts.at(-1)?.title, "Esforço ajustado para Extra alto");
+      assert.equal(state.toasts.at(-1)?.detail, "O muse-spark-1.2 não aceita Max.");
+    } finally {
+      stop();
+    }
+  });
+
+  it("mantém o esforço quando o novo modelo o aceita, ou quando o catálogo não declara", async () => {
+    const { client, controller, stop } = await withCatalog([SPARK_13, SPARK_12, UNKNOWN], "high");
+    try {
+      await controller.setModel("muse-spark-1.2");
+      assert.equal(controller.store.get().prefs.effort, "high");
+      controller.setEffort("max");
+      await controller.setModel("muse-legacy");
+      assert.equal(controller.store.get().prefs.effort, "max", "capacidade desconhecida segue como antes");
+      assert.deepEqual(client.efforts, ["s1:max"]);
+    } finally {
+      stop();
+    }
+  });
+
+  it("ajusta o padrão de novas conversas ao trocar o modelo padrão fora de uma conversa", async () => {
+    const { client, controller, stop } = await withCatalog([SPARK_13, SPARK_12], "max", "#/");
+    try {
+      await controller.setModel("muse-spark-1.2");
+      assert.equal(controller.store.get().prefs.defaultModelId, "muse-spark-1.2");
+      assert.equal(controller.store.get().prefs.effort, "xhigh");
+      assert.deepEqual(client.efforts, [], "nenhuma conversa aberta para ajustar");
+    } finally {
+      stop();
+    }
+  });
+
+  it("cai no padrão do catálogo, e depois no Automático, quando nada abaixo é aceito", async () => {
+    const only = catalogModel("muse-fast", ["high", "xhigh"], "high");
+    const bare = catalogModel("muse-bare", ["high"]);
+    const { controller, stop } = await withCatalog([SPARK_13, only, bare], "low");
+    try {
+      await controller.setModel("muse-fast");
+      assert.equal(controller.store.get().prefs.effort, "high");
+      controller.setEffort("medium");
+      await controller.setModel("muse-bare");
+      assert.equal(controller.store.get().prefs.effort, null);
+      assert.equal(controller.store.get().toasts.at(-1)?.title, "Esforço ajustado para Automático");
+    } finally {
+      stop();
+    }
+  });
+
+  it("não rebaixa o esforço quando a troca de modelo falha", async () => {
+    const { client, controller, stop } = await withCatalog([SPARK_13, SPARK_12], "max");
+    try {
+      client.setSessionModel = async () => {
+        throw new Error("host away");
+      };
+      await controller.setModel("muse-spark-1.2");
+      assert.equal(controller.store.get().prefs.effort, "max");
+      assert.deepEqual(client.efforts, []);
+    } finally {
+      stop();
+    }
+  });
+
+  it("ajusta antes de enviar numa conversa cujo modelo não aceita o esforço escolhido", async () => {
+    const { client, controller, stop } = await withCatalog([SPARK_13, SPARK_12], "max");
+    try {
+      client.transcript = async () => load({ msp: { ...load().msp!, modelId: "muse-spark-1.2" } });
+      await controller.loadThread("s1");
+      // A conversa já estava no 1.2: nenhuma troca de modelo passou pelo ajuste.
+      assert.equal(await controller.send("oi"), true);
+      assert.deepEqual(client.turnEfforts, ["xhigh"]);
+      assert.equal(controller.store.get().prefs.effort, "xhigh");
+    } finally {
+      stop();
+    }
+  });
+
+  it("no Automático, corrige o padrão permanente da conversa que o modelo dela recusa", async () => {
+    const { client, controller, stop } = await withCatalog([SPARK_13, SPARK_12], null);
+    try {
+      client.transcript = async () => load({ msp: { ...load().msp!, modelId: "muse-spark-1.2", reasoningEffort: "max" } });
+      await controller.loadThread("s1");
+      assert.equal(controller.store.get().threads["s1"]?.fold.meta.effort, "max");
+      assert.equal(await controller.send("oi"), true);
+      assert.deepEqual(client.turnEfforts, ["xhigh"], "a mensagem leva o nível aceito, que vira o padrão da conversa");
+      assert.equal(controller.store.get().prefs.effort, null, "a escolha do usuário continua Automático");
+      assert.equal(controller.store.get().threads["s1"]?.fold.meta.effort, "xhigh");
+    } finally {
+      stop();
+    }
+  });
+
+  it("envia como antes quando o catálogo não declara os níveis do modelo", async () => {
+    const { client, controller, stop } = await withCatalog([], "max");
+    try {
+      assert.equal(await controller.send("oi"), true);
+      assert.deepEqual(client.turnEfforts, ["max"]);
+      assert.equal(controller.store.get().prefs.effort, "max");
+    } finally {
+      stop();
+    }
   });
 });

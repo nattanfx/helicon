@@ -3,7 +3,7 @@ import { backfillDetail } from "../../model/usage-recovery.js";
 import { CONTRIBUTOR_NOTICE, contributorChoiceLabel, modelDisplayName } from "../../model/format.js";
 import { type GroupBy } from "../../model/store.js";
 import type { ApprovalMode, ReasoningEffort } from "../../types.js";
-import { LEVELS, MODES } from "../composer/Composer.js";
+import { MODES, useLevels } from "../composer/Composer.js";
 import { Card, Pick, Row, Subhead, Toggle } from "./rows.js";
 import { Button } from "../ui/primitives.js";
 
@@ -34,6 +34,8 @@ export function NovasConversas() {
   const prefs = useApp((s) => s.prefs);
   const models = useApp((s) => s.models);
   const yoloProjects = useApp((s) => Object.values(s.yoloSettings ?? {}).filter((entry) => entry.enabled).length);
+  // Só os níveis que o modelo de novas conversas aceita, quando o catálogo declara.
+  const { levels } = useLevels(null);
   return (
     <Card>
       <Row label="Modelo" description="Com o que uma nova conversa começa. Mudar aqui não afeta conversas em andamento.">
@@ -70,7 +72,7 @@ export function NovasConversas() {
           value={prefs.effort}
           options={[
             { value: null, label: "Automático", hint: "O Muse escolhe o esforço de cada mensagem" },
-            ...LEVELS.map((level) => ({ value: level.value, label: level.label, hint: level.description })),
+            ...levels.map((level) => ({ value: level.value, label: level.label, hint: level.description })),
           ]}
           onChange={(value) => controller.setEffort(value)}
         />

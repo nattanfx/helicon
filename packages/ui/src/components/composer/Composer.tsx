@@ -38,7 +38,8 @@ import { basename, CONTRIBUTOR_LABEL, CONTRIBUTOR_NOTICE, emptyAttachmentWarning
 import { matchSlash, parseSlash, resolveSlash, slashCommands, type SlashCommand } from "../../model/slash.js";
 import { yoloOn, type SkillsState } from "../../model/store.js";
 import { lastTurnSpeed, streamingSpeed } from "../../model/usage.js";
-import type { ApprovalMode, ReasoningEffort } from "../../types.js";
+import type { ApprovalMode, ModelOption, ReasoningEffort } from "../../types.js";
+import { effortAccepted, effortLabel } from "../../model/effort.js";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuOption, MenuRadioGroup, MenuSeparator, MenuTrigger, Modal, Tip, FLOATING } from "../ui/overlays.js";
 import { Button, IconButton, MOD, Spinner, cn } from "../ui/primitives.js";
 import { PixelFlow } from "../ui/PixelFlow.js";
@@ -493,7 +494,7 @@ export function Composer(props: ComposerProps) {
         {/* A caixa de nova conversa fica no alto, então seus menus abrem para baixo; ainda viram quando não há espaço. */}
         <AttachButton onFiles={(picked) => addFiles(Array.from(picked))} disabled={props.readOnly || files.length >= MAX_FILES} />
         <ModelPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
-        <EffortPicker side={props.variant === "home" ? "bottom" : "top"} />
+        <EffortPicker sessionId={props.sessionId} side={props.variant === "home" ? "bottom" : "top"} />
         <AccessPicker sessionId={props.sessionId} cwd={props.cwd} side={props.variant === "home" ? "bottom" : "top"} />
         <span className="min-w-2 flex-1" />
         {props.sessionId ? <SpeedReadout sessionId={props.sessionId} /> : null}
@@ -623,34 +624,54 @@ function ModelPicker(props: { sessionId: string | null; side: PickerSide }) {
 
 /** Níveis de esforço na escala do mais rápido ao mais esperto. O Automático fica fora dela: o Muse escolhe por mensagem. */
 export const LEVELS: { value: ReasoningEffort; label: string; description: string }[] = [
-  { value: "none", label: "Desligado", description: "Responde na hora, sem raciocinar" },
-  { value: "minimal", label: "Mínimo", description: "Uma pensada rápida antes de responder" },
-  { value: "low", label: "Baixo", description: "Raciocínio leve para mudanças simples" },
-  { value: "medium", label: "Médio", description: "Equilíbrio entre velocidade e profundidade" },
-  { value: "high", label: "Alto", description: "Mastiga problemas mais difíceis" },
-  { value: "xhigh", label: "Extra alto", description: "Raciocínio profundo para trabalho traiçoeiro" },
+  { value: "none", label: effortLabel("none"), description: "Responde na hora, sem raciocinar" },
+  { value: "minimal", label: effortLabel("minimal"), description: "Uma pensada rápida antes de responder" },
+  { value: "low", label: effortLabel("low"), description: "Raciocínio leve para mudanças simples" },
+  { value: "medium", label: effortLabel("medium"), description: "Equilíbrio entre velocidade e profundidade" },
+  { value: "high", label: effortLabel("high"), description: "Mastiga problemas mais difíceis" },
+  { value: "xhigh", label: effortLabel("xhigh"), description: "Raciocínio profundo para trabalho traiçoeiro" },
   // Sem Ultra: o Muse Code 1.3.0 envia "ultra" ao modelo como "max", e o CLI deixou de oferecê-lo.
-  { value: "max", label: "Max", description: "O mais lento e minucioso" },
+  { value: "max", label: effortLabel("max"), description: "O mais lento e minucioso" },
 ];
-const TOP = LEVELS.length - 1;
-// Onde o controle descansa com o Automático ligado e nada escolhido ainda: Médio.
-const RESTING = 3;
+
+/**
+ * Os níveis que o modelo em uso aceita, quando o catálogo declara: um nível fora da lista faria o host recusar
+ * cada mensagem. Na conversa, o modelo dela; numa nova, o padrão escolhido ou o do catálogo.
+ */
+export function useLevels(sessionId: string | null): { levels: typeof LEVELS; model: ModelOption | undefined } {
+  const models = useApp((s) => s.models);
+  const sessionModel = useApp((s) =>
+    sessionId ? (s.threads[sessionId]?.fold.meta.modelId ?? s.sessions[sessionId]?.modelId ?? null) : null,
+  );
+  const preferred = useApp((s) => s.prefs.defaultModelId);
+  const current = sessionId ? sessionModel : (preferred ?? models.find((m) => m.isDefault)?.modelId ?? null);
+  const model = models.find((m) => m.modelId === current);
+  const levels = useMemo(() => LEVELS.filter((level) => effortAccepted(model, level.value)), [model]);
+  return { levels, model };
+}
 
 /** Esforço de raciocínio como controle deslizante com etapas, inspirado no controle do Claude desktop. */
-function EffortPicker(props: { side: PickerSide }) {
+function EffortPicker(props: { sessionId: string | null; side: PickerSide }) {
   const controller = useController();
   const open = useApp((s) => s.picker === "effort");
   const effort = useApp((s) => s.prefs.effort);
-  const [resting, setResting] = useState(RESTING);
+  const { levels, model } = useLevels(props.sessionId);
+  const top = levels.length - 1;
+  // Onde o controle descansa com o Automático ligado e nada escolhido ainda: Médio, ou o meio do que o modelo aceita.
+  const medium = levels.findIndex((l) => l.value === "medium");
+  const [resting, setResting] = useState<number | null>(null);
   const thumb = useRef<HTMLSpanElement>(null);
   const switchId = useId();
-  const picked = LEVELS.findIndex((l) => l.value === effort);
-  const auto = picked < 0;
-  const position = auto ? resting : picked;
-  const label = auto ? "Automático" : (LEVELS[picked]?.label ?? "Automático");
-  const ultra = !auto && picked === TOP;
+  const picked = levels.findIndex((l) => l.value === effort);
+  const auto = effort === null;
+  const position = picked >= 0 ? picked : Math.min(resting ?? (medium >= 0 ? medium : Math.floor(top / 2)), Math.max(top, 0));
+  // Um nível que o modelo não aceita continua com seu nome: ele é ajustado ao enviar, com aviso.
+  const label = effortLabel(effort);
+  const ultra = !auto && picked >= 0 && picked === top;
+  // Modelo que não aceita nenhum nível: só o Automático serve.
+  const none = levels.length === 0;
   const choose = (index: number) => {
-    const level = LEVELS[index];
+    const level = levels[index];
     if (level) {
       setResting(index);
       controller.setEffort(level.value);
@@ -675,7 +696,7 @@ function EffortPicker(props: { side: PickerSide }) {
         >
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted">Esforço</span>
-            <span className={cn("text-sm font-semibold", !auto && picked === TOP ? "text-accent-text" : "text-fg")}>{label}</span>
+            <span className={cn("text-sm font-semibold", ultra ? "text-accent-text" : "text-fg")}>{label}</span>
             <span className="flex-1" />
             <Tip label="Esforço maior pensa mais para respostas mais completas, mas cada mensagem demora mais.">
               <button
@@ -687,13 +708,17 @@ function EffortPicker(props: { side: PickerSide }) {
               </button>
             </Tip>
           </div>
+          {none ? (
+            <p className="mt-3 text-xs text-muted">O {modelDisplayName(model?.modelId)} não aceita escolher o esforço: o Muse decide.</p>
+          ) : (
+          <>
           <div className="mt-4 flex justify-between text-xs text-subtle">
             <span>Mais rápido</span>
             <span>Mais esperto</span>
           </div>
           <Slider.Root
             min={0}
-            max={TOP}
+            max={Math.max(top, 1)}
             step={1}
             value={[position]}
             onValueChange={([index]) => {
@@ -711,11 +736,11 @@ function EffortPicker(props: { side: PickerSide }) {
               {/* Um ponto por nível, recuado de meia alavanca para cada um ficar onde ela para. */}
               {ultra ? null : (
                 <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-[9px] left-[9px]">
-                  {LEVELS.map((level, index) => (
+                  {levels.map((level, index) => (
                     <span
                       key={level.value}
                       className="absolute top-1/2 size-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg/30"
-                      style={{ left: `${(index / TOP) * 100}%` }}
+                      style={{ left: `${(index / Math.max(top, 1)) * 100}%` }}
                     />
                   ))}
                 </span>
@@ -723,13 +748,19 @@ function EffortPicker(props: { side: PickerSide }) {
             </Slider.Track>
             <Slider.Thumb
               ref={thumb}
-              aria-valuetext={LEVELS[position]?.label}
+              aria-valuetext={levels[position]?.label}
               className="block h-6 w-[18px] rounded-md bg-white shadow-[0_0_0_1px_oklch(0_0_0/0.08),0_1px_3px_oklch(0_0_0/0.3)] outline-none transition-transform duration-100 ease-out focus-visible:ring-2 focus-visible:ring-accent active:scale-95"
             />
           </Slider.Root>
           <p className={cn("mt-2 text-xs", auto ? "text-subtle" : "text-muted")}>
-            {auto ? "O Muse escolhe o esforço de cada mensagem" : LEVELS[position]?.description}
+            {auto
+              ? "O Muse escolhe o esforço de cada mensagem"
+              : picked < 0
+                ? `O ${modelDisplayName(model?.modelId)} não aceita ${label}: a próxima mensagem vai no nível aceito mais próximo abaixo.`
+                : levels[position]?.description}
           </p>
+          </>
+          )}
           <div className="mt-3 flex items-center gap-3 border-t border-line pt-3">
             <label htmlFor={switchId} className="min-w-0 flex-1 cursor-default text-sm text-fg">
               Deixar o Muse decidir
@@ -737,7 +768,8 @@ function EffortPicker(props: { side: PickerSide }) {
             <Switch.Root
               id={switchId}
               checked={auto}
-              onCheckedChange={(on) => controller.setEffort(on ? null : (LEVELS[position]?.value ?? "medium"))}
+              disabled={none}
+              onCheckedChange={(on) => controller.setEffort(on ? null : (levels[position]?.value ?? levels[0]?.value ?? null))}
               className="relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full bg-line-strong outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent data-[state=checked]:bg-accent"
             >
               <Switch.Thumb className="block size-3.5 translate-x-0.5 rounded-full bg-white shadow-[0_1px_2px_oklch(0_0_0/0.3)] transition-transform duration-150 ease-out data-[state=checked]:translate-x-4" />
