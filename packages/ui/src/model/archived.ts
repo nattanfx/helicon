@@ -1,4 +1,4 @@
-import { basename, displayTitle } from "./format.js";
+import { basename, displayTitle, plural } from "./format.js";
 import type { ProjectView, SessionSummary } from "../types.js";
 
 export interface ArchivedGroup {
@@ -65,4 +65,33 @@ export function olderThan(sessions: SessionSummary[], days: number, nowMs: numbe
     const at = Date.parse(session.activityAt);
     return Number.isFinite(at) && at < cutoff;
   });
+}
+
+export interface ArchiveWindow {
+  days: number;
+  count: number;
+}
+
+/** Quantas conversas cada janela de idade arquivaria agora. */
+export function archiveWindows(sessions: SessionSummary[], days: readonly number[], nowMs: number): ArchiveWindow[] {
+  return days.map((d) => ({ days: d, count: olderThan(sessions, d, nowMs).length }));
+}
+
+/** O texto do botão de uma janela: a contagem aparece sempre, inclusive zero, para o botão não parecer quebrado. */
+export function archiveWindowLabel(range: ArchiveWindow): string {
+  return `${range.days} dias (${range.count})`;
+}
+
+/** A dica de um botão: o que ele arquivaria ou, sem nada a arquivar, por que está desativado. */
+export function archiveWindowHint(range: ArchiveWindow): string {
+  return range.count === 0
+    ? `Nenhuma conversa parada há mais de ${range.days} dias`
+    : `Arquivar ${plural(range.count, "conversa parada", "conversas paradas")} há mais de ${range.days} dias`;
+}
+
+/** Quando nenhuma janela tem o que arquivar, uma linha explica os botões desativados; senão, nada. */
+export function archiveOlderNote(windows: readonly ArchiveWindow[]): string | null {
+  if (windows.length === 0 || windows.some((w) => w.count > 0)) return null;
+  const shortest = Math.min(...windows.map((w) => w.days));
+  return `Nenhuma conversa parada há mais de ${shortest} dias; nada para arquivar agora.`;
 }

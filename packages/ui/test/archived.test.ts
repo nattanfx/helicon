@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { filterArchived, groupArchivedByProject, olderThan, visibleSelection } from "../src/model/archived.js";
+import { archiveOlderNote, archiveWindowHint, archiveWindowLabel, archiveWindows, filterArchived, groupArchivedByProject, olderThan, visibleSelection } from "../src/model/archived.js";
 import type { ProjectView, SessionSummary } from "../src/types.js";
 
 function project(cwd: string, displayName: string): ProjectView {
@@ -133,5 +133,22 @@ describe("olderThan", () => {
       olderThan(sessions, -5, NOW).map((s) => s.sessionId),
       ["old", "edge", "fresh"],
     );
+  });
+  it("explains the archive-by-age buttons when nothing is old enough", () => {
+    const recent = [sessions[2]!];
+    const windows = archiveWindows(recent, [30, 60, 90], NOW);
+    assert.deepEqual(windows.map((w) => w.count), [0, 0, 0]);
+    assert.equal(archiveOlderNote(windows), "Nenhuma conversa parada há mais de 30 dias; nada para arquivar agora.");
+    assert.equal(archiveWindowLabel(windows[1]!), "60 dias (0)", "zero is shown, so the button does not look broken");
+    assert.equal(archiveWindowHint(windows[2]!), "Nenhuma conversa parada há mais de 90 dias");
+  });
+
+  it("counts what each window would archive and drops the note when any has something", () => {
+    const windows = archiveWindows(sessions, [30, 60, 200], NOW);
+    assert.deepEqual(windows.map((w) => w.count), [1, 1, 0]);
+    assert.equal(archiveOlderNote(windows), null);
+    assert.equal(archiveWindowLabel(windows[0]!), "30 dias (1)");
+    assert.equal(archiveWindowHint(windows[0]!), "Arquivar 1 conversa parada há mais de 30 dias");
+    assert.equal(archiveOlderNote([]), null);
   });
 });

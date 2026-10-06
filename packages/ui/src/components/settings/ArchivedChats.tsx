@@ -1,7 +1,17 @@
 import { Check, ChevronDown, Ellipsis, Folder, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useApp, useController, useNow } from "../../app/context.js";
-import { filterArchived, groupArchivedByProject, olderThan, visibleSelection, type ArchivedGroup } from "../../model/archived.js";
+import {
+  archiveOlderNote,
+  archiveWindowHint,
+  archiveWindowLabel,
+  archiveWindows,
+  filterArchived,
+  groupArchivedByProject,
+  olderThan,
+  visibleSelection,
+  type ArchivedGroup,
+} from "../../model/archived.js";
 import { displayTitle, formatClock, plural, shortenPath } from "../../model/format.js";
 import type { SessionSummary } from "../../types.js";
 import { Menu, MenuContent, MenuItem, MenuOption, MenuRadioGroup, MenuTrigger, Modal, Tip } from "../ui/overlays.js";
@@ -94,10 +104,8 @@ function ArchiveOlder() {
   const now = useNow(60_000);
   const [confirmDays, setConfirmDays] = useState<number | null>(null);
   const active = useMemo(() => Object.values(sessions), [sessions]);
-  const windows = useMemo(
-    () => [30, 60, 90].map((days) => ({ days, count: olderThan(active, days, now).length })),
-    [active, now],
-  );
+  const windows = useMemo(() => archiveWindows(active, [30, 60, 90], now), [active, now]);
+  const note = archiveOlderNote(windows);
   if (active.length === 0) {
     return null;
   }
@@ -111,19 +119,22 @@ function ArchiveOlder() {
           description="Guarda nesta lista as conversas ativas sem atividade há mais tempo. Dá para desarquivar qualquer uma depois."
         >
           <div className="flex flex-wrap items-center gap-2">
-            {windows.map(({ days, count }) => (
-              <Button
-                key={days}
-                size="sm"
-                variant="secondary"
-                disabled={busy || count === 0}
-                onClick={() => setConfirmDays(days)}
-              >
-                {count === 0 ? `${days} dias` : `${days} dias (${count})`}
-              </Button>
+            {windows.map((range) => (
+              // O span leva a dica: um botão desativado não recebe o mouse, e a dica explica por que está assim.
+              <span key={range.days} title={archiveWindowHint(range)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy || range.count === 0}
+                  onClick={() => setConfirmDays(range.days)}
+                >
+                  {archiveWindowLabel(range)}
+                </Button>
+              </span>
             ))}
           </div>
         </Row>
+        {note ? <p className="border-t border-line px-4 py-2.5 text-xs text-muted">{note}</p> : null}
       </Card>
       <Modal
         open={confirming !== null}
