@@ -43,11 +43,23 @@ Estas mudanças estão no commit \`6306632\`, aprovado no CI 94 e no Windows Tes
 
 ## Segurança de execução por projeto
 
-Mudança posterior ao build Teste já gerado, ainda sem build próprio.
+Conferido no Helicon Teste entre 04 e 06/10/2026 (builds 43 a 47).
 
 - **Modo YOLO** e **Desativar a sandbox** existem e valem só para um projeto por vez. As Configurações e o menu de permissões dizem qual projeto vai mudar, e ligar qualquer um deles pede confirmação. Só o servidor Muse daquele projeto reinicia.
 - Todo projeto começa protegido, inclusive os adicionados, clonados ou removidos e adicionados de novo. A antiga chave geral não é aplicada a nenhum projeto ao atualizar: quem usava YOLO ou sandbox desligada liga de novo no projeto desejado.
 - Pelo terminal, o servidor sem \`--token\` cria uma credencial aleatória e imprime um link de entrada de uso único. \`--no-auth\` desliga isso, só em loopback e só para desenvolvimento.
+
+## Correções e ajustes de 03 a 06/10/2026
+
+Resultado de uma auditoria geral do código e de três rodadas de testes no Helicon Teste. Tudo abaixo foi conferido no build 47 (compilação \`eccf3ae\`) ou antes dele.
+
+- **Permissões.** O modo antes chamado “Perguntar antes” agora se chama **Confiar na sandbox**, que descreve o que o Muse faz nele: edita o projeto e roda comandos confinados pela sandbox sem perguntar, e só pergunta o que ela não consegue conferir. Ligar ou desligar o YOLO não deixa mais conversas presas na permissão antiga.
+- **Modelo e esforço.** O seletor de esforço mostra só os níveis que o modelo escolhido aceita. Ao trocar para um modelo que não aceita o nível atual, ele desce sozinho, com um aviso, em vez de toda mensagem falhar.
+- **Uso.** Cada chamada ao modelo é contada uma vez só. Ao abrir esta edição pela primeira vez, o aplicativo apaga as cópias repetidas que versões anteriores gravaram, então **os custos da página Uso caem**. No Helicon Teste, o consumo sem data passou de US$ 45,04 para US$ 32,24. Chamadas novas passam a ter data, os dias seguem o horário local e o consumo com detalhamento incompleto aparece agrupado por motivo, com o nome de cada conversa. Excluir uma conversa mantém o uso registrado dela.
+- **Rascunhos.** Imagens e arquivos anexados a uma mensagem ainda não enviada continuam lá depois de fechar o aplicativo. No desktop eles ficam em \`composer-drafts.json\`, para imagens de até cerca de 2 MB; acima disso a caixa de mensagem avisa que o anexo não será guardado.
+- **Tela da conversa sem repetições.** O topo mostra só o título, o estado e os ícones. Cada resposta mostra a duração uma vez, na linha de baixo, que também abre as etapas. A velocidade ao vivo aparece no meio da conversa, e a barra lateral mostra só a roda girando enquanto o Muse trabalha. O botão de enviar fica sempre no canto direito da caixa de mensagem.
+- **Textos.** “Mensagem” no lugar de “turno”, vírgula nos números, datas em português e avisos do servidor traduzidos. Arquivar por idade mostra a quantidade e explica quando não há nada para arquivar.
+- **Proteção e robustez.** Anexos e a página do aplicativo ganharam proteções contra conteúdo malicioso. Rascunhos, exclusão de conversas e o registro de falhas passaram a ser gravados de forma que uma queda no meio não perde dados.
 
 ## O que este pacote não inclui
 
@@ -56,13 +68,13 @@ Gerenciamento de múltiplas contas do original. Instalador de macOS ou Linux. At
 ## Antes de instalar por cima da pt4
 
 1. Feche o Helicon. O Helicon Teste pode continuar fechado também se for mexer na pasta dele.
-2. Copie as duas pastas da instalação normal, cada uma para um destino novo, com [BACKUP.md](BACKUP.md).
+2. Copie as duas pastas da instalação normal, cada uma para um destino novo, com [BACKUP.md](BACKUP.md). Esse backup é a única forma de voltar atrás: ao abrir pela primeira vez, esta edição apaga sozinha as cópias repetidas do uso.
 3. Só então execute o instalador \`Helicon_0.12.5-pt5_x64-setup.exe\` desta edição, obtido no rascunho da release (não publicado).
 4. Na tela de manutenção, não marque apagar os dados do aplicativo. A desinstalação prévia do programa, se o instalador oferecer, não apaga essas pastas enquanto essa caixa estiver desmarcada.
 5. Abra Configurações e confira **Helicon 0.12.5-pt5**. A linha **Servidor** mostra o mesmo número.
 
 A instalação normal e o Helicon Teste continuam separados. Atualizar um não substitui o outro.
 
-Este texto descreve o código da edição em preparação. O instalador Helicon Teste já foi gerado, com aprovação visual anterior registrada para as estatísticas e as notas. A release pública segue pt4; a atualização da instalação normal sobre uma cópia da pt4 permanece sem validação registrada.`,
+Este texto descreve o código da edição em preparação, conferido no Helicon Teste até o build 47 (\`eccf3ae\`) em 06/10/2026. A release pública segue pt4; a atualização da instalação normal sobre uma cópia da pt4 permanece sem validação registrada.`,
   },
 ];
