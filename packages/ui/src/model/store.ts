@@ -112,6 +112,11 @@ export interface Prefs {
    * aparece em fotos antigas, de quando o YOLO era geral e forçava o padrão; é restaurado e descartado ao abrir.
    */
   preYolo: { defaultMode?: ApprovalMode; threads: Record<string, ApprovalMode | null> } | null;
+  /**
+   * Modos de aprovação escolhidos para conversas que o host não tinha carregadas quando a troca saiu (um reinício
+   * do host as descarrega). Cada um é aplicado quando a conversa carrega de novo, antes da próxima mensagem dela.
+   */
+  pendingModes: Record<string, ApprovalMode>;
 }
 
 export const DEFAULT_FILES_WIDTH = 480;
@@ -164,6 +169,7 @@ export function defaultPrefs(now = new Date().toISOString()): Prefs {
     filesWidth: DEFAULT_FILES_WIDTH,
     showTelemetry: false,
     preYolo: null,
+    pendingModes: {},
   };
 }
 
@@ -384,5 +390,9 @@ export function revivePrefs(raw: unknown, fallback: Prefs): Prefs {
     filesWidth: pick("filesWidth", (v) => typeof v === "number" && v >= FILES_WIDTH_MIN && v <= FILES_WIDTH_MAX),
     showTelemetry: pick("showTelemetry", (v) => typeof v === "boolean"),
     preYolo: pick("preYolo", isPreYolo),
+    pendingModes: pick(
+      "pendingModes",
+      (v) => typeof v === "object" && v !== null && !Array.isArray(v) && Object.values(v).every((mode) => isApprovalMode(mode)),
+    ),
   };
 }

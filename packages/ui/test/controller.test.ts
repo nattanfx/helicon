@@ -98,7 +98,7 @@ class FakeClient implements HeliconClient {
     this.startCalls.push({ cwd, approvalMode: options?.approvalMode, modelId: options?.modelId });
     return SESSION;
   }
-  loadTranscript() {
+  loadTranscript(_sessionId?: string) {
     return this.transcript();
   }
   async updateSession(_sessionId: string) {
@@ -3700,5 +3700,160 @@ describe("esforço que o modelo não aceita", () => {
     } finally {
       stop();
     }
+  });
+});
+
+/** Um host que descarrega as conversas ao reiniciar, como o reinício do YOLO de um projeto: trocar o modo de uma descarregada falha. */
+class UnloadingClient extends FakeClient {
+  loaded = new Set<string>();
+  hostModes: Record<string, string> = {};
+  log: string[] = [];
+  /** O PATCH do YOLO reinicia o host do projeto: as conversas dele ficam descarregadas. */
+  override async setYoloSettings(cwd: string, patch: { enabled?: boolean }) {
+    const result = await super.setYoloSettings(cwd, patch);
+    this.loaded.clear();
+    return result;
+  }
+  override async setApprovalMode(sessionId: string, mode: string) {
+    this.approvalModes.push({ sessionId, mode });
+    if (!this.loaded.has(sessionId)) {
+      throw new HeliconError("Session not loaded.", 409, "sessionNotLoaded");
+    }
+    this.hostModes[sessionId] = mode;
+    this.log.push(`mode:${mode}`);
+  }
+  override loadTranscript(sessionId = "s1") {
+    this.loaded.add(sessionId);
+    const mode = this.hostModes[sessionId] ?? "onRequest";
+    return Promise.resolve(
+      load({
+        session: { ...SESSION, sessionId },
+        events: [...historyEvents, { method: "session/approvalModeChanged", params: { sessionId, mode } }],
+        msp: { status: "idle", activeTurnId: null, modelId: "muse-spark-1.3", approvalMode: mode, workspaceRoot: APP, turnCount: 3 },
+      }),
+    );
+  }
+  override async sendTurn(sessionId: string, text: string, options?: Parameters<FakeClient["sendTurn"]>[2]) {
+    if (!this.loaded.has(sessionId)) {
+      this.log.push("send:notLoaded");
+      throw new HeliconError("Session not loaded.", 409, "sessionNotLoaded");
+    }
+    this.log.push(`send:${this.hostModes[sessionId] ?? "onRequest"}`);
+    return super.sendTurn(sessionId, text, options);
+  }
+}
+
+describe("modos de aprovação com o host reiniciado", () => {
+  it("ligar o YOLO com conversas descarregadas pelo reinício não avisa falha e aplica o acesso total quando cada uma carrega", async () => {
+    const client = new UnloadingClient();
+    const { controller, stop } = await started(client);
+    await controller.loadThread("s2");
+    assert.equal(client.loaded.has("s1") && client.loaded.has("s2"), true);
+
+    await controller.setYoloEnabled(APP, true);
+    await flushMicrotasks();
+    const state = controller.store.get();
+    assert.equal(state.toasts.some((t) => t.tone === "error"), false, "nenhuma conversa falhou de verdade");
+    assert.equal(state.threads["s1"]?.fold.meta.approvalMode, "allowAll", "o seletor mostra o modo que vai valer");
+    assert.deepEqual(state.prefs.pendingModes, { s1: "allowAll", s2: "allowAll" });
+
+    await controller.loadThread("s1");
+    assert.equal(client.hostModes["s1"], "allowAll", "aplicado ao carregar");
+    assert.equal(controller.store.get().threads["s1"]?.fold.meta.approvalMode, "allowAll");
+    assert.deepEqual(controller.store.get().prefs.pendingModes, { s2: "allowAll" }, "só a outra ainda espera");
+    stop();
+  });
+
+  it("desligar o YOLO restaura o modo de antes na próxima mensagem, antes de o turno começar", async () => {
+    const client = new UnloadingClient();
+    client.yoloSettings = { [APP]: { enabled: true } };
+    const { controller, stop } = await started(client);
+    assert.equal(client.hostModes["s1"], "allowAll", "a conversa entrou no YOLO ao abrir");
+
+    await controller.setYoloEnabled(APP, false);
+    await flushMicrotasks();
+    const state = controller.store.get();
+    assert.equal(state.toasts.some((t) => t.tone === "error"), false, "nada de \"continuam com acesso total\" por um reinício");
+    assert.equal(state.threads["s1"]?.fold.meta.approvalMode, "onRequest");
+    assert.deepEqual(state.prefs.pendingModes, { s1: "onRequest" });
+    assert.equal(client.hostModes["s1"], "allowAll", "o host ainda não tem a conversa para mudar");
+
+    client.log = [];
+    assert.equal(await controller.send("oi"), true);
+    assert.deepEqual(client.log, ["send:notLoaded", "mode:onRequest", "send:onRequest"], "o turno só sai depois de o modo valer");
+    assert.deepEqual(controller.store.get().prefs.pendingModes, {});
+    stop();
+  });
+
+  it("o modo pendente sobrevive a recarregar o Helicon e vale quando a conversa abre", async () => {
+    const client = new UnloadingClient();
+    client.yoloSettings = { [APP]: { enabled: true } };
+    let saved: unknown = null;
+    const shared: Platform & { hash: string } = {
+      ...platform("#/t/s1"),
+      loadPrefs: () => saved,
+      savePrefs: (prefs) => {
+        saved = prefs;
+      },
+    };
+    const first = new HeliconController(client, shared);
+    const stopFirst = first.start();
+    await settle();
+    await settle();
+    await first.setYoloEnabled(APP, false);
+    await settle();
+    stopFirst();
+    assert.equal(client.hostModes["s1"], "allowAll");
+
+    const second = new HeliconController(client, shared);
+    const stopSecond = second.start();
+    await settle();
+    await settle();
+    assert.equal(client.hostModes["s1"], "onRequest", "restaurado ao abrir depois de recarregar");
+    assert.equal(second.store.get().threads["s1"]?.fold.meta.approvalMode, "onRequest");
+    assert.deepEqual(second.store.get().prefs.pendingModes, {});
+    stopSecond();
+  });
+
+  it("trocar o modo de uma conversa descarregada guarda a escolha em vez de desfazê-la", async () => {
+    const client = new UnloadingClient();
+    const { controller, stop } = await started(client);
+    client.loaded.clear();
+
+    await controller.setMode("denyUnmatched");
+    const state = controller.store.get();
+    assert.equal(state.toasts.some((t) => t.tone === "error"), false);
+    assert.equal(state.threads["s1"]?.fold.meta.approvalMode, "denyUnmatched");
+    assert.deepEqual(state.prefs.pendingModes, { s1: "denyUnmatched" });
+
+    await controller.loadThread("s1");
+    assert.equal(client.hostModes["s1"], "denyUnmatched");
+    assert.deepEqual(controller.store.get().prefs.pendingModes, {});
+    stop();
+  });
+
+  it("uma recusa de verdade ao aplicar o modo pendente ainda avisa e mostra o modo do host", async () => {
+    const client = new UnloadingClient();
+    client.yoloSettings = { [APP]: { enabled: true } };
+    const { controller, stop } = await started(client);
+    await controller.setYoloEnabled(APP, false);
+    await flushMicrotasks();
+    client.approvalModeFailFor = new Set(["s1"]);
+    const refuse = client.setApprovalMode.bind(client);
+    client.setApprovalMode = async (sessionId: string, mode: string) => {
+      if (client.loaded.has(sessionId)) {
+        client.approvalModes.push({ sessionId, mode });
+        throw new Error("the host refused");
+      }
+      return refuse(sessionId, mode);
+    };
+
+    await controller.loadThread("s1");
+    await flushMicrotasks();
+    const state = controller.store.get();
+    assert.equal(state.threads["s1"]?.fold.meta.approvalMode, "allowAll", "o seletor mostra o que o host mantém");
+    assert.match(state.toasts.at(-1)?.detail ?? "", /^1 conversa continua com acesso total\.$/);
+    assert.deepEqual(state.prefs.pendingModes, {});
+    stop();
   });
 });

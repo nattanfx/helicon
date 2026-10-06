@@ -334,6 +334,15 @@ const TASK_FAILURES: Record<TaskAction, string> = {
   stopAll: "Não foi possível parar as tarefas de fundo",
 };
 
+/** O host não tem a conversa carregada (um reinício a descarregou): a troca espera ela carregar, não falhou. */
+function notLoaded(error: unknown): boolean {
+  const kind = errorKind(error);
+  if (kind === "sessionNotLoaded" || kind === "sessionStreamMismatch") {
+    return true;
+  }
+  return kind === null && /not loaded/i.test(errorMessage(error));
+}
+
 /** Um mapa por projeto com a entrada de `cwd` trocada; `null` a remove (o projeto volta ao padrão protegido). */
 function withProject<T>(map: Record<string, T> | null, cwd: string, value: T | null): Record<string, T> | null {
   if (map === null) {
@@ -396,6 +405,8 @@ export class HeliconController {
   private yoloSettingsChain: Promise<void> = Promise.resolve();
   /** Modos de aprovação de cada conversa de antes de o YOLO do seu projeto pegá-la, restaurados ao desligá-lo. */
   private preYolo: { threads: Record<string, ApprovalMode | null> } | null = null;
+  /** A troca de modo mais recente de cada conversa, para uma resposta atrasada não desfazer uma troca mais nova. */
+  private readonly modeSeq = new Map<string, number>();
   /** A rota principal para a qual o Voltar sai das páginas de configurações/uso; limpa ao voltar para uma rota principal. */
   private returnRoute: Route | null = null;
 
@@ -710,7 +721,7 @@ export class HeliconController {
         // A inicialização traz conversas e configurações em qualquer ordem; uma conversa que carregou antes entra
         // no YOLO do seu projeto mesmo assim, e uma que a foto ainda guarda volta ao seu modo.
         for (const sessionId of Object.keys(this.state.threads)) {
-          this.convergeThread(sessionId);
+          void this.convergeThread(sessionId);
         }
       }
     } catch {
@@ -723,36 +734,38 @@ export class HeliconController {
    * na foto, senão continuaria perguntando, respondido uma aprovação por vez pelo bypass implícito. Desligado com
    * o modo de antes ainda na foto (o YOLO caiu enquanto ela estava fechada): volta para ele.
    */
-  private convergeThread(sessionId: string): void {
+  private convergeThread(sessionId: string): Promise<void> {
     if (this.state.yoloSettings === null) {
-      return;
+      return Promise.resolve();
     }
     const thread = this.state.threads[sessionId];
-    if (!thread || thread.readOnly) {
-      return;
+    // Um modo ainda esperando a conversa carregar já é a decisão mais recente sobre ela; ele vale ao carregar.
+    if (!thread || thread.readOnly || this.pendingMode(sessionId) !== null) {
+      return Promise.resolve();
     }
     const cwd = sessionCwd(this.state, sessionId);
     if (!cwd) {
       // Sem saber o projeto, não há como dizer qual YOLO vale aqui; a conversa fica como está.
-      return;
+      return Promise.resolve();
     }
     const mode = thread.fold.meta.approvalMode ?? null;
     if (yoloOn(this.state, cwd)) {
       if (mode !== "allowAll") {
         this.rememberPreYolo({ [sessionId]: mode });
         this.patchMeta(sessionId, { approvalMode: "allowAll" });
-        void this.pushThreadModes({ [sessionId]: "allowAll" }, { [sessionId]: mode }, "perguntando antes");
+        return this.pushThreadModes({ [sessionId]: "allowAll" }, { [sessionId]: mode }, "perguntando antes");
       }
-      return;
+      return Promise.resolve();
     }
     if (this.preYolo && sessionId in this.preYolo.threads) {
       const restored = this.restoreModeFor(sessionId);
       this.forgetPreYolo([sessionId]);
       if (restored !== mode) {
         this.patchMeta(sessionId, { approvalMode: restored });
-        void this.pushThreadModes({ [sessionId]: restored }, { [sessionId]: mode }, "com acesso total");
+        return this.pushThreadModes({ [sessionId]: restored }, { [sessionId]: mode }, "com acesso total");
       }
     }
+    return Promise.resolve();
   }
 
   // ---------------------------------------------------------------- routing
@@ -962,7 +975,10 @@ export class HeliconController {
       }));
       // O que já estava esperando quando a conversa abriu conta também, não só o que chega depois.
       this.autoAllow([sessionId]);
-      this.convergeThread(sessionId);
+      // Esperados aqui: um envio que recarregou a conversa por ela estar descarregada só repete depois,
+      // então a mensagem já sai no modo escolhido, não no que o host lembrava.
+      await this.applyPendingMode(sessionId);
+      await this.convergeThread(sessionId);
     } catch (error) {
       this.loading.delete(sessionId);
       this.setThread(sessionId, {
@@ -1407,6 +1423,11 @@ export class HeliconController {
       ...(options.previews?.length ? { attachments: options.previews } : {}),
     };
     this.patchFold(sessionId, (f) => addEcho(f, echo));
+    // Um modo escolhido enquanto a conversa estava descarregada vale antes desta mensagem. Se ela continua
+    // descarregada, o envio falha, a conversa recarrega e o modo é aplicado ali, antes da repetição.
+    if (this.pendingMode(sessionId)) {
+      await this.applyPendingMode(sessionId);
+    }
     // Uma conversa antiga, ou aberta em outro modelo, pode estar num esforço que o modelo dela recusa: ajustar
     // antes de enviar em vez de deixar o host recusar cada mensagem.
     const effort = this.fitEffort(thread.fold.meta.modelId ?? this.state.sessions[sessionId]?.modelId ?? null, sessionId, false);
@@ -1878,12 +1899,27 @@ export class HeliconController {
     if (route.kind !== "thread") {
       return;
     }
-    const previous = this.state.threads[route.sessionId]?.fold.meta.approvalMode ?? null;
-    this.patchMeta(route.sessionId, { approvalMode: mode });
+    const sessionId = route.sessionId;
+    const previous = this.state.threads[sessionId]?.fold.meta.approvalMode ?? null;
+    const previousPending = this.pendingMode(sessionId);
+    this.patchMeta(sessionId, { approvalMode: mode });
+    const seq = this.bumpModeSeq(sessionId);
     try {
-      await this.client.setApprovalMode(route.sessionId, mode);
+      await this.client.setApprovalMode(sessionId, mode);
+      if (this.modeSeq.get(sessionId) === seq) {
+        this.setPendingMode(sessionId, null);
+      }
     } catch (error) {
-      this.patchMeta(route.sessionId, { approvalMode: previous });
+      if (this.modeSeq.get(sessionId) !== seq) {
+        return;
+      }
+      if (notLoaded(error)) {
+        // Descarregada no host (um reinício, por exemplo): o modo vale quando ela carregar, antes da próxima mensagem.
+        this.setPendingMode(sessionId, mode);
+        return;
+      }
+      this.setPendingMode(sessionId, previousPending);
+      this.patchMeta(sessionId, { approvalMode: previous });
       this.toast("error", "Não foi possível alterar as permissões", userFacingError(error));
     }
   }
@@ -2072,6 +2108,47 @@ export class HeliconController {
       .map(([id]) => id);
   }
 
+  /** Marca uma nova troca de modo da conversa; só a resposta da troca mais recente decide o que fica. */
+  private bumpModeSeq(sessionId: string): number {
+    const next = (this.modeSeq.get(sessionId) ?? 0) + 1;
+    this.modeSeq.set(sessionId, next);
+    return next;
+  }
+
+  /** O modo escolhido que ainda espera a conversa carregar no host, se houver. */
+  pendingMode(sessionId: string): ApprovalMode | null {
+    return this.state.prefs.pendingModes[sessionId] ?? null;
+  }
+
+  private setPendingMode(sessionId: string, mode: ApprovalMode | null): void {
+    const current = this.state.prefs.pendingModes;
+    if ((current[sessionId] ?? null) === mode) {
+      return;
+    }
+    const next = { ...current };
+    if (mode) {
+      next[sessionId] = mode;
+    } else {
+      delete next[sessionId];
+    }
+    this.setPrefs({ pendingModes: next });
+  }
+
+  /**
+   * Aplica o modo que ficou esperando a conversa carregar (um reinício do host a descarregou quando a troca saiu).
+   * Chamado ao carregar a conversa e antes de cada mensagem, para nenhum turno começar no modo antigo. Nunca lança.
+   */
+  private async applyPendingMode(sessionId: string): Promise<void> {
+    const mode = this.pendingMode(sessionId);
+    const thread = this.state.threads[sessionId];
+    if (!mode || !thread || thread.readOnly || thread.load !== "ready") {
+      return;
+    }
+    const hostMode = thread.fold.meta.approvalMode ?? null;
+    this.patchMeta(sessionId, { approvalMode: mode });
+    await this.pushThreadModes({ [sessionId]: mode }, { [sessionId]: hostMode }, hostMode === "allowAll" ? "com acesso total" : "perguntando antes");
+  }
+
   private applyYoloApprovals(cwd: string, enabled: boolean): void {
     const ids = this.yoloThreadIds(cwd);
     if (enabled) {
@@ -2099,6 +2176,8 @@ export class HeliconController {
   /**
    * Empurra modos de aprovação conversa por conversa; uma conversa que o servidor recusar mantém seu modo
    * `fallback` localmente em vez de fingir que a virada valeu. Um toast para qualquer quantidade de falhas.
+   * Uma conversa que o host não tem carregada (o reinício do YOLO descarrega todas do projeto) não é falha:
+   * o modo fica guardado e vale quando ela carregar de novo, antes da próxima mensagem.
    */
   private async pushThreadModes(
     modes: Record<string, ApprovalMode>,
@@ -2109,12 +2188,22 @@ export class HeliconController {
     if (ids.length === 0) {
       return;
     }
+    const seqs = ids.map((sessionId) => this.bumpModeSeq(sessionId));
     const results = await Promise.allSettled(ids.map((sessionId) => this.client.setApprovalMode(sessionId, modes[sessionId] as ApprovalMode)));
     let failed = 0;
     results.forEach((result, i) => {
-      if (result.status === "rejected") {
+      const sessionId = ids[i] as string;
+      // Uma troca mais nova para esta conversa já saiu enquanto esta voava: ela decide o que fica.
+      if (this.modeSeq.get(sessionId) !== seqs[i]) {
+        return;
+      }
+      if (result.status === "fulfilled") {
+        this.setPendingMode(sessionId, null);
+      } else if (notLoaded(result.reason)) {
+        this.setPendingMode(sessionId, modes[sessionId] as ApprovalMode);
+      } else {
         failed += 1;
-        const sessionId = ids[i] as string;
+        this.setPendingMode(sessionId, null);
         this.patchMeta(sessionId, { approvalMode: fallback[sessionId] ?? null });
       }
     });
