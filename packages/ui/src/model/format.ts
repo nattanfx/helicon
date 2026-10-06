@@ -190,6 +190,22 @@ export function basename(path: string): string {
   return parts[parts.length - 1] || trimmed;
 }
 
+/**
+ * O nome de projeto mostrado no uso. Uma pasta cujo nome não diz nada sozinho (só números ou símbolos, como a
+ * `Downloads\0` de um teste, ou um nome de até dois caracteres) vem com a pasta de cima: "0" parecia um valor,
+ * não um projeto. Sem pasta conhecida, diz que não há projeto em vez de não dizer nada.
+ */
+export function usageProjectLabel(cwd: string | null | undefined): string {
+  if (!cwd || !cwd.trim()) return "Sem projeto";
+  const separator = cwd.includes("\\") ? "\\" : "/";
+  const parts = cwd.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean);
+  const name = parts[parts.length - 1];
+  if (!name) return cwd;
+  const parent = parts[parts.length - 2];
+  const telling = /\p{L}/u.test(name) && name.length > 2;
+  return telling || !parent || /^[A-Za-z]:$/.test(parent) ? name : `${parent}${separator}${name}`;
+}
+
 /** Mantém o fim de um caminho longo legível: `D:\...\helicon\packages\ui`. */
 export function shortenPath(path: string, max = 48): string {
   if (path.length <= max) {

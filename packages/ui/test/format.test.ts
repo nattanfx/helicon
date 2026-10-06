@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { parseModelList } from "../src/client.js";
 import {
   alignLines,
+  usageProjectLabel,
   describeApproval,
   describeTool,
   diffFromEcho,
@@ -487,5 +488,24 @@ describe("aprovações e modelos", () => {
     assert.equal(sessionLoadLabel("hibernating"), "Estado: hibernating");
     assert.equal(sessionLoadLabel(null), null);
     assert.equal(sessionLoadLabel(undefined), null);
+  });
+});
+
+describe("usageProjectLabel", () => {
+  it("names the folder, and its parent when the name alone says nothing", () => {
+    // The user's MQL5 conversation ran in C:\Users\salva\Downloads\0 and showed only "0".
+    assert.equal(usageProjectLabel(String.raw`C:\Users\salva\Downloads\0`), String.raw`Downloads\0`);
+    assert.equal(usageProjectLabel(String.raw`C:\Users\salva\Downloads\000`), String.raw`Downloads\000`);
+    assert.equal(usageProjectLabel(String.raw`C:\Users\salva\OneDrive\Desktop\LIFE_OS_v0.2`), "LIFE_OS_v0.2");
+    assert.equal(usageProjectLabel(String.raw`C:\Users\salva\Downloads\## DOCS\ `.trimEnd()), "## DOCS");
+    assert.equal(usageProjectLabel("/home/me/work/ui"), "work/ui");
+    assert.equal(usageProjectLabel(String.raw`C:\7`), "7", "a drive is not a useful parent");
+    assert.equal(usageProjectLabel("/0"), "0");
+  });
+
+  it("says there is no project instead of showing nothing", () => {
+    assert.equal(usageProjectLabel(null), "Sem projeto");
+    assert.equal(usageProjectLabel(""), "Sem projeto");
+    assert.equal(usageProjectLabel("   "), "Sem projeto");
   });
 });

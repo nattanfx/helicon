@@ -2,7 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp, useController } from "../../app/context.js";
 import { useOverlayDragProps } from "../../app/frame.js";
-import { basename, CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, plural, relativeTime, usageThreadTitle } from "../../model/format.js";
+import { CONTRIBUTOR_LABEL, formatDuration, formatTokens, modelDisplayName, plural, relativeTime, usageProjectLabel, usageThreadTitle } from "../../model/format.js";
 import { costOf, formatCost, listedPrice, type TokenPrice } from "../../model/pricing.js";
 import { fillUsageDays, formatUsageDay, USAGE_RANGES } from "../../model/usage-range.js";
 import { groupRecovery } from "../../model/usage-recovery.js";
@@ -471,8 +471,8 @@ function Threads(props: { view: UsageView }) {
             <>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm text-fg">{usageThreadTitle(thread)}</p>
-                <p className="truncate text-2xs text-subtle tabular-nums">
-                  {thread.cwd ? `${basename(thread.cwd)} · ` : ""}
+                <p className="truncate text-2xs text-subtle tabular-nums" title={thread.cwd ?? undefined}>
+                  {usageProjectLabel(thread.cwd)} ·{" "}
                   {plural(thread.calls, "chamada", "chamadas")} · {formatTokens(thread.promptTokens + thread.outputTokens)} tokens · {thread.lastAt ? relativeTime(thread.lastAt) : "data desconhecida"}
                 </p>
               </div>
